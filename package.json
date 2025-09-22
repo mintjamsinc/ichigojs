@@ -1,0 +1,32 @@
+{
+  "name": "@mintjamsinc/ichigojs",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/ichigo.umd.js",
+  "module": "./dist/ichigo.esm.js",
+  "types": "./dist-types/index.d.ts",
+  "files": [
+    "dist/",
+    "dist-types/"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "prepare": "npm run build",
+    "test": "npm run build && node --test"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.6",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "esbuild": "^0.21.5",
+    "rollup": "^4.52.0",
+    "rollup-plugin-typescript2": "^0.36.0",
+    "typescript": "^5.9.2"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/ichigo.js",
+      "require": "./dist/ichigo.js",
+      "types": "./dist-types/index.d.ts"
+    }
+  }
+}
