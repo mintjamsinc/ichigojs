@@ -1,13 +1,15 @@
 {
   "name": "@mintjamsinc/ichigojs",
   "version": "0.1.0",
-  "type": "module",
+  "description": "ichigo.js - Simple and intuitive reactive framework. Lightweight, fast, and user-friendly virtual DOM library",
   "main": "./dist/ichigo.umd.js",
   "module": "./dist/ichigo.esm.js",
-  "types": "./dist-types/index.d.ts",
+  "types": "./dist/types/index.d.ts",
+  "type": "module",
   "files": [
-    "dist/",
-    "dist-types/"
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "rollup -c",
@@ -17,16 +19,19 @@
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.6",
     "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-terser": "^0.4.4",
     "esbuild": "^0.21.5",
     "rollup": "^4.52.0",
     "rollup-plugin-typescript2": "^0.36.0",
+    "typedoc": "^0.28.13",
     "typescript": "^5.9.2"
   },
   "exports": {
     ".": {
       "import": "./dist/ichigo.js",
       "require": "./dist/ichigo.js",
-      "types": "./dist-types/index.d.ts"
-    }
+      "types": "./dist/types/index.d.ts"
+    },
+    "./package.json": "./package.json"
   }
 }
