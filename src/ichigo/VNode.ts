@@ -172,10 +172,54 @@ export class VNode {
     }
 
     /**
+     * The previous sibling virtual node, if any.
+     * This is optional and may be undefined if there is no previous sibling.
+     */
+    get previousSibling(): VNode | undefined {
+        if (!this.#parentVNode || !this.#parentVNode.childVNodes) {
+            return undefined;
+        }
+
+        const siblings = this.#parentVNode.childVNodes;
+        const index = siblings.indexOf(this);
+        if (index > 0) {
+            return siblings[index - 1];
+        }
+
+        return undefined;
+    }
+
+    /**
+     * The next sibling virtual node, if any.
+     * This is optional and may be undefined if there is no next sibling.
+     */
+    get nextSibling(): VNode | undefined {
+        if (!this.#parentVNode || !this.#parentVNode.childVNodes) {
+            return undefined;
+        }
+
+        const siblings = this.#parentVNode.childVNodes;
+        const index = siblings.indexOf(this);
+        if (index !== -1 && index < siblings.length - 1) {
+            return siblings[index + 1];
+        }
+
+        return undefined;
+    }
+
+    /**
      * The data bindings associated with this virtual node, if any.
      */
     get bindings(): VBindings | undefined {
         return this.#bindings;
+    }
+
+    /**
+     * The directive manager associated with this virtual node.
+     * This manages any directives applied to the node.
+     */
+    get directiveManager(): VDirectiveManager | undefined {
+        return this.#directiveManager;
     }
 
     /**
