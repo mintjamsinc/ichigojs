@@ -12,7 +12,7 @@ export class ExpressionUtils {
      */
     static extractIdentifiers(expression: string, functionDependencies: Record<string, string[]>): string[] {
         const identifiers = new Set<string>();
-        const ast = acorn.parse(expression, { ecmaVersion: "latest" });
+        const ast = acorn.parse(`(${expression})`, { ecmaVersion: "latest" });
 
         walk.simple(ast, {
             Identifier(node: any) {
