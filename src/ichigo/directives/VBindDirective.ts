@@ -139,12 +139,6 @@ export class VBindDirective implements VDirective {
         // Evaluate the expression to get the value
         const value = this.#evaluate();
 
-        // If the value is undefined, remove the attribute
-        if (value === undefined) {
-            element.removeAttribute(attributeName);
-            return;
-        }
-
         // Handle different attribute types
         if (attributeName === 'class') {
             this.#updateClass(element, value);
