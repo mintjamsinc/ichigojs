@@ -84,12 +84,8 @@ export abstract class VConditionalDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const directive = this;
-        const conditionalContext = this.#conditionalContext;
         const identifiers = this.#identifiers ?? [];
-        const evaluate = this.#evaluate;
-        const insertNode = () => this.#insertNode();
-        const removedNode = () => this.#removedNode();
+        const render = () => this.#render();
 
         // Create an updater that handles the conditional rendering
         const updater: VDOMUpdater = {
@@ -97,26 +93,7 @@ export abstract class VConditionalDirective implements VDirective {
                 return identifiers;
             },
             applyToDOM(): void {
-                // Check if any preceding directive's condition is met
-                if (conditionalContext.isPrecedingConditionMet(directive)) {
-                    // Previous condition met, ensure node is removed
-                    removedNode();
-                    return;
-                }
-
-                if (!evaluate) {
-                    // No expression means always true (e.g., v-else)
-                    insertNode();
-                    return;
-                }
-
-                // Evaluate the condition and insert or remove the node accordingly
-                const shouldRender = evaluate();
-                if (shouldRender) {
-                    insertNode();
-                } else {
-                    removedNode();
-                }
+                render();
             }
         };
         return updater;
@@ -147,6 +124,33 @@ export abstract class VConditionalDirective implements VDirective {
      */
     destroy(): void {
         // Default implementation does nothing. Override in subclasses if needed.
+    }
+
+    /**
+     * Renders the node based on the evaluation of the directive's condition.
+     * Inserts or removes the node from the DOM as needed.
+     */
+    #render(): void {
+        // Check if any preceding directive's condition is met
+        if (this.#conditionalContext.isPrecedingConditionMet(this)) {
+            // Previous condition met, ensure node is removed
+            this.#removedNode();
+            return;
+        }
+
+        if (!this.#evaluate) {
+            // No expression means always true (e.g., v-else)
+            this.#insertNode();
+            return;
+        }
+
+        // Evaluate the condition and insert or remove the node accordingly
+        const shouldRender = this.#evaluate();
+        if (shouldRender) {
+            this.#insertNode();
+        } else {
+            this.#removedNode();
+        }
     }
 
     /**
