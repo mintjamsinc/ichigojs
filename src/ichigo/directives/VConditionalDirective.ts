@@ -88,8 +88,8 @@ export abstract class VConditionalDirective implements VDirective {
         const conditionalContext = this.#conditionalContext;
         const identifiers = this.#identifiers ?? [];
         const evaluate = this.#evaluate;
-        const insertNode = () => this.insertNode();
-        const removedNode = () => this.removedNode();
+        const insertNode = () => this.#insertNode();
+        const removedNode = () => this.#removedNode();
 
         // Create an updater that handles the conditional rendering
         const updater: VDOMUpdater = {
@@ -143,11 +143,18 @@ export abstract class VConditionalDirective implements VDirective {
     }
 
     /**
+     * @inheritdoc
+     */
+    destroy(): void {
+        // Default implementation does nothing. Override in subclasses if needed.
+    }
+
+    /**
      * Inserts the node into the DOM at the position marked by the anchor node, if any.
      * If there is no anchor node, the node is inserted as a child of its parent node.
      * If the node is already in the DOM, no action is taken.
      */
-    insertNode(): void {
+    #insertNode(): void {
         if (this.#vNode.isInDOM) {
             // Already in DOM, no action needed
             return;
@@ -170,20 +177,13 @@ export abstract class VConditionalDirective implements VDirective {
      * Removes the node from the DOM.
      * If the node is not in the DOM, no action is taken.
      */
-    removedNode(): void {
+    #removedNode(): void {
         if (!this.#vNode.isInDOM) {
             // Already removed from DOM, no action needed
             return;
         }
 
         this.#vNode.node.parentNode?.removeChild(this.#vNode.node);
-    }
-
-    /**
-     * @inheritdoc
-     */
-    destroy(): void {
-        // Default implementation does nothing. Override in subclasses if needed.
     }
 
     /**
