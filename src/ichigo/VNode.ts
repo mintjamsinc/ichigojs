@@ -73,6 +73,13 @@ export class VNode {
     #identifiers?: string[];
 
     /**
+     * The list of preparable identifiers for this virtual node.
+     * This includes variable and function names used in directive bindings preparers.
+     * This is optional and may be undefined if there are no preparers.
+     */
+    #preparableIdentifiers?: string[];
+
+    /**
      * The list of closers to unregister dependencies.
      * This is optional and may be undefined if there are no dependencies.
      */
@@ -283,6 +290,26 @@ export class VNode {
         return this.#identifiers;
     }
 
+    get preparableIdentifiers(): string[] {
+        // If already computed, return the cached preparable identifiers
+        if (this.#preparableIdentifiers) {
+            return this.#preparableIdentifiers;
+        }
+
+        // Collect preparable identifiers from directive bindings preparers
+        const preparableIdentifiers: string[] = [];
+
+        // Include preparable identifiers from directive bindings preparers
+        this.#directiveManager?.bindingsPreparers?.forEach(preparer => {
+            preparableIdentifiers.push(...preparer.preparableIdentifiers);
+        });
+
+        // Remove duplicates by converting to a Set and back to an array
+        this.#preparableIdentifiers = preparableIdentifiers.length === 0 ? [] : [...new Set(preparableIdentifiers)];
+
+        return this.#preparableIdentifiers;
+    }
+
     /**
      * Updates the virtual node and its children based on the current bindings.
      * This method evaluates any expressions in text nodes and applies effectors from directives.
@@ -357,7 +384,7 @@ export class VNode {
         const closers: VCloser[] = [];
 
         // Check if any of the dependent node's identifiers are in this node's identifiers
-        const hasIdentifier = dependentNode.identifiers.some(id => this.identifiers.includes(id));
+        const hasIdentifier = dependentNode.identifiers.some(id => this.preparableIdentifiers.includes(id));
 
         // If the dependent node has an identifier in this node's identifiers, add it as a dependency
         if (hasIdentifier) {

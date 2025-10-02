@@ -1,17 +1,22 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
 import { VBindings } from "../VBindings";
-import { VDirectivePlugin } from "./VDirectivePlugin";
 
 /**
  * Interface representing a preparer for VBindings in the virtual DOM.
  */
-export interface VBindingsPreparer extends VDirectivePlugin {
+export interface VBindingsPreparer {
     /**
      * The list of identifiers that this preparer is concerned with.
      * These identifiers are used to determine when the bindings need to be prepared.
      */
     get identifiers(): string[];
+
+    /**
+     * The list of identifiers that can be prepared by this preparer.
+     * This is a subset of the identifiers property.
+     */
+    get preparableIdentifiers(): string[];
 
     /**
      * Prepares the VBindings for the virtual node.
