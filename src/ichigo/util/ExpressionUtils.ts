@@ -42,20 +42,46 @@ export class ExpressionUtils {
 
         // First pass: collect direct dependencies for each function
         for (const [funcName, func] of Object.entries(functions)) {
-            const source = `(${func.toString()})`;
-            const ast = acorn.parse(source, { ecmaVersion: "latest" });
-            const dependencies = new Set<string>();
+            try {
+                let source = func.toString();
 
-            walk.simple(ast, {
-                Identifier(node: any) {
-                    // Skip the function name itself and function parameters
-                    if (node.name !== funcName) {
-                        dependencies.add(node.name);
-                    }
+                // Handle different function formats
+                // Arrow function: () => expr or (args) => { ... }
+                // Method shorthand: methodName() { ... }
+                // Function expression: function() { ... }
+
+                // Detect function type more accurately
+                const isArrowFunction = /^\s*(\([^)]*\)|[a-zA-Z_$][a-zA-Z0-9_$]*)\s*=>/.test(source);
+                const isFunctionExpression = source.startsWith('function');
+                const isAsyncFunction = source.startsWith('async');
+
+                // If it's a method shorthand (e.g., "methodName() { ... }"), convert to function expression
+                if (!isFunctionExpression && !isArrowFunction && !isAsyncFunction) {
+                    // It's likely a method shorthand, convert to function expression
+                    source = `function ${source}`;
                 }
-            });
 
-            functionDependencies[funcName] = Array.from(dependencies);
+                // Wrap in parentheses for parsing
+                source = `(${source})`;
+
+                const ast = acorn.parse(source, { ecmaVersion: "latest" });
+                const dependencies = new Set<string>();
+
+                walk.simple(ast, {
+                    Identifier(node: any) {
+                        // Skip the function name itself and function parameters
+                        if (node.name !== funcName) {
+                            dependencies.add(node.name);
+                        }
+                    }
+                });
+
+                functionDependencies[funcName] = Array.from(dependencies);
+            } catch (error) {
+                console.warn(`Failed to analyze function '${funcName}':`, error);
+                // If parsing fails, assume no dependencies
+                functionDependencies[funcName] = [];
+            }
         }
 
         // Second pass: recursively resolve function dependencies

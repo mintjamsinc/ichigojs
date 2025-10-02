@@ -3,7 +3,6 @@
 import { StandardDirectiveName } from "./StandardDirectiveName";
 import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
-import { VDOM } from "../VDOM";
 import { VNode } from "../VNode";
 import { VBindingsPreparer } from "./VBindingsPreparer";
 import { VDOMUpdater } from "./VDOMUpdater";
@@ -106,7 +105,7 @@ export class VDirectiveManager {
             };
 
             // Find a parser for the directive
-            const parser = VDOM.directiveParserRegistry.findParser(context);
+            const parser = this.#vNode.vApplication.directiveParserRegistry.findParser(context);
             if (parser) {
                 // Parse the directive and add it to the list
                 const directive = parser.parse(context);

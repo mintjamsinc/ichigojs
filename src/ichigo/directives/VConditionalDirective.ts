@@ -2,12 +2,12 @@
 
 import { ExpressionUtils } from "../util/ExpressionUtils";
 import { VNode } from "../VNode";
+import { VBindingsPreparer } from "./VBindingsPreparer";
 import { VConditionalDirectiveContext } from "./VConditionalDirectiveContext";
 import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "./VDOMUpdater";
-import { VElseIfDirective } from "./VElseIfDirective";
-import { VIfDirective } from "./VIfDirective";
+import { StandardDirectiveName } from "./StandardDirectiveName";
 
 export abstract class VConditionalDirective implements VDirective {
     /**
@@ -76,7 +76,7 @@ export abstract class VConditionalDirective implements VDirective {
     /**
      * @inheritdoc
      */
-    get bindingsPreparer(): undefined {
+    get bindingsPreparer(): VBindingsPreparer | undefined {
         return undefined;
     }
 
@@ -206,7 +206,7 @@ export abstract class VConditionalDirective implements VDirective {
         // Return a function that calls the dynamic function with the current values from the virtual node's bindings
         return () => {
             // Gather the current values of the identifiers from the bindings
-            const values = identifiers.map(id => this.#vNode.bindings?.get(id));
+            const values = identifiers.map(id => this.#vNode.bindings?.[id]);
 
             // Call the dynamic function with the gathered values and return the result as a boolean
             return Boolean(func(...values));
@@ -218,17 +218,21 @@ export abstract class VConditionalDirective implements VDirective {
      */
     #initializeConditionalContext(): VConditionalDirectiveContext {
         // Create a new context if this is a v-if directive
-        if (this instanceof VIfDirective) {
+        if (this.name === StandardDirectiveName.V_IF) {
             return new VConditionalDirectiveContext();
         }
 
         // Link to the existing conditional context from the preceding v-if or v-else-if directive
-        const conditionalContext = this.vNode.previousSibling?.directiveManager?.directives?.find(
-            d => d instanceof VIfDirective || d instanceof VElseIfDirective
-        )?.conditionalContext;
-        if (!conditionalContext) {
+        const precedingDirective = this.vNode.previousSibling?.directiveManager?.directives?.find(
+            d => d.name === StandardDirectiveName.V_IF || d.name === StandardDirectiveName.V_ELSE_IF
+        );
+
+        if (!precedingDirective) {
             throw new Error("preceding v-if or v-else-if directive not found.");
         }
+
+        // Cast to VConditionalDirective to access conditionalContext
+        const conditionalContext = (precedingDirective as VConditionalDirective).conditionalContext;
         return conditionalContext;
     }
 }

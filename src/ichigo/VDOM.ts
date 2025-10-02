@@ -21,6 +21,9 @@ export class VDOM {
     static {
         // Register standard directive parser
         this.#directiveParserRegistry.register(new VStandardDirectiveParser());
+
+        // Register VDOM in globalThis to avoid circular dependencies
+        (globalThis as any).__ichigojs_VDOM = VDOM;
     }
 
     /**
@@ -60,15 +63,10 @@ export class VDOM {
 
     /**
      * Creates a virtual application instance.
-     * @param selectors The CSS selectors to identify the root element.
      * @param options The options for the virtual application.
      * @returns The created virtual application instance.
      */
-    static createApp(selectors: string, options: any): VApplication {
-        const element = document.querySelector(selectors);
-        if (!element) {
-            throw new Error(`Element not found for selectors: ${selectors}`);
-        }
-		return new VApplication(element as HTMLElement, options);
+    static createApp(options: any): VApplication {
+		return new VApplication(options);
     }
 }

@@ -3,6 +3,7 @@
 import { ExpressionUtils } from "../util/ExpressionUtils";
 import { VNode } from "../VNode";
 import { StandardDirectiveName } from "./StandardDirectiveName";
+import { VBindingsPreparer } from "./VBindingsPreparer";
 import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "./VDOMUpdater";
@@ -94,7 +95,7 @@ export class VBindDirective implements VDirective {
     /**
      * @inheritdoc
      */
-    get bindingsPreparer(): undefined {
+    get bindingsPreparer(): VBindingsPreparer | undefined {
         return undefined;
     }
 
@@ -264,7 +265,7 @@ export class VBindDirective implements VDirective {
         // Return a function that calls the dynamic function with the current values from the virtual node's bindings
         return () => {
             // Gather the current values of the identifiers from the bindings
-            const values = identifiers.map(id => this.#vNode.bindings?.get(id));
+            const values = identifiers.map(id => this.#vNode.bindings?.[id]);
 
             // Call the dynamic function with the gathered values and return the result as a boolean
             return func(...values);

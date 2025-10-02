@@ -363,6 +363,7 @@ export class VNode {
         }
 
         // Apply DOM updaters from directives, if any
+        this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating VNode: <${this.#nodeName}> with changes: ${changes.join(", ")}`);
         if (this.#directiveManager?.domUpdaters) {
             for (const updater of this.#directiveManager.domUpdaters) {
                 const changed = updater.identifiers.some(id => changes.includes(id));
@@ -371,6 +372,22 @@ export class VNode {
                 }
             }
         }
+
+        // Recursively update dependent virtual nodes
+        this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating dependent VNodes: ${this.#dependencies?.length || 0}`);
+        this.#dependencies?.forEach(dependentNode => {
+            // Check if any of the dependent node's identifiers are in the changed identifiers
+            if (dependentNode.identifiers.filter(id => changes.includes(id)).length === 0) {
+                return;
+            }
+
+            // Update the dependent node
+            this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating dependent VNode: <${dependentNode.nodeName}> due to changes in parent: <${this.#nodeName}>`);
+            dependentNode.update({
+                bindings: this.#bindings,
+                changedIdentifiers: changes,
+            } as VUpdateContext);
+        });
     }
 
     /**

@@ -56,7 +56,7 @@ export class VTextEvaluator {
             let result = text;
             evaluators.forEach((evaluator, i) => {
                 // Gather the current values of the identifiers from the bindings
-                const values = evaluator.ids.map(id => bindings.get(id));
+                const values = evaluator.ids.map(id => bindings[id]);
 
                 // Evaluate the expression and replace {{...}} in the text
                 result = result.replace(matches[i][0], String(evaluator.func(...values)));
