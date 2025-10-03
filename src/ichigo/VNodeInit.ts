@@ -2,6 +2,7 @@
 
 import { VApplication } from "./VApplication";
 import { VBindings } from "./VBindings";
+import { VBindingsPreparer } from "./VBindingsPreparer";
 import { VNode } from "./VNode";
 
 /**
@@ -27,4 +28,9 @@ export interface VNodeInit {
 	 * The data bindings associated with this virtual node.
 	 */
 	bindings: VBindings;
+
+	/**
+	 * The preparer for VBindings, if any.
+	 */
+	bindingsPreparer?: VBindingsPreparer;
 }

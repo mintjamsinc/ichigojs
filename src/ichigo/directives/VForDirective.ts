@@ -341,6 +341,10 @@ export class VForDirective implements VDirective {
         const element = this.#vNode.node as HTMLElement;
         const clone = element.cloneNode(true) as HTMLElement;
 
+        // Prepare identifiers for the item
+        const itemName = this.#itemName;
+        const indexName = this.#indexName;
+
         // Create bindings for this iteration
         const bindings: VBindings = { ...this.#vNode.bindings };
         if (this.#itemName) {
@@ -350,12 +354,35 @@ export class VForDirective implements VDirective {
             bindings[this.#indexName] = context.index;
         }
 
+        const itemBindingsPreparer: VBindingsPreparer = {
+            get identifiers(): string[] {
+                return []; // No specific identifiers for item
+            },
+            get preparableIdentifiers(): string[] {
+                // Return item and index names if defined
+                const ids = [];
+                if (itemName) ids.push(itemName);
+                if (indexName) ids.push(indexName);
+                return ids;
+            },
+            prepareBindings(bindings) {
+                // Prepare bindings for the current item
+                if (itemName) {
+                    bindings[itemName] = context.item;
+                }
+                if (indexName) {
+                    bindings[indexName] = context.index;
+                }
+            }
+        };
+
         // Create a new VNode for the cloned element
         const vNode = new VNode({
             node: clone,
             vApplication: this.#vNode.vApplication,
             parentVNode: this.#vNode.parentVNode,
-            bindings
+            bindings,
+            bindingsPreparer: itemBindingsPreparer,
         });
 
         // Set data attributes for debugging

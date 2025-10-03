@@ -8,6 +8,7 @@ import { VDirectiveManager } from "./directives/VDirectiveManager";
 import { VNodeInit } from "./VNodeInit";
 import { VTextEvaluator } from "./VTextEvaluator";
 import { VUpdateContext } from "./VUpdateContext";
+import { VBindingsPreparer } from "./VBindingsPreparer";
 
 export class VNode {
     /**
@@ -46,6 +47,13 @@ export class VNode {
      * The data bindings associated with this virtual node, if any.
      */
     #bindings: VBindings;
+
+    /**
+     * The bindings preparer associated with this virtual node, if any.
+     * This is used to prepare the bindings before applying them to the DOM.
+     * This is optional and may be undefined if there are no preparers.
+     */
+    #bindingsPreparer?: VBindingsPreparer;
 
     /**
      * An evaluator for text nodes that contain expressions in {{...}}.
@@ -96,6 +104,7 @@ export class VNode {
         this.#nodeName = args.node.nodeName;
         this.#parentVNode = args.parentVNode;
         this.#bindings = args.bindings;
+        this.#bindingsPreparer = args.bindingsPreparer;
 
         // If the node is a text node, check for expressions and create a text evaluator
         if (this.#nodeType === Node.TEXT_NODE) {
@@ -299,6 +308,9 @@ export class VNode {
         // Collect preparable identifiers from directive bindings preparers
         const preparableIdentifiers: string[] = [];
 
+        // Include preparable identifiers from this node's bindings preparer, if any
+        preparableIdentifiers.push(...(this.#bindingsPreparer?.preparableIdentifiers ?? []));
+
         // Include preparable identifiers from directive bindings preparers
         this.#directiveManager?.bindingsPreparers?.forEach(preparer => {
             preparableIdentifiers.push(...preparer.preparableIdentifiers);
@@ -340,19 +352,16 @@ export class VNode {
         // Prepare new bindings using directive bindings preparers, if any
         let newBindings: VBindings = { ...bindings };
         const changes: string[] = [];
+        this.#bindingsPreparer?.prepareBindings(newBindings);
         if (this.#directiveManager?.bindingsPreparers) {
             for (const preparer of this.#directiveManager.bindingsPreparers) {
                 const changed = preparer.identifiers.some(id => changedIdentifiers.includes(id));
                 if (changed) {
-                    newBindings = preparer.prepareBindings(newBindings);
+                    preparer.prepareBindings(newBindings);
                 }
             }
-            newBindings = { ...oldBindings, ...newBindings };
-            changes.push(...BindingsUtils.getChangedIdentifiers(oldBindings, newBindings));
-        } else {
-            newBindings = bindings;
-            changes.push(...changedIdentifiers);
         }
+        changes.push(...BindingsUtils.getChangedIdentifiers(oldBindings, newBindings));
 
         // Update the bindings for this node
         this.#bindings = newBindings;

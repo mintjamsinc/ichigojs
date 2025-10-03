@@ -19,11 +19,10 @@ export interface VBindingsPreparer {
     get preparableIdentifiers(): string[];
 
     /**
-     * Prepares the VBindings for the virtual node.
+     * Prepares the given VBindings for use in the virtual DOM.
      * This method is called before the bindings are applied to the DOM.
      * It allows for any necessary transformations or initializations of the bindings.
      * @param bindings The original VBindings to be prepared.
-     * @returns The prepared VBindings.
      */
-    prepareBindings(bindings: VBindings): VBindings;
+    prepareBindings(bindings: VBindings): void;
 }
