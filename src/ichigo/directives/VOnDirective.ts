@@ -87,19 +87,7 @@ export class VOnDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#identifiers ?? [];
-        const render = () => this.#render();
-
-        // Create and return the DOM updater
-        const updater: VDOMUpdater = {
-            get identifiers(): string[] {
-                return identifiers;
-            },
-            applyToDOM(): void {
-                render();
-            }
-        };
-        return updater;
+        return undefined;
     }
 
     /**
@@ -107,22 +95,6 @@ export class VOnDirective implements VDirective {
      */
     destroy(): void {
         // Do nothing. No special cleanup needed.
-    }
-
-    /**
-     * Renders the directive by evaluating its expression and updating the DOM accordingly.
-     * This method is called whenever the directive needs to update its rendering.
-     */
-    #render(): void {
-        const element = this.#vNode.node as HTMLElement;
-
-        // If there's no evaluator, do nothing
-        if (!this.#evaluate) {
-            return;
-        }
-
-        // Evaluate the expression to get the value
-        const value = this.#evaluate();
     }
 
     /**
