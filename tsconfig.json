@@ -5,6 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "Node",
     "outDir": "dist",
+    "sourceMap": true,
     "declaration": true,
     "declarationDir": "dist/types",
     "strict": true,
