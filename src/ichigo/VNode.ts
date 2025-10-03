@@ -401,7 +401,12 @@ export class VNode {
         const closers: VCloser[] = [];
 
         // Check if any of the dependent node's identifiers are in this node's identifiers
-        const hasIdentifier = dependentNode.identifiers.some(id => this.preparableIdentifiers.includes(id));
+        let hasIdentifier = dependentNode.identifiers.some(id => this.preparableIdentifiers.includes(id));
+        if (!hasIdentifier) {
+            if (!this.#parentVNode) {
+                hasIdentifier = dependentNode.identifiers.some(id => this.#vApplication.preparableIdentifiers.includes(id));
+            }
+        }
 
         // If the dependent node has an identifier in this node's identifiers, add it as a dependency
         if (hasIdentifier) {
