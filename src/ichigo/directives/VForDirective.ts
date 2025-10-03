@@ -83,11 +83,12 @@ export class VForDirective implements VDirective {
             this.#evaluateSource = this.#createSourceEvaluator(parsed.sourceName);
         }
 
-        // Check for :key attribute
-        const keyAttr = element.getAttribute(':key');
+        // Check for :key or v-bind:key attribute
+        const keyAttr = element.getAttribute(':key') || element.getAttribute('v-bind:key');
         if (keyAttr) {
             this.#evaluateKey = this.#createKeyEvaluator(keyAttr);
             element.removeAttribute(':key');
+            element.removeAttribute('v-bind:key');
         }
 
         // Remove the directive attribute from the element
