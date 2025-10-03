@@ -8,7 +8,6 @@ import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { VBindingsPreparer } from "../VBindingsPreparer";
-import { BindingsUtils } from "../util/BindingsUtils";
 
 /**
  * Directive for rendering a list of items using a loop.
@@ -82,16 +81,6 @@ export class VForDirective implements VDirective {
             // Extract identifiers from the source expression
             this.#identifiers = ExpressionUtils.extractIdentifiers(parsed.sourceName, context.vNode.vApplication.functionDependencies);
             this.#evaluateSource = this.#createSourceEvaluator(parsed.sourceName);
-        }
-
-        // Check for :key or v-bind:key attribute
-        for (const keyAttr of [':key', 'v-bind:key']) {
-            const keyValue = element.getAttribute(keyAttr);
-            if (keyValue) {
-                this.#evaluateKey = this.#createKeyEvaluator(keyValue);
-                element.removeAttribute(keyAttr);
-                break;
-            }
         }
  
         // Remove the directive attribute from the element
@@ -176,6 +165,12 @@ export class VForDirective implements VDirective {
         // Get iterations from the source data
         let iterations = this.#getIterations(sourceData);
 
+        // If we don't have a key evaluator yet, try to create it
+        const keyExpression = this.#vNode.directiveManager?.keyDirective?.expression;
+        if (!this.#evaluateKey && keyExpression !== undefined) {
+            this.#evaluateKey = this.#createKeyEvaluator(keyExpression);
+        }
+
         // If we have a custom key evaluator, update the keys
         if (this.#evaluateKey && this.#itemName) {
             iterations = iterations.map(iter => {
@@ -208,7 +203,7 @@ export class VForDirective implements VDirective {
      * Key-based diffing for efficient DOM updates
      */
     #updateList(newIterations: Array<{ key: any; item: any; index: number }>): void {
-        const parent = this.#vNode.node.parentNode;
+        const parent = this.#vNode.anchorNode?.parentNode;
         const anchor = this.#vNode.anchorNode;
 
         if (!parent || !anchor) {
@@ -328,13 +323,10 @@ export class VForDirective implements VDirective {
      * Creates a function to evaluate the :key expression for each item.
      */
     #createKeyEvaluator(expression: string): (itemBindings: Map<string, any>) => any {
-        // Remove {{ }} if present
-        const cleanExpr = expression.replace(/^\{\{|\}\}$/g, '').trim();
-
         // Parse to find all identifiers
-        const identifiers = ExpressionUtils.extractIdentifiers(cleanExpr, this.#vNode.vApplication.functionDependencies);
+        const identifiers = ExpressionUtils.extractIdentifiers(expression, this.#vNode.vApplication.functionDependencies);
         const args = identifiers.join(", ");
-        const funcBody = `return (${cleanExpr});`;
+        const funcBody = `return (${expression});`;
 
         const func = new Function(args, funcBody) as (...args: any[]) => any;
 

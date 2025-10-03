@@ -46,6 +46,11 @@ export class VBindDirective implements VDirective {
     #attributeName?: string;
 
     /**
+     * The original expression string from the directive.
+     */
+    #expression?: string;
+
+    /**
      * @param context The context for parsing the directive.
      */
     constructor(context: VDirectiveParseContext) {
@@ -61,10 +66,10 @@ export class VBindDirective implements VDirective {
         }
 
         // Parse the expression to extract identifiers and create the evaluator
-        const expression = context.attribute.value;
-        if (expression) {
-            this.#identifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
-            this.#evaluate = this.#createEvaluator(expression);
+        this.#expression = context.attribute.value;
+        if (this.#expression) {
+            this.#identifiers = ExpressionUtils.extractIdentifiers(this.#expression, context.vNode.vApplication.functionDependencies);
+            this.#evaluate = this.#createEvaluator(this.#expression);
         }
 
         // Remove the directive attribute from the element
@@ -119,6 +124,22 @@ export class VBindDirective implements VDirective {
     }
 
     /**
+     * Indicates if this directive is binding the "key" attribute.
+     * The "key" attribute is special and is used for optimizing rendering of lists.
+     * If this directive is binding the "key" attribute, it will be handled by the VForDirective.
+     */
+    get isKey(): boolean {
+        return (this.#attributeName === 'key');
+    }
+
+    /**
+     * Gets the original expression string from the directive.
+     */
+    get expression(): string | undefined {
+        return this.#expression;
+    }
+
+    /**
      * @inheritdoc
      */
     destroy(): void {
@@ -129,6 +150,11 @@ export class VBindDirective implements VDirective {
      * Renders the bound attribute by evaluating the expression and updating the DOM element.
      */
     #render(): void {
+        // If this directive is binding the "key" attribute, do nothing
+        if (this.isKey) {
+            return;
+        }
+
         const element = this.#vNode.node as HTMLElement;
         const attributeName = this.#attributeName;
 

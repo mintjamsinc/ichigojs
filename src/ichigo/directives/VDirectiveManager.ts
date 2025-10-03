@@ -6,6 +6,7 @@ import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VNode } from "../VNode";
 import { VBindingsPreparer } from "../VBindingsPreparer";
 import { VDOMUpdater } from "../VDOMUpdater";
+import { VBindDirective } from "./VBindDirective";
 
 export class VDirectiveManager {
     /**
@@ -20,6 +21,8 @@ export class VDirectiveManager {
     #bindingsPreparers?: VBindingsPreparer[];
 
     #domUpdaters?: VDOMUpdater[];
+
+    #keyDirective?: VBindDirective;
 
     constructor(vNode: VNode) {
         // Directives can only be associated with element nodes
@@ -37,6 +40,10 @@ export class VDirectiveManager {
             this.#anchorNode = document.createComment("#vnode-anchor");
             const element = this.#vNode.node as HTMLElement;
             element.parentNode?.insertBefore(this.#anchorNode, element);
+
+            // Remove the template element from DOM after anchor is created
+            // This prevents the template from being displayed
+            element.parentNode?.removeChild(element);
         }
 
         // Collect bindings preparers and DOM updaters from directives
@@ -77,6 +84,15 @@ export class VDirectiveManager {
     }
 
     /**
+     * Gets the directive that binds the ":key" or "v-bind:key" attribute, if any.
+     * This directive is special and is used for optimizing rendering of lists.
+     * If no such directive exists, this returns undefined.
+     */
+    get keyDirective(): VBindDirective | undefined {
+        return this.#keyDirective;
+    }
+
+    /**
      * Cleans up any resources used by the directive handler.
      */
     destroy(): void {
@@ -110,6 +126,11 @@ export class VDirectiveManager {
                 // Parse the directive and add it to the list
                 const directive = parser.parse(context);
                 directives.push(directive);
+
+                // If this is a key binding directive, store it separately
+                if (directive.name === StandardDirectiveName.V_BIND && (directive as VBindDirective).isKey) {
+                    this.#keyDirective = directive as VBindDirective;
+                }
             }
         }
 
