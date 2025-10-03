@@ -182,13 +182,14 @@ export class VApplication {
         this.#vNode = new VNode({
             node: element,
             vApplication: this,
-            bindings: {}
+            bindings: this.#bindings
         });
 
         // Initial rendering
         this.#vNode.update({
             bindings: this.#bindings,
-            changedIdentifiers: this.#preparableIdentifiers,
+            changedIdentifiers: [],
+            isInitial: true
         });
 
         this.#logger.info('Application mounted.');

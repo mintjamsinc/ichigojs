@@ -8,6 +8,7 @@ import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { VBindingsPreparer } from "../VBindingsPreparer";
+import { BindingsUtils } from "../util/BindingsUtils";
 
 /**
  * Directive for rendering a list of items using a loop.
@@ -247,6 +248,12 @@ export class VForDirective implements VDirective {
                 } else {
                     parent.appendChild(vNode.node);
                 }
+
+                vNode.update({
+                    bindings: this.#vNode.bindings || {},
+                    changedIdentifiers: [],
+                    isInitial: true
+                });
             } else {
                 // Reuse existing item
                 newRenderedItems.set(key, vNode);

@@ -330,73 +330,108 @@ export class VNode {
      */
     update(context: VUpdateContext): void {
         // Extract context properties
-        const { bindings, changedIdentifiers } = context;
+        const { bindings, changedIdentifiers, isInitial } = context;
 
         // If this is a text node with a text evaluator, update its content if needed
         if (this.#nodeType === Node.TEXT_NODE && this.#textEvaluator) {
-            // Check if any of the identifiers are in the changed identifiers
-            const changed = this.#textEvaluator.identifiers.some(id => changedIdentifiers.includes(id));
+            if (isInitial) {
+                this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating VNode: <${this.#nodeName}> (initial)`);
 
-            // If the text node has changed, update its content
-            if (changed) {
+                // Initial update: always set the text content
                 const text = this.#node as Text;
                 text.data = this.#textEvaluator.evaluate(bindings);
-            }
+            } else {
+                // Subsequent update: only update the text content if relevant identifiers have changed
 
-            return;
-        }
+                // Check if any of the identifiers are in the changed identifiers
+                const changed = this.#textEvaluator.identifiers.some(id => changedIdentifiers.includes(id));
 
-        // Save the old bindings for comparison
-        const oldBindings = this.#bindings;
-
-        // Prepare new bindings using directive bindings preparers, if any
-        let newBindings: VBindings = { ...bindings };
-        const changes: string[] = [];
-        this.#bindingsPreparer?.prepareBindings(newBindings);
-        if (this.#directiveManager?.bindingsPreparers) {
-            for (const preparer of this.#directiveManager.bindingsPreparers) {
-                const changed = preparer.identifiers.some(id => changedIdentifiers.includes(id));
+                // If the text node has changed, update its content
                 if (changed) {
-                    preparer.prepareBindings(newBindings);
+                    this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating VNode: <${this.#nodeName}>`);
+
+                    const text = this.#node as Text;
+                    text.data = this.#textEvaluator.evaluate(bindings);
                 }
             }
-        }
-        changes.push(...BindingsUtils.getChangedIdentifiers(oldBindings, newBindings));
-
-        // Update the bindings for this node
-        this.#bindings = newBindings;
-
-        // If there are no changes in bindings, skip further processing
-        if (changes.length === 0) {
             return;
         }
 
-        // Apply DOM updaters from directives, if any
-        this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating VNode: <${this.#nodeName}> with changes: ${changes.join(", ")}`);
-        if (this.#directiveManager?.domUpdaters) {
-            for (const updater of this.#directiveManager.domUpdaters) {
-                const changed = updater.identifiers.some(id => changes.includes(id));
-                if (changed) {
+        if (isInitial) {
+            this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating VNode: <${this.#nodeName}> (initial)`);
+
+            // Initial update: prepare bindings and apply all directive updaters
+            if (this.#directiveManager?.domUpdaters) {
+                for (const updater of this.#directiveManager.domUpdaters) {
                     updater.applyToDOM();
                 }
             }
-        }
 
-        // Recursively update dependent virtual nodes
-        this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating dependent VNodes: ${this.#dependencies?.length || 0}`);
-        this.#dependencies?.forEach(dependentNode => {
-            // Check if any of the dependent node's identifiers are in the changed identifiers
-            if (dependentNode.identifiers.filter(id => changes.includes(id)).length === 0) {
+            // Recursively update dependent virtual nodes
+            this.#dependencies?.forEach(dependentNode => {
+                // Update the dependent node
+                this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating dependent VNode: <${dependentNode.nodeName}> due to initial update of parent: <${this.#nodeName}>`);
+                dependentNode.update({
+                    bindings: this.#bindings,
+                    changedIdentifiers: [],
+                    isInitial: true
+                });
+            });
+        } else {
+            // Subsequent update: only prepare bindings and apply directive updaters if relevant identifiers have changed
+
+            // Save the old bindings for comparison
+            const oldBindings = this.#bindings;
+
+            // Prepare new bindings using directive bindings preparers, if any
+            let newBindings: VBindings = { ...bindings };
+            const changes: string[] = [];
+            this.#bindingsPreparer?.prepareBindings(newBindings);
+            if (this.#directiveManager?.bindingsPreparers) {
+                for (const preparer of this.#directiveManager.bindingsPreparers) {
+                    const changed = preparer.identifiers.some(id => changedIdentifiers.includes(id));
+                    if (changed) {
+                        preparer.prepareBindings(newBindings);
+                    }
+                }
+            }
+            changes.push(...BindingsUtils.getChangedIdentifiers(oldBindings, newBindings));
+
+            // Update the bindings for this node
+            this.#bindings = newBindings;
+
+            // If there are no changes in bindings, skip further processing
+            if (changes.length === 0) {
                 return;
             }
 
-            // Update the dependent node
-            this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating dependent VNode: <${dependentNode.nodeName}> due to changes in parent: <${this.#nodeName}>`);
-            dependentNode.update({
-                bindings: this.#bindings,
-                changedIdentifiers: changes,
-            } as VUpdateContext);
-        });
+            // Apply DOM updaters from directives, if any
+            if (this.#directiveManager?.domUpdaters) {
+                for (const updater of this.#directiveManager.domUpdaters) {
+                    const changed = updater.identifiers.some(id => changes.includes(id));
+                    if (changed) {
+                        this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating VNode: <${this.#nodeName}>`);
+
+                        updater.applyToDOM();
+                    }
+                }
+            }
+
+            // Recursively update dependent virtual nodes
+            this.#dependencies?.forEach(dependentNode => {
+                // Check if any of the dependent node's identifiers are in the changed identifiers
+                if (dependentNode.identifiers.filter(id => changes.includes(id)).length === 0) {
+                    return;
+                }
+
+                // Update the dependent node
+                this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating dependent VNode: <${dependentNode.nodeName}> due to changes in parent: <${this.#nodeName}>`);
+                dependentNode.update({
+                    bindings: this.#bindings,
+                    changedIdentifiers: changes
+                });
+            });
+        }
     }
 
     /**

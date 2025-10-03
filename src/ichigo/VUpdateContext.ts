@@ -16,4 +16,11 @@ export interface VUpdateContext {
 	 * A list of variable and function names whose values have changed.
 	 */
 	changedIdentifiers: string[];
+
+	/**
+	 * Indicates if this is the initial update.
+	 * This flag is true when the update is being performed for the first time after the VNode's creation.
+	 * It can be used to optimize rendering or initialization logic that should only run once.
+	 */
+	isInitial?: boolean;
 }
