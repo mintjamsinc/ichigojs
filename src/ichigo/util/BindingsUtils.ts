@@ -11,13 +11,13 @@ export class BindingsUtils {
      */
     static getChangedIdentifiers(oldBindings: VBindings, newBindings: VBindings): string[] {
         const changed: string[] = [];
-        for (const key of newBindings.keys()) {
-            if (!oldBindings.has(key) || oldBindings.get(key) !== newBindings.get(key)) {
+        for (const key of Object.keys(newBindings)) {
+            if (!Object.hasOwn(oldBindings, key) || oldBindings[key] !== newBindings[key]) {
                 changed.push(key);
             }
         }
-        for (const key of oldBindings.keys()) {
-            if (!newBindings.has(key)) {
+        for (const key of Object.keys(oldBindings)) {
+            if (!Object.hasOwn(newBindings, key)) {
                 changed.push(key);
             }
         }
