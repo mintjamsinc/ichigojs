@@ -1,8 +1,8 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
 import { VNode } from "../VNode";
-import { VBindingsPreparer } from "./VBindingsPreparer";
-import { VDOMUpdater } from "./VDOMUpdater";
+import { VBindingsPreparer } from "../VBindingsPreparer";
+import { VDOMUpdater } from "../VDOMUpdater";
 
 /**
  * Interface representing a directive in the virtual DOM.

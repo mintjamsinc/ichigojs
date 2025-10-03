@@ -6,8 +6,8 @@ import { VBindings } from "../VBindings";
 import { StandardDirectiveName } from "./StandardDirectiveName";
 import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
-import { VDOMUpdater } from "./VDOMUpdater";
-import { VBindingsPreparer } from "./VBindingsPreparer";
+import { VDOMUpdater } from "../VDOMUpdater";
+import { VBindingsPreparer } from "../VBindingsPreparer";
 
 /**
  * Directive for rendering a list of items using a loop.

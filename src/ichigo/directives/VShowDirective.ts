@@ -3,10 +3,10 @@
 import { ExpressionUtils } from "../util/ExpressionUtils";
 import { VNode } from "../VNode";
 import { StandardDirectiveName } from "./StandardDirectiveName";
-import { VBindingsPreparer } from "./VBindingsPreparer";
+import { VBindingsPreparer } from "../VBindingsPreparer";
 import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
-import { VDOMUpdater } from "./VDOMUpdater";
+import { VDOMUpdater } from "../VDOMUpdater";
 
 /**
  * Directive for conditionally displaying an element.

@@ -1,6 +1,6 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
-import { VBindings } from "../VBindings";
+import { VBindings } from "./VBindings";
 
 /**
  * Interface representing a preparer for VBindings in the virtual DOM.

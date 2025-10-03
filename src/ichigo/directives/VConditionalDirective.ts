@@ -2,11 +2,11 @@
 
 import { ExpressionUtils } from "../util/ExpressionUtils";
 import { VNode } from "../VNode";
-import { VBindingsPreparer } from "./VBindingsPreparer";
+import { VBindingsPreparer } from "../VBindingsPreparer";
 import { VConditionalDirectiveContext } from "./VConditionalDirectiveContext";
 import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
-import { VDOMUpdater } from "./VDOMUpdater";
+import { VDOMUpdater } from "../VDOMUpdater";
 import { StandardDirectiveName } from "./StandardDirectiveName";
 
 export abstract class VConditionalDirective implements VDirective {

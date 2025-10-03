@@ -4,8 +4,8 @@ import { StandardDirectiveName } from "./StandardDirectiveName";
 import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VNode } from "../VNode";
-import { VBindingsPreparer } from "./VBindingsPreparer";
-import { VDOMUpdater } from "./VDOMUpdater";
+import { VBindingsPreparer } from "../VBindingsPreparer";
+import { VDOMUpdater } from "../VDOMUpdater";
 
 export class VDirectiveManager {
     /**
