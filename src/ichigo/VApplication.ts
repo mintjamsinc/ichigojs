@@ -7,20 +7,31 @@ import { VApplicationOptions } from "./VApplicationOptions";
 import { VBindings } from "./VBindings";
 import { VNode } from "./VNode";
 import type { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
+import { VComponentRegistry } from "./components/VComponentRegistry";
 
 /**
  * Represents a virtual application instance.
  */
 export class VApplication {
     /**
-     * The root virtual node.
-     */
-    #vNode?: VNode;
-
-    /**
      * The application options.
      */
     #options: VApplicationOptions;
+
+    /**
+     * The global directive parser registry.
+     */
+    #directiveParserRegistry: VDirectiveParserRegistry;
+
+    /**
+     * The global component registry.
+     */
+    #componentRegistry: VComponentRegistry;
+
+    /**
+     * The root virtual node.
+     */
+    #vNode?: VNode;
 
     /**
      * The data bindings for the virtual application.
@@ -43,17 +54,33 @@ export class VApplication {
     #functionDependencies: Record<string, string[]>;
 
     /**
+     * Gets the list of identifiers that can trigger updates.
+     */
+    #preparableIdentifiers: string[];
+
+    /**
      * Creates an instance of the virtual application.
      * @param options The application options.
+     * @param directiveParserRegistry The global directive parser registry.
+     * @param componentRegistry The global component registry.
      */
-    constructor(options: VApplicationOptions) {
+    constructor(options: VApplicationOptions, directiveParserRegistry: VDirectiveParserRegistry, componentRegistry: VComponentRegistry) {
         this.#options = options;
+        this.#directiveParserRegistry = directiveParserRegistry;
+        this.#componentRegistry = componentRegistry;
+
+        // Initialize log manager and logger
         this.#logManager = new VLogManager(options.logLevel);
         this.#logger = this.#logManager.getLogger('VApplication');
+
+        // Analyze function dependencies
         this.#functionDependencies = ExpressionUtils.analyzeFunctionDependencies(options.methods || {});
 
         // Initialize bindings from data, computed, and methods
         this.#bindings = this.#initializeBindings();
+
+        // Prepare the list of identifiers that can trigger updates
+        this.#preparableIdentifiers = [...Object.keys(this.#bindings)];
     }
 
     /**
@@ -93,6 +120,20 @@ export class VApplication {
     }
 
     /**
+     * Gets the global directive parser registry.
+     */
+    get directiveParserRegistry(): VDirectiveParserRegistry {
+        return this.#directiveParserRegistry;
+    }
+
+    /**
+     * Gets the global component registry.
+     */
+    get componentRegistry(): VComponentRegistry {
+        return this.#componentRegistry;
+    }
+
+    /**
      * Gets the root virtual node.
      */
     get rootVNode(): VNode | undefined {
@@ -121,13 +162,10 @@ export class VApplication {
     }
 
     /**
-     * Gets the global directive parser registry.
-     * Note: This uses a getter function to access VDOM.directiveParserRegistry
-     * to avoid circular dependency issues during module initialization.
+     * Gets the list of identifiers that can trigger updates.
      */
-    get directiveParserRegistry(): VDirectiveParserRegistry {
-        // Access VDOM at runtime instead of import time to break circular dependency
-        return (globalThis as any).__ichigojs_VDOM?.directiveParserRegistry;
+    get preparableIdentifiers(): string[] {
+        return this.#preparableIdentifiers;
     }
 
     /**
@@ -144,13 +182,13 @@ export class VApplication {
         this.#vNode = new VNode({
             node: element,
             vApplication: this,
-            bindings: this.#bindings
+            bindings: {}
         });
 
         // Initial rendering
         this.#vNode.update({
             bindings: this.#bindings,
-            changedIdentifiers: Object.keys(this.#bindings),
+            changedIdentifiers: this.#preparableIdentifiers,
         });
 
         this.#logger.info('Application mounted.');

@@ -21,9 +21,6 @@ export class VDOM {
     static {
         // Register standard directive parser
         this.#directiveParserRegistry.register(new VStandardDirectiveParser());
-
-        // Register VDOM in globalThis to avoid circular dependencies
-        (globalThis as any).__ichigojs_VDOM = VDOM;
     }
 
     /**
@@ -67,6 +64,6 @@ export class VDOM {
      * @returns The created virtual application instance.
      */
     static createApp(options: any): VApplication {
-		return new VApplication(options);
+		return new VApplication(options, this.#directiveParserRegistry, this.#componentRegistry);
     }
 }
