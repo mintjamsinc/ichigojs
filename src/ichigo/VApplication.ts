@@ -8,6 +8,7 @@ import { VBindings } from "./VBindings";
 import { VNode } from "./VNode";
 import type { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
 import { VComponentRegistry } from "./components/VComponentRegistry";
+import { BindingsUtils } from "./util/BindingsUtils";
 
 /**
  * Represents a virtual application instance.
@@ -39,6 +40,11 @@ export class VApplication {
     #bindings: VBindings;
 
     /**
+     * The previous state of bindings for change detection.
+     */
+    #oldBindings: VBindings = {};
+
+    /**
      * The log manager.
      */
     #logManager: VLogManager;
@@ -57,6 +63,11 @@ export class VApplication {
      * Gets the list of identifiers that can trigger updates.
      */
     #preparableIdentifiers: string[];
+
+    /**
+     * Flag to indicate if an update is already scheduled.
+     */
+    #updateScheduled: boolean = false;
 
     /**
      * Creates an instance of the virtual application.
@@ -193,5 +204,73 @@ export class VApplication {
         });
 
         this.#logger.info('Application mounted.');
+    }
+
+    /**
+     * Schedules a DOM update in the next microtask.
+     * Multiple calls within the same event loop will be batched into a single update.
+     */
+    scheduleUpdate(): void {
+        if (this.#updateScheduled) {
+            return;
+        }
+
+        this.#updateScheduled = true;
+        queueMicrotask(() => {
+            this.#updateScheduled = false;
+            this.update();
+        });
+    }
+
+    /**
+     * Executes an immediate DOM update.
+     */
+    update(): void {
+        if (!this.#vNode) {
+            return;
+        }
+
+        // Re-evaluate computed properties
+        if (this.#options.computed) {
+            for (const [key, computedFn] of Object.entries(this.#options.computed)) {
+                try {
+                    this.#bindings[key] = computedFn();
+                } catch (error) {
+                    this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
+                }
+            }
+        }
+
+        // Detect changes
+        const changes = BindingsUtils.getChangedIdentifiers(this.#oldBindings, this.#bindings);
+        if (changes.length === 0) {
+            return; // No changes detected
+        }
+
+        this.#logger.debug(`Changed identifiers: ${changes.join(', ')}`);
+
+        // Update the DOM
+        this.#vNode.update({
+            bindings: this.#bindings,
+            changedIdentifiers: changes,
+            isInitial: false
+        });
+
+        // Store old bindings for change detection
+        this.#oldBindings = JSON.parse(JSON.stringify(this.#bindings));
+    }
+
+    /**
+     * Executes a callback after the next DOM update.
+     * @param callback The callback to execute.
+     */
+    nextTick(callback: () => void): void {
+        if (this.#updateScheduled) {
+            queueMicrotask(() => {
+                queueMicrotask(callback);
+            });
+        } else {
+            queueMicrotask(callback);
+        }
     }
 }

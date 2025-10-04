@@ -166,6 +166,9 @@ export class VOnDirective implements VDirective {
             // Call the pre-generated handler wrapper
             this.#handlerWrapper!(event);
 
+            // Schedule a DOM update after the handler has executed
+            this.#vNode.vApplication.scheduleUpdate();
+
             // If 'once' modifier is used, remove the listener after first execution
             if (isOnce && this.#listener) {
                 element.removeEventListener(eventName, this.#listener, useCapture);
