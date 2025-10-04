@@ -39,16 +39,50 @@ export class VOnDirective implements VDirective {
     #evaluate?: () => any;
 
     /**
+     * The event name (e.g., "click", "input", "keydown").
+     */
+    #eventName?: string;
+
+    /**
+     * The event modifiers (e.g., "stop", "prevent", "capture", "self", "once").
+     */
+    #modifiers: Set<string> = new Set();
+
+    /**
+     * The event listener function.
+     */
+    #listener?: (event: Event) => void;
+
+    /**
      * @param context The context for parsing the directive.
      */
     constructor(context: VDirectiveParseContext) {
         this.#vNode = context.vNode;
+
+        // Extract the event name and modifiers from the directive
+        // e.g., "v-on:click.stop.prevent" -> eventName="click", modifiers=["stop", "prevent"]
+        // e.g., "@click" -> eventName="click", modifiers=[]
+        const attrName = context.attribute.name;
+        if (attrName.startsWith('v-on:')) {
+            const parts = attrName.substring(5).split('.');
+            this.#eventName = parts[0];
+            parts.slice(1).forEach(mod => this.#modifiers.add(mod));
+        } else if (attrName.startsWith('@')) {
+            const parts = attrName.substring(1).split('.');
+            this.#eventName = parts[0];
+            parts.slice(1).forEach(mod => this.#modifiers.add(mod));
+        }
 
         // Parse the expression to extract identifiers and create the evaluator
         const expression = context.attribute.value;
         if (expression) {
             this.#identifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
             this.#evaluate = this.#createEvaluator(expression);
+        }
+
+        // Create and attach the event listener
+        if (this.#eventName) {
+            this.#attachEventListener();
         }
 
         // Remove the directive attribute from the element
@@ -94,13 +128,62 @@ export class VOnDirective implements VDirective {
      * @inheritdoc
      */
     destroy(): void {
-        // Do nothing. No special cleanup needed.
+        // Remove the event listener when the directive is destroyed
+        if (this.#eventName && this.#listener) {
+            const element = this.#vNode.node as HTMLElement;
+            const useCapture = this.#modifiers.has('capture');
+            element.removeEventListener(this.#eventName, this.#listener, useCapture);
+        }
     }
 
     /**
-     * Creates a function to evaluate the directive's condition.
+     * Attaches the event listener to the DOM element.
+     */
+    #attachEventListener(): void {
+        if (!this.#eventName || !this.#evaluate) {
+            return;
+        }
+
+        const element = this.#vNode.node as HTMLElement;
+        const eventName = this.#eventName;
+        const useCapture = this.#modifiers.has('capture');
+        const isOnce = this.#modifiers.has('once');
+
+        // Create the event listener function
+        this.#listener = (event: Event) => {
+            // Apply event modifiers
+            if (this.#modifiers.has('stop')) {
+                event.stopPropagation();
+            }
+            if (this.#modifiers.has('prevent')) {
+                event.preventDefault();
+            }
+            if (this.#modifiers.has('self') && event.target !== element) {
+                return;
+            }
+
+            // Evaluate the expression (this will call the handler function)
+            const handler = this.#evaluate!();
+
+            // If the handler is a function, call it with the event
+            if (typeof handler === 'function') {
+                handler(event);
+            }
+
+            // If 'once' modifier is used, remove the listener after first execution
+            if (isOnce && this.#listener) {
+                element.removeEventListener(eventName, this.#listener, useCapture);
+            }
+        };
+
+        // Attach the event listener
+        element.addEventListener(eventName, this.#listener, useCapture);
+    }
+
+    /**
+     * Creates a function to evaluate the directive's expression.
      * @param expression The expression string to evaluate.
-     * @returns A function that evaluates the directive's condition.
+     * @returns A function that evaluates the directive's expression.
      */
     #createEvaluator(expression: string): () => any {
         const identifiers = this.#identifiers ?? [];
