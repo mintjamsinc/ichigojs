@@ -16,15 +16,14 @@ export class ExpressionUtils {
 
         walk.simple(ast, {
             Identifier(node: any) {
+                identifiers.add(node.name);
+
                 // Check if the identifier is a function name
                 if (functionDependencies[node.name]) {
                     // If it is, add its dependencies to the list of identifiers
                     for (const dependency of functionDependencies[node.name]) {
                         identifiers.add(dependency);
                     }
-                } else {
-                    // Otherwise, add the identifier itself
-                    identifiers.add(node.name);
                 }
             }
         });
