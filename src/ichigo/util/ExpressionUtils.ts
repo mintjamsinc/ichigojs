@@ -65,11 +65,65 @@ export class ExpressionUtils {
 
                 const ast = acorn.parse(source, { ecmaVersion: "latest" });
                 const dependencies = new Set<string>();
+                const declaredVariables = new Set<string>();
 
+                // First, collect all declared variables (const, let, var, function params, etc.)
+                walk.ancestor(ast, {
+                    VariableDeclarator(node: any) {
+                        if (node.id.type === 'Identifier') {
+                            declaredVariables.add(node.id.name);
+                        }
+                    },
+                    FunctionDeclaration(node: any) {
+                        if (node.id && node.id.type === 'Identifier') {
+                            declaredVariables.add(node.id.name);
+                        }
+                        // Add function parameters
+                        node.params.forEach((param: any) => {
+                            if (param.type === 'Identifier') {
+                                declaredVariables.add(param.name);
+                            }
+                        });
+                    },
+                    FunctionExpression(node: any, ancestors: any[]) {
+                        // Only process the outermost function (skip nested functions)
+                        const functionAncestors = ancestors.filter((n: any) =>
+                            n.type === 'FunctionExpression' ||
+                            n.type === 'FunctionDeclaration' ||
+                            n.type === 'ArrowFunctionExpression'
+                        );
+                        if (functionAncestors.length === 1) {
+                            // Add function parameters of the main function
+                            node.params.forEach((param: any) => {
+                                if (param.type === 'Identifier') {
+                                    declaredVariables.add(param.name);
+                                }
+                            });
+                        }
+                    },
+                    ArrowFunctionExpression(node: any, ancestors: any[]) {
+                        // Only process the outermost function (skip nested functions)
+                        const functionAncestors = ancestors.filter((n: any) =>
+                            n.type === 'FunctionExpression' ||
+                            n.type === 'FunctionDeclaration' ||
+                            n.type === 'ArrowFunctionExpression'
+                        );
+                        if (functionAncestors.length === 1) {
+                            // Add function parameters of the main function
+                            node.params.forEach((param: any) => {
+                                if (param.type === 'Identifier') {
+                                    declaredVariables.add(param.name);
+                                }
+                            });
+                        }
+                    }
+                });
+
+                // Then, collect identifiers that are not declared within the function
                 walk.simple(ast, {
                     Identifier(node: any) {
-                        // Skip the function name itself and function parameters
-                        if (node.name !== funcName) {
+                        // Skip the function name itself, declared variables, and common globals
+                        if (node.name !== funcName && !declaredVariables.has(node.name)) {
                             dependencies.add(node.name);
                         }
                     }
