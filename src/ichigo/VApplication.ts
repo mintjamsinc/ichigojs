@@ -189,6 +189,9 @@ export class VApplication {
             throw new Error(`Element not found for selectors: ${selectors}`);
         }
 
+        // Inject utility methods into bindings
+        this.#bindings.$nextTick = (callback: () => void) => this.nextTick(callback);
+
         // Create the root virtual node
         this.#vNode = new VNode({
             node: element,
