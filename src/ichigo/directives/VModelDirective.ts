@@ -47,10 +47,23 @@ export class VModelDirective implements VDirective {
     #listener?: (event: Event) => void;
 
     /**
+     * The modifiers for this v-model directive (e.g., "lazy", "number", "trim")
+     */
+    #modifiers: Set<string> = new Set();
+
+    /**
      * @param context The context for parsing the directive.
      */
     constructor(context: VDirectiveParseContext) {
         this.#vNode = context.vNode;
+
+        // Extract modifiers from the directive name
+        // e.g., "v-model.lazy.trim" -> modifiers = ["lazy", "trim"]
+        const attrName = context.attribute.name;
+        if (attrName.startsWith('v-model.')) {
+            const parts = attrName.split('.');
+            parts.slice(1).forEach(mod => this.#modifiers.add(mod));
+        }
 
         // Parse the expression to extract identifiers and create the evaluator
         const expression = context.attribute.value;
@@ -181,6 +194,9 @@ export class VModelDirective implements VDirective {
                 newValue = target.value;
             }
 
+            // Apply modifiers to the value
+            newValue = this.#applyModifiers(newValue);
+
             // Update the binding
             this.#updateBinding(newValue);
 
@@ -192,10 +208,45 @@ export class VModelDirective implements VDirective {
     }
 
     /**
+     * Applies modifiers to the input value.
+     * @param value The value to process.
+     * @returns The processed value.
+     */
+    #applyModifiers(value: any): any {
+        // Skip modifier processing for checkbox (boolean values)
+        if (typeof value === 'boolean') {
+            return value;
+        }
+
+        let result = value;
+
+        // .trim modifier: remove whitespace from both ends
+        if (this.#modifiers.has('trim') && typeof result === 'string') {
+            result = result.trim();
+        }
+
+        // .number modifier: convert to number
+        if (this.#modifiers.has('number')) {
+            const parsed = Number(result);
+            // Only convert if it's a valid number
+            if (!isNaN(parsed)) {
+                result = parsed;
+            }
+        }
+
+        return result;
+    }
+
+    /**
      * Gets the appropriate event name for the element type.
      */
     #getEventName(): string {
         const element = this.#vNode.node as HTMLElement;
+
+        // .lazy modifier: use 'change' event instead of 'input'
+        if (this.#modifiers.has('lazy')) {
+            return 'change';
+        }
 
         if (element instanceof HTMLInputElement) {
             if (element.type === 'checkbox' || element.type === 'radio') {
