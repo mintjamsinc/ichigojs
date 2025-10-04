@@ -24,7 +24,7 @@ export class VModelDirective implements VDirective {
      * The virtual node to which this directive is applied.
      */
     #vNode: VNode;
-    
+
     /**
      * A list of variable and function names used in the directive's expression.
      */
@@ -37,6 +37,16 @@ export class VModelDirective implements VDirective {
     #evaluate?: () => any;
 
     /**
+     * The expression string (e.g., "message" or "user.name")
+     */
+    #expression?: string;
+
+    /**
+     * The event listener function for handling input changes.
+     */
+    #listener?: (event: Event) => void;
+
+    /**
      * @param context The context for parsing the directive.
      */
     constructor(context: VDirectiveParseContext) {
@@ -45,8 +55,12 @@ export class VModelDirective implements VDirective {
         // Parse the expression to extract identifiers and create the evaluator
         const expression = context.attribute.value;
         if (expression) {
+            this.#expression = expression;
             this.#identifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
             this.#evaluate = this.#createEvaluator(expression);
+
+            // Attach event listener for two-way binding
+            this.#attachEventListener();
         }
 
         // Remove the directive attribute from the element
@@ -104,7 +118,12 @@ export class VModelDirective implements VDirective {
      * @inheritdoc
      */
     destroy(): void {
-        // Do nothing. No special cleanup needed.
+        // Remove event listener when directive is destroyed
+        if (this.#listener) {
+            const element = this.#vNode.node as HTMLElement;
+            const eventName = this.#getEventName();
+            element.removeEventListener(eventName, this.#listener);
+        }
     }
 
     /**
@@ -121,6 +140,99 @@ export class VModelDirective implements VDirective {
 
         // Evaluate the expression to get the value
         const value = this.#evaluate();
+
+        // Update the element based on its type
+        if (element instanceof HTMLInputElement) {
+            if (element.type === 'checkbox') {
+                element.checked = !!value;
+            } else if (element.type === 'radio') {
+                element.checked = element.value === String(value);
+            } else {
+                element.value = value ?? '';
+            }
+        } else if (element instanceof HTMLTextAreaElement) {
+            element.value = value ?? '';
+        } else if (element instanceof HTMLSelectElement) {
+            element.value = value ?? '';
+        }
+    }
+
+    /**
+     * Attaches the event listener for two-way binding.
+     */
+    #attachEventListener(): void {
+        const element = this.#vNode.node as HTMLElement;
+        const eventName = this.#getEventName();
+
+        this.#listener = (event: Event) => {
+            const target = event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+            let newValue: any;
+
+            // Get the new value based on element type
+            if (target instanceof HTMLInputElement) {
+                if (target.type === 'checkbox') {
+                    newValue = target.checked;
+                } else if (target.type === 'radio') {
+                    newValue = target.value;
+                } else {
+                    newValue = target.value;
+                }
+            } else if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+                newValue = target.value;
+            }
+
+            // Update the binding
+            this.#updateBinding(newValue);
+
+            // Schedule a DOM update
+            this.#vNode.vApplication.scheduleUpdate();
+        };
+
+        element.addEventListener(eventName, this.#listener);
+    }
+
+    /**
+     * Gets the appropriate event name for the element type.
+     */
+    #getEventName(): string {
+        const element = this.#vNode.node as HTMLElement;
+
+        if (element instanceof HTMLInputElement) {
+            if (element.type === 'checkbox' || element.type === 'radio') {
+                return 'change';
+            }
+            return 'input';
+        } else if (element instanceof HTMLSelectElement) {
+            return 'change';
+        }
+
+        return 'input';
+    }
+
+    /**
+     * Updates the binding value based on the expression.
+     * @param newValue The new value to set.
+     */
+    #updateBinding(newValue: any): void {
+        if (!this.#expression) {
+            return;
+        }
+
+        const bindings = this.#vNode.vApplication.bindings;
+        if (!bindings) {
+            return;
+        }
+
+        // Simple property assignment (e.g., "message")
+        // For now, only support simple identifiers
+        const trimmed = this.#expression.trim();
+        if (trimmed && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(trimmed)) {
+            bindings[trimmed] = newValue;
+        } else {
+            // For complex expressions like "user.name", we'd need more sophisticated parsing
+            this.#vNode.vApplication.logManager.getLogger('VModelDirective')
+                .warn(`v-model only supports simple identifiers for now: ${this.#expression}`);
+        }
     }
 
     /**
