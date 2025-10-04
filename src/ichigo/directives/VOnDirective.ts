@@ -27,16 +27,16 @@ export class VOnDirective implements VDirective {
      */
     #vNode: VNode;
 
+
     /**
      * A list of variable and function names used in the directive's expression.
      */
     #identifiers?: string[];
 
     /**
-     * A function that evaluates the directive's expression.
-     * It returns the evaluated value of the expression.
+     * The event handler wrapper function, generated once and reused.
      */
-    #evaluate?: () => any;
+    #handlerWrapper?: (event: Event) => any;
 
     /**
      * The event name (e.g., "click", "input", "keydown").
@@ -73,11 +73,12 @@ export class VOnDirective implements VDirective {
             parts.slice(1).forEach(mod => this.#modifiers.add(mod));
         }
 
-        // Parse the expression to extract identifiers and create the evaluator
+
+        // Parse the expression to extract identifiers and create the handler wrapper
         const expression = context.attribute.value;
         if (expression) {
             this.#identifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
-            this.#evaluate = this.#createEvaluator(expression);
+            this.#handlerWrapper = this.#createHandlerWrapper(expression);
         }
 
         // Create and attach the event listener
@@ -140,7 +141,7 @@ export class VOnDirective implements VDirective {
      * Attaches the event listener to the DOM element.
      */
     #attachEventListener(): void {
-        if (!this.#eventName || !this.#evaluate) {
+        if (!this.#eventName || !this.#handlerWrapper) {
             return;
         }
 
@@ -162,13 +163,8 @@ export class VOnDirective implements VDirective {
                 return;
             }
 
-            // Evaluate the expression (this will call the handler function)
-            const handler = this.#evaluate!();
-
-            // If the handler is a function, call it with the event
-            if (typeof handler === 'function') {
-                handler(event);
-            }
+            // Call the pre-generated handler wrapper
+            this.#handlerWrapper!(event);
 
             // If 'once' modifier is used, remove the listener after first execution
             if (isOnce && this.#listener) {
@@ -181,17 +177,18 @@ export class VOnDirective implements VDirective {
     }
 
     /**
-     * Creates a function to evaluate the directive's expression.
+     * Creates a wrapper function for the event handler, generated once and reused.
      * @param expression The expression string to evaluate.
-     * @returns A function that evaluates the directive's expression.
+     * @returns A function that handles the event.
      */
-    #createEvaluator(expression: string): () => any {
+    #createHandlerWrapper(expression: string): (event: Event) => any {
         const identifiers = this.#identifiers ?? [];
+        const vNode = this.#vNode;
 
-        // Return a function that evaluates the expression with proper scope
-        return () => {
+        // Return a function that handles the event with proper scope
+        return (event: Event) => {
             // Gather the current values of the identifiers from the bindings
-            const bindings = this.#vNode.bindings ?? {};
+            const bindings = vNode.bindings ?? {};
 
             // If the expression is just a method name, we need to wrap it
             // so that when it's called, the method has access to all its dependencies
@@ -199,66 +196,63 @@ export class VOnDirective implements VDirective {
             if (identifiers.includes(trimmedExpr) && typeof bindings[trimmedExpr] === 'function') {
                 const methodName = trimmedExpr;
                 const originalMethod = bindings[methodName];
-                const dependencies = this.#vNode.vApplication.functionDependencies[methodName] || [];
+                const dependencies = vNode.vApplication.functionDependencies[methodName] || [];
 
-                // Return a wrapper function that will be called with the event
-                return (event: Event) => {
-                    // Get the method source code
-                    let methodSource = originalMethod.toString();
+                // Get the method source code
+                let methodSource = originalMethod.toString();
 
-                    // Extract the function body from the method
-                    // Handle different function formats:
-                    // - "methodName() { ... }" (method shorthand)
-                    // - "function() { ... }" (function expression)
-                    // - "() => { ... }" or "() => expr" (arrow function)
-                    const arrowMatch = methodSource.match(/^\s*(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>\s*(.+)$/s);
-                    const functionMatch = methodSource.match(/^(?:async\s+)?function\s*[^(]*\([^)]*\)\s*\{([\s\S]*)\}$/);
-                    const methodMatch = methodSource.match(/^(?:async\s+)?[a-zA-Z_$][\w$]*\s*\([^)]*\)\s*\{([\s\S]*)\}$/);
+                // Extract the function body from the method
+                // Handle different function formats:
+                // - "methodName() { ... }" (method shorthand)
+                // - "function() { ... }" (function expression)
+                // - "() => { ... }" or "() => expr" (arrow function)
+                const arrowMatch = methodSource.match(/^\s*(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>\s*(.+)$/s);
+                const functionMatch = methodSource.match(/^(?:async\s+)?function\s*[^(]*\([^)]*\)\s*\{([\s\S]*)\}$/);
+                const methodMatch = methodSource.match(/^(?:async\s+)?[a-zA-Z_$][\w$]*\s*\([^)]*\)\s*\{([\s\S]*)\}$/);
 
-                    let functionBody: string;
-                    if (arrowMatch) {
-                        // Arrow function - check if it has a block or is an expression
-                        const body = arrowMatch[1].trim();
-                        if (body.startsWith('{')) {
-                            functionBody = body.slice(1, -1); // Remove { }
-                        } else {
-                            functionBody = `return ${body};`;
-                        }
-                    } else if (functionMatch) {
-                        functionBody = functionMatch[1];
-                    } else if (methodMatch) {
-                        functionBody = methodMatch[1];
+                let functionBody: string;
+                if (arrowMatch) {
+                    // Arrow function - check if it has a block or is an expression
+                    const body = arrowMatch[1].trim();
+                    if (body.startsWith('{')) {
+                        functionBody = body.slice(1, -1); // Remove { }
                     } else {
-                        // Fallback: couldn't parse, just call the original method
-                        return originalMethod.call(bindings, event);
+                        functionBody = `return ${body};`;
                     }
+                } else if (functionMatch) {
+                    functionBody = functionMatch[1];
+                } else if (methodMatch) {
+                    functionBody = methodMatch[1];
+                } else {
+                    // Fallback: couldn't parse, just call the original method
+                    return originalMethod.call(bindings, event);
+                }
 
-                    // Create a new function with all dependencies as parameters
-                    const allIdentifiers = [...new Set([...dependencies, 'event'])];
-                    const wrapper = new Function(...allIdentifiers, functionBody);
+                // Create a new function with all dependencies as parameters
+                const allIdentifiers = [...new Set([...dependencies, 'event'])];
+                const wrapper = new Function(...allIdentifiers, functionBody);
 
-                    // Get dependency values from bindings or global scope
-                    const depValues = allIdentifiers.map((id: string) => {
-                        if (id === 'event') {
-                            return event;
-                        }
-                        // Try to get from bindings first, then from global scope
-                        if (id in bindings) {
-                            return bindings[id];
-                        }
-                        // Check if it's a global variable (performance, Math, console, etc.)
-                        if (typeof window !== 'undefined' && id in window) {
-                            return (window as any)[id];
-                        }
-                        if (typeof globalThis !== 'undefined' && id in globalThis) {
-                            return (globalThis as any)[id];
-                        }
-                        return undefined;
-                    });
+                // Get dependency values from bindings or global scope
+                const depValues = allIdentifiers.map((id: string) => {
+                    if (id === 'event') {
+                        return event;
+                    }
+                    // Try to get from bindings first, then from global scope
+                    if (id in bindings) {
+                        return bindings[id];
+                    }
+                    // Check if it's a global variable (performance, Math, console, etc.)
+                    if (typeof window !== 'undefined' && id in window) {
+                        return (window as any)[id];
+                    }
+                    if (typeof globalThis !== 'undefined' && id in globalThis) {
+                        return (globalThis as any)[id];
+                    }
+                    return undefined;
+                });
 
-                    // Execute the wrapper with all dependencies in scope
-                    return wrapper(...depValues);
-                };
+                // Execute the wrapper with all dependencies in scope
+                return wrapper(...depValues);
             }
 
             // For inline expressions, evaluate normally
