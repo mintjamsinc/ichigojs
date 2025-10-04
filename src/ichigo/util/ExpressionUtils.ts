@@ -126,6 +126,12 @@ export class ExpressionUtils {
                         if (node.name !== funcName && !declaredVariables.has(node.name)) {
                             dependencies.add(node.name);
                         }
+                    },
+                    MemberExpression(node: any) {
+                        // Handle 'this.propertyName' patterns
+                        if (node.object.type === 'ThisExpression' && node.property.type === 'Identifier') {
+                            dependencies.add(node.property.name);
+                        }
                     }
                 });
 

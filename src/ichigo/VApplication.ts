@@ -60,6 +60,11 @@ export class VApplication {
     #functionDependencies: Record<string, string[]>;
 
     /**
+     * A dictionary mapping computed property names to their dependencies.
+     */
+    #computedDependencies: Record<string, string[]>;
+
+    /**
      * Gets the list of identifiers that can trigger updates.
      */
     #preparableIdentifiers: string[];
@@ -87,6 +92,9 @@ export class VApplication {
         // Analyze function dependencies
         this.#functionDependencies = ExpressionUtils.analyzeFunctionDependencies(options.methods || {});
 
+        // Analyze computed dependencies
+        this.#computedDependencies = ExpressionUtils.analyzeFunctionDependencies(options.computed || {});
+
         // Initialize bindings from data, computed, and methods
         this.#bindings = this.#initializeBindings();
 
@@ -113,8 +121,8 @@ export class VApplication {
         if (this.#options.computed) {
             for (const [key, computedFn] of Object.entries(this.#options.computed)) {
                 try {
-                    // Evaluate computed property and add to bindings
-                    bindings[key] = computedFn();
+                    // Evaluate computed property with bindings as 'this' context
+                    bindings[key] = computedFn.call(bindings);
                 } catch (error) {
                     this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
                     bindings[key] = undefined;
@@ -233,27 +241,47 @@ export class VApplication {
             return;
         }
 
-        // Re-evaluate computed properties
+        // 暫定処理: Detect changes in data properties
+        const dataChanges = BindingsUtils.getChangedIdentifiers(this.#oldBindings, this.#bindings);
+
+        // Re-evaluate computed properties that depend on changed data
+        const computedChanges: string[] = [];
         if (this.#options.computed) {
             for (const [key, computedFn] of Object.entries(this.#options.computed)) {
-                try {
-                    this.#bindings[key] = computedFn();
-                } catch (error) {
-                    this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
+                const dependencies = this.#computedDependencies[key] || [];
+
+                // Check if any dependency changed
+                const shouldUpdate = dataChanges.length === 0 || dependencies.some(dep => dataChanges.includes(dep));
+
+                if (shouldUpdate) {
+                    try {
+                        const oldValue = this.#bindings[key];
+                        const newValue = computedFn.call(this.#bindings);
+                        this.#bindings[key] = newValue;
+
+                        // Track if the computed value actually changed
+                        if (oldValue !== newValue) {
+                            computedChanges.push(key);
+                            this.#logger.debug(`Computed property '${key}' changed: ${oldValue} -> ${newValue}`);
+                        }
+                    } catch (error) {
+                        this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
+                    }
                 }
             }
         }
 
-        // 暫定処理: Detect changes
-        const changes = BindingsUtils.getChangedIdentifiers(this.#oldBindings, this.#bindings);
-        if (changes.length === 0) {
+        // Combine all changes
+        const allChanges = [...dataChanges, ...computedChanges];
+
+        if (allChanges.length === 0) {
             return; // No changes detected
         }
 
         // Update the DOM
         this.#vNode.update({
             bindings: this.#bindings,
-            changedIdentifiers: changes, // 暫定処理
+            changedIdentifiers: allChanges, // 暫定処理
             isInitial: false
         });
 
