@@ -1,0 +1,54 @@
+# Source files
+src/
+*.ts
+!*.d.ts
+
+# Development files
+examples/
+docs/
+scripts/
+tools/
+sample.html
+test-*.html
+*.md
+!README.md
+
+# Configuration files
+tsconfig.json
+rollup.config.js
+.editorconfig
+.prettierrc
+.eslintrc*
+
+# Git files
+.git/
+.gitignore
+.gitattributes
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Dependencies
+node_modules/
+
+# Build artifacts
+.DS_Store
+Thumbs.db
+
+# CI/CD
+.github/
+.travis.yml
+.circleci/
+
+# Other
+CLAUDE.md
+AGENT.md
