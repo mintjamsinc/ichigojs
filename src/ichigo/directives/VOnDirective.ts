@@ -166,8 +166,8 @@ export class VOnDirective implements VDirective {
             // Call the pre-generated handler wrapper
             this.#handlerWrapper!(event);
 
-            // Schedule a DOM update after the handler has executed
-            this.#vNode.vApplication.scheduleUpdate();
+            // Note: DOM update is automatically scheduled by ReactiveProxy when bindings change
+            // No need to manually call scheduleUpdate() here
 
             // If 'once' modifier is used, remove the listener after first execution
             if (isOnce && this.#listener) {

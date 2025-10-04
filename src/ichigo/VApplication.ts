@@ -8,7 +8,7 @@ import { VBindings } from "./VBindings";
 import { VNode } from "./VNode";
 import type { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
 import { VComponentRegistry } from "./components/VComponentRegistry";
-import { BindingsUtils } from "./util/BindingsUtils";
+import { ReactiveProxy } from "./util/ReactiveProxy";
 
 /**
  * Represents a virtual application instance.
@@ -38,11 +38,6 @@ export class VApplication {
      * The data bindings for the virtual application.
      */
     #bindings: VBindings;
-
-    /**
-     * 暫定処理: The previous state of bindings for change detection.
-     */
-    #oldBindings: VBindings = {};
 
     /**
      * The log manager.
@@ -135,7 +130,9 @@ export class VApplication {
             Object.assign(bindings, this.#options.methods);
         }
 
-        return bindings;
+        // 4. Wrap the entire bindings object with reactive proxy
+        // This ensures all property changes (including primitives) trigger updates
+        return ReactiveProxy.create(bindings, () => this.scheduleUpdate());
     }
 
     /**
@@ -241,52 +238,32 @@ export class VApplication {
             return;
         }
 
-        // 暫定処理: Detect changes in data properties
-        const dataChanges = BindingsUtils.getChangedIdentifiers(this.#oldBindings, this.#bindings);
-
-        // Re-evaluate computed properties that depend on changed data
+        // Re-evaluate all computed properties
         const computedChanges: string[] = [];
         if (this.#options.computed) {
             for (const [key, computedFn] of Object.entries(this.#options.computed)) {
-                const dependencies = this.#computedDependencies[key] || [];
+                try {
+                    const oldValue = this.#bindings[key];
+                    const newValue = computedFn.call(this.#bindings);
+                    this.#bindings[key] = newValue;
 
-                // Check if any dependency changed
-                const shouldUpdate = dataChanges.length === 0 || dependencies.some(dep => dataChanges.includes(dep));
-
-                if (shouldUpdate) {
-                    try {
-                        const oldValue = this.#bindings[key];
-                        const newValue = computedFn.call(this.#bindings);
-                        this.#bindings[key] = newValue;
-
-                        // Track if the computed value actually changed
-                        if (oldValue !== newValue) {
-                            computedChanges.push(key);
-                            this.#logger.debug(`Computed property '${key}' changed: ${oldValue} -> ${newValue}`);
-                        }
-                    } catch (error) {
-                        this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
+                    // Track if the computed value actually changed
+                    if (oldValue !== newValue) {
+                        computedChanges.push(key);
+                        this.#logger.debug(`Computed property '${key}' changed: ${oldValue} -> ${newValue}`);
                     }
+                } catch (error) {
+                    this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
                 }
             }
-        }
-
-        // Combine all changes
-        const allChanges = [...dataChanges, ...computedChanges];
-
-        if (allChanges.length === 0) {
-            return; // No changes detected
         }
 
         // Update the DOM
         this.#vNode.update({
             bindings: this.#bindings,
-            changedIdentifiers: allChanges, // 暫定処理
+            changedIdentifiers: computedChanges,
             isInitial: false
         });
-
-        // 暫定処理: Store old bindings for change detection
-        this.#oldBindings = JSON.parse(JSON.stringify(this.#bindings));
     }
 
     /**
