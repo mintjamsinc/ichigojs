@@ -193,69 +193,15 @@ export class VOnDirective implements VDirective {
             // Gather the current values of the identifiers from the bindings
             const bindings = vNode.bindings ?? {};
 
-            // If the expression is just a method name, we need to wrap it
-            // so that when it's called, the method has access to all its dependencies
+            // If the expression is just a method name, call it with bindings as 'this'
             const trimmedExpr = expression.trim();
             if (identifiers.includes(trimmedExpr) && typeof bindings[trimmedExpr] === 'function') {
                 const methodName = trimmedExpr;
                 const originalMethod = bindings[methodName];
-                const dependencies = vNode.vApplication.functionDependencies[methodName] || [];
 
-                // Get the method source code
-                let methodSource = originalMethod.toString();
-
-                // Extract the function body from the method
-                // Handle different function formats:
-                // - "methodName() { ... }" (method shorthand)
-                // - "function() { ... }" (function expression)
-                // - "() => { ... }" or "() => expr" (arrow function)
-                const arrowMatch = methodSource.match(/^\s*(?:\(.*?\)|[a-zA-Z_$][\w$]*)\s*=>\s*(.+)$/s);
-                const functionMatch = methodSource.match(/^(?:async\s+)?function\s*[^(]*\([^)]*\)\s*\{([\s\S]*)\}$/);
-                const methodMatch = methodSource.match(/^(?:async\s+)?[a-zA-Z_$][\w$]*\s*\([^)]*\)\s*\{([\s\S]*)\}$/);
-
-                let functionBody: string;
-                if (arrowMatch) {
-                    // Arrow function - check if it has a block or is an expression
-                    const body = arrowMatch[1].trim();
-                    if (body.startsWith('{')) {
-                        functionBody = body.slice(1, -1); // Remove { }
-                    } else {
-                        functionBody = `return ${body};`;
-                    }
-                } else if (functionMatch) {
-                    functionBody = functionMatch[1];
-                } else if (methodMatch) {
-                    functionBody = methodMatch[1];
-                } else {
-                    // Fallback: couldn't parse, just call the original method
-                    return originalMethod.call(bindings, event);
-                }
-
-                // Create a new function with all dependencies as parameters
-                const allIdentifiers = [...new Set([...dependencies, 'event'])];
-                const wrapper = new Function(...allIdentifiers, functionBody);
-
-                // Get dependency values from bindings or global scope
-                const depValues = allIdentifiers.map((id: string) => {
-                    if (id === 'event') {
-                        return event;
-                    }
-                    // Try to get from bindings first, then from global scope
-                    if (id in bindings) {
-                        return bindings[id];
-                    }
-                    // Check if it's a global variable (performance, Math, console, etc.)
-                    if (typeof window !== 'undefined' && id in window) {
-                        return (window as any)[id];
-                    }
-                    if (typeof globalThis !== 'undefined' && id in globalThis) {
-                        return (globalThis as any)[id];
-                    }
-                    return undefined;
-                });
-
-                // Execute the wrapper with all dependencies in scope
-                return wrapper(...depValues);
+                // Call the method with bindings as 'this' context
+                // This allows the method to access and modify bindings properties via 'this'
+                return originalMethod.call(bindings, event);
             }
 
             // For inline expressions, evaluate normally
