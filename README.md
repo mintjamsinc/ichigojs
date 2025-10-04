@@ -286,3 +286,7 @@ MIT License - Copyright (c) 2025 MintJams Inc.
 ## Credits
 
 Inspired by [Vue.js](https://vuejs.org/) - A progressive JavaScript framework.
+
+---
+
+Built with ❤️ by [MintJams Inc.](https://github.com/mintjamsinc)
