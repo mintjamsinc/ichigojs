@@ -6,6 +6,29 @@
   "module": "./dist/ichigo.esm.js",
   "types": "./dist/types/index.d.ts",
   "type": "module",
+  "author": "MintJams Inc.",
+  "license": "MIT",
+  "homepage": "https://github.com/mintjamsinc/ichigojs#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mintjamsinc/ichigojs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mintjamsinc/ichigojs/issues"
+  },
+  "keywords": [
+    "virtual-dom",
+    "reactive",
+    "framework",
+    "vdom",
+    "ui",
+    "typescript",
+    "vue-like",
+    "lightweight",
+    "reactive-proxy",
+    "computed-properties",
+    "two-way-binding"
+  ],
   "files": [
     "dist/**/*",
     "README.md",
@@ -28,13 +51,14 @@
   },
   "exports": {
     ".": {
-      "import": "./dist/ichigo.js",
-      "require": "./dist/ichigo.js",
+      "import": "./dist/ichigo.esm.js",
+      "require": "./dist/ichigo.umd.js",
       "types": "./dist/types/index.d.ts"
     },
     "./package.json": "./package.json"
   },
   "dependencies": {
+    "acorn": "^8.14.0",
     "acorn-walk": "^8.3.4"
   }
 }
