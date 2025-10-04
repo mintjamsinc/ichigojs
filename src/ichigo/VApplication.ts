@@ -70,6 +70,11 @@ export class VApplication {
     #updateScheduled: boolean = false;
 
     /**
+     * Set of keys that have changed since the last update.
+     */
+    #changedKeys: Set<string> = new Set();
+
+    /**
      * Creates an instance of the virtual application.
      * @param options The application options.
      * @param directiveParserRegistry The global directive parser registry.
@@ -104,11 +109,22 @@ export class VApplication {
     #initializeBindings(): VBindings {
         const bindings: VBindings = {};
 
-        // 1. Add data properties
+        // 1. Add data properties with reactive proxy for each property
         if (this.#options.data) {
             const data = this.#options.data();
             if (data && typeof data === 'object') {
-                Object.assign(bindings, data);
+                for (const [key, value] of Object.entries(data)) {
+                    if (typeof value === 'object' && value !== null) {
+                        // Wrap objects/arrays with reactive proxy, tracking the root key
+                        bindings[key] = ReactiveProxy.create(value, () => {
+                            this.#changedKeys.add(key);
+                            this.scheduleUpdate();
+                        });
+                    } else {
+                        // Primitive values are added as-is
+                        bindings[key] = value;
+                    }
+                }
             }
         }
 
@@ -130,9 +146,21 @@ export class VApplication {
             Object.assign(bindings, this.#options.methods);
         }
 
-        // 4. Wrap the entire bindings object with reactive proxy
-        // This ensures all property changes (including primitives) trigger updates
-        return ReactiveProxy.create(bindings, () => this.scheduleUpdate());
+        // 4. Wrap the entire bindings object with a proxy for primitive value changes
+        return new Proxy(bindings, {
+            set: (obj, key, value) => {
+                const oldValue = Reflect.get(obj, key);
+                const result = Reflect.set(obj, key, value);
+
+                // Track changes to primitive values
+                if (oldValue !== value) {
+                    this.#changedKeys.add(key as string);
+                    this.scheduleUpdate();
+                }
+
+                return result;
+            }
+        });
     }
 
     /**
@@ -238,6 +266,10 @@ export class VApplication {
             return;
         }
 
+        // Get the changed data properties
+        const dataChanges = Array.from(this.#changedKeys);
+        this.#changedKeys.clear();
+
         // Re-evaluate all computed properties
         const computedChanges: string[] = [];
         if (this.#options.computed) {
@@ -258,10 +290,13 @@ export class VApplication {
             }
         }
 
+        // Combine all changes
+        const allChanges = [...dataChanges, ...computedChanges];
+
         // Update the DOM
         this.#vNode.update({
             bindings: this.#bindings,
-            changedIdentifiers: computedChanges,
+            changedIdentifiers: allChanges,
             isInitial: false
         });
     }

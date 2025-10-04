@@ -15,10 +15,10 @@ export class ReactiveProxy {
      * The proxy will call the onChange callback whenever a property is modified.
      *
      * @param target The object to make reactive.
-     * @param onChange Callback function to call when the object changes.
+     * @param onChange Callback function to call when the object changes. Receives the changed key name.
      * @returns A reactive proxy of the target object.
      */
-    static create<T extends object>(target: T, onChange: () => void): T {
+    static create<T extends object>(target: T, onChange: (changedKey?: string) => void): T {
         // If the target is not an object or is null, return it as-is
         if (typeof target !== 'object' || target === null) {
             return target;
@@ -61,7 +61,7 @@ export class ReactiveProxy {
 
                 // Only trigger onChange if the value actually changed
                 if (oldValue !== value) {
-                    onChange();
+                    onChange(key as string);
                 }
 
                 return result;
@@ -69,7 +69,7 @@ export class ReactiveProxy {
 
             deleteProperty(obj, key) {
                 const result = Reflect.deleteProperty(obj, key);
-                onChange();
+                onChange(key as string);
                 return result;
             }
         });
