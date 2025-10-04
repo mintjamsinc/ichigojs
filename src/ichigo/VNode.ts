@@ -335,8 +335,6 @@ export class VNode {
         // If this is a text node with a text evaluator, update its content if needed
         if (this.#nodeType === Node.TEXT_NODE && this.#textEvaluator) {
             if (isInitial) {
-                this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating VNode: <${this.#nodeName}> (initial)`);
-
                 // Initial update: always set the text content
                 const text = this.#node as Text;
                 text.data = this.#textEvaluator.evaluate(bindings);
@@ -348,8 +346,6 @@ export class VNode {
 
                 // If the text node has changed, update its content
                 if (changed) {
-                    this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating VNode: <${this.#nodeName}>`);
-
                     const text = this.#node as Text;
                     text.data = this.#textEvaluator.evaluate(bindings);
                 }
@@ -358,8 +354,6 @@ export class VNode {
         }
 
         if (isInitial) {
-            this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating VNode: <${this.#nodeName}> (initial)`);
-
             // Initial update: prepare bindings and apply all directive updaters
             if (this.#directiveManager?.domUpdaters) {
                 for (const updater of this.#directiveManager.domUpdaters) {
@@ -370,7 +364,6 @@ export class VNode {
             // Recursively update dependent virtual nodes
             this.#dependencies?.forEach(dependentNode => {
                 // Update the dependent node
-                this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating dependent VNode: <${dependentNode.nodeName}> due to initial update of parent: <${this.#nodeName}>`);
                 dependentNode.update({
                     bindings: this.#bindings,
                     changedIdentifiers: [],
@@ -410,8 +403,6 @@ export class VNode {
                 for (const updater of this.#directiveManager.domUpdaters) {
                     const changed = updater.identifiers.some(id => changes.has(id));
                     if (changed) {
-                        this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating VNode: <${this.#nodeName}>`);
-
                         updater.applyToDOM();
                     }
                 }
@@ -425,7 +416,6 @@ export class VNode {
                 }
 
                 // Update the dependent node
-                this.#vApplication.logManager.getLogger(this.constructor.name).debug(`Updating dependent VNode: <${dependentNode.nodeName}> due to changes in parent: <${this.#nodeName}>`);
                 dependentNode.update({
                     bindings: this.#bindings,
                     changedIdentifiers: Array.from(changes),

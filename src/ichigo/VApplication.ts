@@ -40,7 +40,7 @@ export class VApplication {
     #bindings: VBindings;
 
     /**
-     * The previous state of bindings for change detection.
+     * 暫定処理: The previous state of bindings for change detection.
      */
     #oldBindings: VBindings = {};
 
@@ -244,22 +244,20 @@ export class VApplication {
             }
         }
 
-        // Detect changes
+        // 暫定処理: Detect changes
         const changes = BindingsUtils.getChangedIdentifiers(this.#oldBindings, this.#bindings);
         if (changes.length === 0) {
             return; // No changes detected
         }
 
-        this.#logger.debug(`Changed identifiers: ${changes.join(', ')}`);
-
         // Update the DOM
         this.#vNode.update({
             bindings: this.#bindings,
-            changedIdentifiers: changes,
+            changedIdentifiers: changes, // 暫定処理
             isInitial: false
         });
 
-        // Store old bindings for change detection
+        // 暫定処理: Store old bindings for change detection
         this.#oldBindings = JSON.parse(JSON.stringify(this.#bindings));
     }
 
