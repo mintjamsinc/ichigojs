@@ -223,7 +223,11 @@ export abstract class VConditionalDirective implements VDirective {
         }
 
         // Link to the existing conditional context from the preceding v-if or v-else-if directive
-        const precedingDirective = this.vNode.previousSibling?.directiveManager?.directives?.find(
+        let prevVNode = this.vNode.previousSibling;
+        while (prevVNode && prevVNode.nodeType !== Node.ELEMENT_NODE) {
+            prevVNode = prevVNode.previousSibling;
+        }
+        const precedingDirective = prevVNode?.directiveManager?.directives?.find(
             d => d.name === StandardDirectiveName.V_IF || d.name === StandardDirectiveName.V_ELSE_IF
         );
 
