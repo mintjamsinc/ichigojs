@@ -69,16 +69,17 @@ export class VNode {
     #directiveManager?: VDirectiveManager;
 
     /**
-     * The list of dependencies for this virtual node.
-     * This is optional and may be undefined if there are no dependencies.
+     * The list of dependents for this virtual node.
+     * This is optional and may be undefined if there are no dependents.
      */
-    #dependencies?: VNode[];
+    #dependents?: VNode[];
 
     /**
      * The list of identifiers for this virtual node.
      * This includes variable and function names used in expressions.
+     * This is optional and may be undefined if there are no identifiers.
      */
-    #identifiers?: string[];
+    #dependentIdentifiers?: string[];
 
     /**
      * The list of preparable identifiers for this virtual node.
@@ -139,7 +140,7 @@ export class VNode {
 
         // If there is a parent virtual node, add this node as a dependency
         if (this.#parentVNode) {
-            this.#closers = this.#parentVNode.addDependency(this);
+            this.#closers = this.#parentVNode.addDependent(this);
         }
     }
 
@@ -269,34 +270,34 @@ export class VNode {
      * The list of identifiers for this virtual node.
      * This includes variable and function names used in expressions.
      */
-    get identifiers(): string[] {
-        // If already computed, return the cached identifiers
-        if (this.#identifiers) {
-            return this.#identifiers;
+    get dependentIdentifiers(): string[] {
+        // If already computed, return the cached dependent identifiers
+        if (this.#dependentIdentifiers) {
+            return this.#dependentIdentifiers;
         }
 
         // Collect identifiers from text evaluator and directives
-        const identifiers: string[] = [];
+        const ids: string[] = [];
 
         // If this is a text node with a text evaluator, include its identifiers
         if (this.#textEvaluator) {
-            identifiers.push(...this.#textEvaluator.identifiers);
+            ids.push(...this.#textEvaluator.identifiers);
         }
 
         // Include identifiers from directive bindings preparers
         this.#directiveManager?.bindingsPreparers?.forEach(preparer => {
-            identifiers.push(...preparer.identifiers);
+            ids.push(...preparer.identifiers);
         });
 
         // Include identifiers from directive DOM updaters
         this.#directiveManager?.domUpdaters?.forEach(updater => {
-            identifiers.push(...updater.identifiers);
+            ids.push(...updater.identifiers);
         });
 
         // Remove duplicates by converting to a Set and back to an array
-        this.#identifiers = identifiers.length === 0 ? [] : [...new Set(identifiers)];
+        this.#dependentIdentifiers = [...new Set(ids)];
 
-        return this.#identifiers;
+        return this.#dependentIdentifiers;
     }
 
     get preparableIdentifiers(): string[] {
@@ -362,7 +363,7 @@ export class VNode {
             }
 
             // Recursively update dependent virtual nodes
-            this.#dependencies?.forEach(dependentNode => {
+            this.#dependents?.forEach(dependentNode => {
                 // Update the dependent node
                 dependentNode.update({
                     bindings: this.#bindings,
@@ -409,9 +410,9 @@ export class VNode {
             }
 
             // Recursively update dependent virtual nodes
-            this.#dependencies?.forEach(dependentNode => {
+            this.#dependents?.forEach(dependentNode => {
                 // Check if any of the dependent node's identifiers are in the changed identifiers
-                if (dependentNode.identifiers.filter(id => changes.has(id)).length === 0) {
+                if (dependentNode.dependentIdentifiers.filter(id => changes.has(id)).length === 0) {
                     return;
                 }
 
@@ -425,47 +426,46 @@ export class VNode {
     }
 
     /**
-     * Adds a dependency on the specified virtual node.
-     * This means that if the specified node's bindings change, this node may need to be updated.
-     * @param dependentNode The virtual node to add as a dependency.
+     * Adds a dependent virtual node that relies on this node's bindings.
+     * @param dependent The dependent virtual node to add.
      * @returns A list of closers to unregister the dependency, or undefined if no dependency was added.
      */
-    addDependency(dependentNode: VNode): VCloser[] | undefined {
-        // List of closers to unregister dependencies
+    addDependent(dependent: VNode): VCloser[] | undefined {
+        // List of closers to unregister the dependency
         const closers: VCloser[] = [];
 
         // Check if any of the dependent node's identifiers are in this node's identifiers
-        let hasIdentifier = dependentNode.identifiers.some(id => this.preparableIdentifiers.includes(id));
+        let hasIdentifier = dependent.dependentIdentifiers.some(id => this.preparableIdentifiers.includes(id));
         if (!hasIdentifier) {
             if (!this.#parentVNode) {
-                hasIdentifier = dependentNode.identifiers.some(id => this.#vApplication.preparableIdentifiers.includes(id));
+                hasIdentifier = dependent.dependentIdentifiers.some(id => this.#vApplication.preparableIdentifiers.includes(id));
             }
         }
 
         // If the dependent node has an identifier in this node's identifiers, add it as a dependency
         if (hasIdentifier) {
             // If the dependencies list is not initialized, create it
-            if (!this.#dependencies) {
-                this.#dependencies = [];
+            if (!this.#dependents) {
+                this.#dependents = [];
             }
 
             // Add the dependent node to the list
-            this.#dependencies.push(dependentNode);
+            this.#dependents.push(dependent);
 
             // Create a closer to unregister the dependency
             closers.push({
                 close: () => {
                     // Remove the dependent node from the dependencies list
-                    const index = this.#dependencies?.indexOf(dependentNode) ?? -1;
+                    const index = this.#dependents?.indexOf(dependent) ?? -1;
                     if (index !== -1) {
-                        this.#dependencies?.splice(index, 1);
+                        this.#dependents?.splice(index, 1);
                     }
                 }
             });
         }
 
         // Recursively add the dependency to the parent node, if any
-        this.#parentVNode?.addDependency(dependentNode)?.forEach(closer => closers.push(closer));
+        this.#parentVNode?.addDependent(dependent)?.forEach(closer => closers.push(closer));
 
         // Return a closer to unregister the dependency
         return closers.length > 0 ? closers : undefined;
