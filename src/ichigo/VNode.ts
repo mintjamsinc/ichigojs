@@ -1,15 +1,17 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
-import { BindingsUtils } from "./util/BindingsUtils";
 import { VApplication } from "./VApplication";
 import { VBindings } from "./VBindings";
 import { VCloser } from "./VCloser";
 import { VDirectiveManager } from "./directives/VDirectiveManager";
 import { VNodeInit } from "./VNodeInit";
 import { VTextEvaluator } from "./VTextEvaluator";
-import { VUpdateContext } from "./VUpdateContext";
-import { VBindingsPreparer } from "./VBindingsPreparer";
 
+/**
+ * Represents a virtual node in the virtual DOM.
+ * A virtual node corresponds to a real DOM node and contains additional information for data binding and directives.
+ * This class is responsible for managing the state and behavior of the virtual node, including its bindings, directives, and child nodes.
+ */
 export class VNode {
     /**
      * The application instance associated with this virtual node.
@@ -46,14 +48,7 @@ export class VNode {
     /**
      * The data bindings associated with this virtual node, if any.
      */
-    #bindings: VBindings;
-
-    /**
-     * The bindings preparer associated with this virtual node, if any.
-     * This is used to prepare the bindings before applying them to the DOM.
-     * This is optional and may be undefined if there are no preparers.
-     */
-    #bindingsPreparer?: VBindingsPreparer;
+    #bindings?: VBindings;
 
     /**
      * An evaluator for text nodes that contain expressions in {{...}}.
@@ -105,7 +100,6 @@ export class VNode {
         this.#nodeName = args.node.nodeName;
         this.#parentVNode = args.parentVNode;
         this.#bindings = args.bindings;
-        this.#bindingsPreparer = args.bindingsPreparer;
 
         // If the node is a text node, check for expressions and create a text evaluator
         if (this.#nodeType === Node.TEXT_NODE) {
@@ -132,8 +126,7 @@ export class VNode {
                 this.#childVNodes.push(new VNode({
                     node: childNode,
                     vApplication: this.#vApplication,
-                    parentVNode: this,
-                    bindings: this.#bindings
+                    parentVNode: this
                 }));
             }
         }
@@ -227,8 +220,11 @@ export class VNode {
     /**
      * The data bindings associated with this virtual node, if any.
      */
-    get bindings(): VBindings | undefined {
-        return this.#bindings;
+    get bindings(): VBindings {
+        if (this.#bindings) {
+            return this.#bindings;
+        }
+        return this.#parentVNode?.bindings!;
     }
 
     /**
@@ -286,12 +282,12 @@ export class VNode {
 
         // Include identifiers from directive bindings preparers
         this.#directiveManager?.bindingsPreparers?.forEach(preparer => {
-            ids.push(...preparer.identifiers);
+            ids.push(...preparer.dependentIdentifiers);
         });
 
         // Include identifiers from directive DOM updaters
         this.#directiveManager?.domUpdaters?.forEach(updater => {
-            ids.push(...updater.identifiers);
+            ids.push(...updater.dependentIdentifiers);
         });
 
         // Remove duplicates by converting to a Set and back to an array
@@ -309,9 +305,6 @@ export class VNode {
         // Collect preparable identifiers from directive bindings preparers
         const preparableIdentifiers: string[] = [];
 
-        // Include preparable identifiers from this node's bindings preparer, if any
-        preparableIdentifiers.push(...(this.#bindingsPreparer?.preparableIdentifiers ?? []));
-
         // Include preparable identifiers from directive bindings preparers
         this.#directiveManager?.bindingsPreparers?.forEach(preparer => {
             preparableIdentifiers.push(...preparer.preparableIdentifiers);
@@ -328,101 +321,58 @@ export class VNode {
      * This method evaluates any expressions in text nodes and applies effectors from directives.
      * It also recursively updates child virtual nodes.
      * @param context The context for the update operation.
+     * This includes the current bindings and a list of identifiers that have changed.
      */
-    update(context: VUpdateContext): void {
-        // Extract context properties
-        const { bindings, changedIdentifiers, isInitial } = context;
+    update(): void {
+        const changes = this.bindings?.changes || [];
 
         // If this is a text node with a text evaluator, update its content if needed
         if (this.#nodeType === Node.TEXT_NODE && this.#textEvaluator) {
-            if (isInitial) {
-                // Initial update: always set the text content
+            // Check if any of the identifiers are in the changed identifiers
+            const changed = this.#textEvaluator.identifiers.some(id => changes.includes(id));
+
+            // If the text node has changed, update its content
+            if (changed) {
                 const text = this.#node as Text;
-                text.data = this.#textEvaluator.evaluate(bindings);
-            } else {
-                // Subsequent update: only update the text content if relevant identifiers have changed
-
-                // Check if any of the identifiers are in the changed identifiers
-                const changed = this.#textEvaluator.identifiers.some(id => changedIdentifiers.includes(id));
-
-                // If the text node has changed, update its content
-                if (changed) {
-                    const text = this.#node as Text;
-                    text.data = this.#textEvaluator.evaluate(bindings);
-                }
+                text.data = this.#textEvaluator.evaluate(this.bindings);
             }
+
             return;
         }
 
-        if (isInitial) {
-            // Initial update: prepare bindings and apply all directive updaters
-            if (this.#directiveManager?.domUpdaters) {
-                for (const updater of this.#directiveManager.domUpdaters) {
+        // Prepare new bindings using directive bindings preparers, if any
+        if (this.#directiveManager?.bindingsPreparers) {
+            // Ensure local bindings are initialized
+            if (!this.#bindings) {
+                this.#bindings = new VBindings({ parent: this.bindings });
+            }
+
+            // Prepare bindings for each preparer if relevant identifiers have changed
+            for (const preparer of this.#directiveManager.bindingsPreparers) {
+                const changed = preparer.dependentIdentifiers.some(id => changes.includes(id));
+                if (changed) {
+                    preparer.prepareBindings();
+                }
+            }
+        }
+
+        // Apply DOM updaters from directives, if any
+        if (this.#directiveManager?.domUpdaters) {
+            for (const updater of this.#directiveManager.domUpdaters) {
+                const changed = updater.dependentIdentifiers.some(id => changes.includes(id));
+                if (changed) {
                     updater.applyToDOM();
                 }
             }
-
-            // Recursively update dependent virtual nodes
-            this.#dependents?.forEach(dependentNode => {
-                // Update the dependent node
-                dependentNode.update({
-                    bindings: this.#bindings,
-                    changedIdentifiers: [],
-                    isInitial: true
-                });
-            });
-        } else {
-            // Subsequent update: only prepare bindings and apply directive updaters if relevant identifiers have changed
-
-            // Save the original bindings for comparison
-            const oldBindings = this.#bindings;
-
-            // Prepare new bindings using directive bindings preparers, if any
-            const newBindings: VBindings = { ...bindings };
-            const changes: Set<string> = new Set([...changedIdentifiers]);
-            this.#bindingsPreparer?.prepareBindings(newBindings);
-            if (this.#directiveManager?.bindingsPreparers) {
-                for (const preparer of this.#directiveManager.bindingsPreparers) {
-                    const changed = preparer.identifiers.some(id => changedIdentifiers.includes(id));
-                    if (changed) {
-                        preparer.prepareBindings(newBindings);
-                    }
-                }
-            }
-            BindingsUtils.getChangedIdentifiers(oldBindings, newBindings).forEach(id => changes.add(id));
-
-            // Update the bindings for this node
-            this.#bindings = newBindings;
-
-            // If there are no changes in bindings, skip further processing
-            if (changes.size === 0) {
-                return;
-            }
-
-            // Apply DOM updaters from directives, if any
-            if (this.#directiveManager?.domUpdaters) {
-                for (const updater of this.#directiveManager.domUpdaters) {
-                    const changed = updater.identifiers.some(id => changes.has(id));
-                    if (changed) {
-                        updater.applyToDOM();
-                    }
-                }
-            }
-
-            // Recursively update dependent virtual nodes
-            this.#dependents?.forEach(dependentNode => {
-                // Check if any of the dependent node's identifiers are in the changed identifiers
-                if (dependentNode.dependentIdentifiers.filter(id => changes.has(id)).length === 0) {
-                    return;
-                }
-
-                // Update the dependent node
-                dependentNode.update({
-                    bindings: this.#bindings,
-                    changedIdentifiers: Array.from(changes),
-                });
-            });
         }
+
+        // Recursively update dependent virtual nodes
+        this.#dependents?.forEach(dependentNode => {
+            const changed = dependentNode.dependentIdentifiers.some(id => changes.includes(id));
+            if (changed) {
+                dependentNode.update();
+            }
+        });
     }
 
     /**
@@ -437,9 +387,7 @@ export class VNode {
         // Check if any of the dependent node's identifiers are in this node's identifiers
         let hasIdentifier = dependent.dependentIdentifiers.some(id => this.preparableIdentifiers.includes(id));
         if (!hasIdentifier) {
-            if (!this.#parentVNode) {
-                hasIdentifier = dependent.dependentIdentifiers.some(id => this.#vApplication.preparableIdentifiers.includes(id));
-            }
+            hasIdentifier = dependent.dependentIdentifiers.some(id => this.#bindings?.has(id, false) ?? false);
         }
 
         // If the dependent node has an identifier in this node's identifiers, add it as a dependency

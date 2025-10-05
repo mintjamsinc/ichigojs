@@ -44,7 +44,7 @@ export class VForDirective implements VDirective {
     /**
      * A function that evaluates the :key expression for an item.
      */
-    #evaluateKey?: (itemBindings: Map<string, any>) => any;
+    #evaluateKey?: (itemBindings: VBindings) => any;
 
     /**
      * Parsed v-for expression parts
@@ -124,7 +124,7 @@ export class VForDirective implements VDirective {
 
         // Create and return the DOM updater
         const updater: VDOMUpdater = {
-            get identifiers(): string[] {
+            get dependentIdentifiers(): string[] {
                 return identifiers;
             },
             applyToDOM(): void {
@@ -175,12 +175,9 @@ export class VForDirective implements VDirective {
         if (this.#evaluateKey && this.#itemName) {
             iterations = iterations.map(iter => {
                 // Create bindings for this iteration
-                const itemBindings = new Map<string, any>();
-                if (this.#vNode.bindings) {
-                    for (const key in this.#vNode.bindings) {
-                        itemBindings.set(key, this.#vNode.bindings[key]);
-                    }
-                }
+                const itemBindings = new VBindings({
+                    parent: this.#vNode.bindings
+                });
                 itemBindings.set(this.#itemName!, iter.item);
                 if (this.#indexName) {
                     itemBindings.set(this.#indexName, iter.index);
@@ -244,11 +241,7 @@ export class VForDirective implements VDirective {
                     parent.appendChild(vNode.node);
                 }
 
-                vNode.update({
-                    bindings: this.#vNode.bindings || {},
-                    changedIdentifiers: [],
-                    isInitial: true
-                });
+                vNode.update();
             } else {
                 // Reuse existing item
                 newRenderedItems.set(key, vNode);
@@ -314,7 +307,7 @@ export class VForDirective implements VDirective {
         const func = new Function(args, funcBody) as (...args: any[]) => any;
 
         return () => {
-            const values = identifiers.map(id => this.#vNode.bindings?.[id]);
+            const values = identifiers.map(id => this.#vNode.bindings?.get(id));
             return func(...values);
         };
     }
@@ -322,7 +315,7 @@ export class VForDirective implements VDirective {
     /**
      * Creates a function to evaluate the :key expression for each item.
      */
-    #createKeyEvaluator(expression: string): (itemBindings: Map<string, any>) => any {
+    #createKeyEvaluator(expression: string): (itemBindings: VBindings) => any {
         // Parse to find all identifiers
         const identifiers = ExpressionUtils.extractIdentifiers(expression, this.#vNode.vApplication.functionDependencies);
         const args = identifiers.join(", ");
@@ -330,7 +323,7 @@ export class VForDirective implements VDirective {
 
         const func = new Function(args, funcBody) as (...args: any[]) => any;
 
-        return (itemBindings: Map<string, any>) => {
+        return (itemBindings: VBindings) => {
             const values = identifiers.map(id => itemBindings.get(id));
             return func(...values);
         };
@@ -348,48 +341,23 @@ export class VForDirective implements VDirective {
         const indexName = this.#indexName;
 
         // Create bindings for this iteration
-        const bindings: VBindings = { ...this.#vNode.bindings };
+        const bindings = new VBindings({
+            parent: this.#vNode.bindings
+        });
         if (this.#itemName) {
-            bindings[this.#itemName] = context.item;
+            bindings.set(this.#itemName, context.item);
         }
         if (this.#indexName) {
-            bindings[this.#indexName] = context.index;
+            bindings.set(this.#indexName, context.index);
         }
-
-        const itemBindingsPreparer: VBindingsPreparer = {
-            get identifiers(): string[] {
-                return []; // No specific identifiers for item
-            },
-            get preparableIdentifiers(): string[] {
-                // Return item and index names if defined
-                const ids = [];
-                if (itemName) ids.push(itemName);
-                if (indexName) ids.push(indexName);
-                return ids;
-            },
-            prepareBindings(bindings) {
-                // Prepare bindings for the current item
-                if (itemName) {
-                    bindings[itemName] = context.item;
-                }
-                if (indexName) {
-                    bindings[indexName] = context.index;
-                }
-            }
-        };
 
         // Create a new VNode for the cloned element
         const vNode = new VNode({
             node: clone,
             vApplication: this.#vNode.vApplication,
             parentVNode: this.#vNode.parentVNode,
-            bindings,
-            bindingsPreparer: itemBindingsPreparer,
+            bindings
         });
-
-        // Set data attributes for debugging
-        clone.setAttribute('data-v-for-key', String(context.key));
-        clone.setAttribute('data-v-for-index', String(context.index));
 
         return vNode;
     }
@@ -398,34 +366,16 @@ export class VForDirective implements VDirective {
      * Update bindings for an existing item
      */
     #updateItemBindings(vNode: VNode, context: { key: any; item: any; index: number }): void {
-        const bindings = vNode.bindings || {};
-        const updatedBindings: VBindings = { ...bindings };
-
-        if (this.#itemName) {
-            updatedBindings[this.#itemName] = context.item;
-        }
-        if (this.#indexName) {
-            updatedBindings[this.#indexName] = context.index;
-        }
-
-        // Update data attributes
-        const element = vNode.node as HTMLElement;
-        element.setAttribute('data-v-for-key', String(context.key));
-        element.setAttribute('data-v-for-index', String(context.index));
-
         // Trigger reactivity update by calling update with the new bindings
         const changedIdentifiers: string[] = [];
         if (this.#itemName) {
-            changedIdentifiers.push(this.#itemName);
+            vNode.bindings?.set(this.#itemName, context.item);
         }
         if (this.#indexName) {
-            changedIdentifiers.push(this.#indexName);
+            vNode.bindings?.set(this.#indexName, context.index);
         }
 
-        vNode.update({
-            bindings: updatedBindings,
-            changedIdentifiers
-        });
+        vNode.update();
     }
 
     /**

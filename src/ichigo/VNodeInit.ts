@@ -25,12 +25,8 @@ export interface VNodeInit {
 	parentVNode?: VNode;
 
 	/**
-	 * The data bindings associated with this virtual node.
+	 * The bindings associated with this virtual node.
+	 * This is optional and may be undefined if there are no bindings.
 	 */
-	bindings: VBindings;
-
-	/**
-	 * The preparer for VBindings, if any.
-	 */
-	bindingsPreparer?: VBindingsPreparer;
+	bindings?: VBindings;
 }

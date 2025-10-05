@@ -98,7 +98,7 @@ export class VShowDirective implements VDirective {
 
         // Create an updater that handles the conditional rendering
         const updater: VDOMUpdater = {
-            get identifiers(): string[] {
+            get dependentIdentifiers(): string[] {
                 return identifiers;
             },
             applyToDOM(): void {
@@ -170,7 +170,7 @@ export class VShowDirective implements VDirective {
         // Return a function that calls the dynamic function with the current values from the virtual node's bindings
         return () => {
             // Gather the current values of the identifiers from the bindings
-            const values = identifiers.map(id => this.#vNode.bindings?.[id]);
+            const values = identifiers.map(id => this.#vNode.bindings?.get(id));
 
             // Call the dynamic function with the gathered values and return the result as a boolean
             return Boolean(func(...values));

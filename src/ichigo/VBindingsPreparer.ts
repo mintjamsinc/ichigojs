@@ -1,16 +1,14 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
-import { VBindings } from "./VBindings";
-
 /**
  * Interface representing a preparer for VBindings in the virtual DOM.
  */
 export interface VBindingsPreparer {
     /**
-     * The list of identifiers that this preparer is concerned with.
-     * These identifiers are used to determine when the bindings need to be prepared.
+     * The list of identifiers that this preparer depends on.
+     * Changes to these identifiers may trigger the need to prepare bindings again.
      */
-    get identifiers(): string[];
+    get dependentIdentifiers(): string[];
 
     /**
      * The list of identifiers that can be prepared by this preparer.
@@ -22,7 +20,6 @@ export interface VBindingsPreparer {
      * Prepares the given VBindings for use in the virtual DOM.
      * This method is called before the bindings are applied to the DOM.
      * It allows for any necessary transformations or initializations of the bindings.
-     * @param bindings The original VBindings to be prepared.
      */
-    prepareBindings(bindings: VBindings): void;
+    prepareBindings(): void;
 }

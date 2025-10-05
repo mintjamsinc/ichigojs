@@ -7,10 +7,10 @@
  */
 export interface VDOMUpdater {
     /**
-     * A list of variable and function names that this updater is concerned with.
+     * The list of identifiers that this updater depends on.
      * Changes to these identifiers may trigger the updater to apply changes to the DOM.
      */
-    get identifiers(): string[];
+    get dependentIdentifiers(): string[];
 
     /**
      * Applies the changes from the virtual DOM to the actual DOM.

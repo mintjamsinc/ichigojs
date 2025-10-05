@@ -190,22 +190,19 @@ export class VOnDirective implements VDirective {
 
         // Return a function that handles the event with proper scope
         return (event: Event) => {
-            // Gather the current values of the identifiers from the bindings
-            const bindings = vNode.bindings ?? {};
-
             // If the expression is just a method name, call it with bindings as 'this'
             const trimmedExpr = expression.trim();
-            if (identifiers.includes(trimmedExpr) && typeof bindings[trimmedExpr] === 'function') {
+            if (identifiers.includes(trimmedExpr) && typeof vNode.bindings?.get(trimmedExpr) === 'function') {
                 const methodName = trimmedExpr;
-                const originalMethod = bindings[methodName];
+                const originalMethod = vNode.vApplication.bindings?.get(methodName);
 
                 // Call the method with bindings as 'this' context
                 // This allows the method to access and modify bindings properties via 'this'
-                return originalMethod.call(bindings, event);
+                return originalMethod.call(vNode.vApplication.bindings?.raw, event);
             }
 
             // For inline expressions, evaluate normally
-            const values = identifiers.map(id => bindings[id]);
+            const values = identifiers.map(id => vNode.bindings?.get(id));
             const args = identifiers.join(", ");
             const funcBody = `return (${expression});`;
             const func = new Function(args, funcBody) as (...args: any[]) => any;

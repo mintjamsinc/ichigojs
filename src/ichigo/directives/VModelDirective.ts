@@ -117,7 +117,7 @@ export class VModelDirective implements VDirective {
 
         // Create and return the DOM updater
         const updater: VDOMUpdater = {
-            get identifiers(): string[] {
+            get dependentIdentifiers(): string[] {
                 return identifiers;
             },
             applyToDOM(): void {
@@ -266,16 +266,11 @@ export class VModelDirective implements VDirective {
             return;
         }
 
-        const bindings = this.#vNode.vApplication.bindings;
-        if (!bindings) {
-            return;
-        }
-
         // Simple property assignment (e.g., "message")
         // For now, only support simple identifiers
         const trimmed = this.#expression.trim();
         if (trimmed && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(trimmed)) {
-            bindings[trimmed] = newValue;
+            this.#vNode.vApplication.bindings?.set(trimmed, newValue);
         } else {
             // For complex expressions like "user.name", we'd need more sophisticated parsing
             this.#vNode.vApplication.logManager.getLogger('VModelDirective')
@@ -296,10 +291,10 @@ export class VModelDirective implements VDirective {
         // Create a dynamic function with the identifiers as parameters
         const func = new Function(args, funcBody) as (...args: any[]) => any;
 
-        // Return a function that calls the dynamic function with the current values from the virtual node's bindings
+        // Return a function that calls the dynamic function with the current values from bindings
         return () => {
             // Gather the current values of the identifiers from the bindings
-            const values = identifiers.map(id => this.#vNode.bindings?.[id]);
+            const values = identifiers.map(id => this.#vNode.vApplication.bindings?.get(id));
 
             // Call the dynamic function with the gathered values
             return func(...values);
