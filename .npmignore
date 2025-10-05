@@ -8,8 +8,7 @@ examples/
 docs/
 scripts/
 tools/
-sample.html
-test-*.html
+test/
 *.md
 !README.md
 
