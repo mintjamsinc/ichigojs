@@ -162,6 +162,9 @@ export class VApplication {
             throw new Error(`Element not found for selectors: ${selectors}`);
         }
 
+        // Clean the element by removing unnecessary whitespace text nodes
+        this.#cleanElement(element as HTMLElement);
+
         // Inject utility methods into bindings
         this.#bindings.$nextTick = (callback: () => void) => this.#nextTick(callback);
 
@@ -181,6 +184,35 @@ export class VApplication {
 
         this.#logger.info('Application mounted.');
     }
+
+    /**
+     * Cleans the element by removing unnecessary whitespace text nodes.
+     * @param element The element to clean.
+     */
+	#cleanElement(element: HTMLElement): void {
+		let buffer: Text | null = null;
+
+		for (const node of Array.from(element.childNodes)) {
+			if (node.nodeType === Node.TEXT_NODE) {
+				const text = node as Text;
+				if (/^[\s\n\r\t]*$/.test(text.nodeValue || '')) {
+					element.removeChild(text);
+				} else {
+					if (buffer) {
+						buffer.nodeValue += text.nodeValue || '';
+						element.removeChild(text);
+					} else {
+						buffer = text;
+					}
+				}
+			} else {
+				buffer = null;
+				if (node.nodeType === Node.ELEMENT_NODE) {
+					this.cleanElement(node as HTMLElement);
+				}
+			}
+		}
+	}
 
     /**
      * Initializes bindings from data, computed properties, and methods.
