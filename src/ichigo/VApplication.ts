@@ -208,7 +208,9 @@ export class VApplication {
                     continue;
                 }
 
-                this.#bindings.set(key, method);
+                // Bind the method to the raw bindings object to ensure 'this' refers to bindings
+                // This allows methods to access and modify bindings properties via 'this'
+                this.#bindings.set(key, method.bind(this.#bindings.raw));
             }
         }
 

@@ -152,6 +152,39 @@ export class VOnDirective implements VDirective {
 
         // Create the event listener function
         this.#listener = (event: Event) => {
+            // Check key modifiers for keyboard events
+            if (event instanceof KeyboardEvent) {
+                const keyModifiers = ['enter', 'tab', 'delete', 'esc', 'space', 'up', 'down', 'left', 'right'];
+                const hasKeyModifier = keyModifiers.some(key => this.#modifiers.has(key));
+
+                if (hasKeyModifier) {
+                    const keyMap: Record<string, string> = {
+                        'enter': 'Enter',
+                        'tab': 'Tab',
+                        'delete': 'Delete',
+                        'esc': 'Escape',
+                        'space': ' ',
+                        'up': 'ArrowUp',
+                        'down': 'ArrowDown',
+                        'left': 'ArrowLeft',
+                        'right': 'ArrowRight'
+                    };
+
+                    let keyMatched = false;
+                    for (const [modifier, keyValue] of Object.entries(keyMap)) {
+                        if (this.#modifiers.has(modifier) && event.key === keyValue) {
+                            keyMatched = true;
+                            break;
+                        }
+                    }
+
+                    // If key modifier specified but key doesn't match, return early
+                    if (!keyMatched) {
+                        return;
+                    }
+                }
+            }
+
             // Apply event modifiers
             if (this.#modifiers.has('stop')) {
                 event.stopPropagation();
@@ -190,15 +223,17 @@ export class VOnDirective implements VDirective {
 
         // Return a function that handles the event with proper scope
         return (event: Event) => {
+            const bindings = vNode.vApplication.bindings;
+
             // If the expression is just a method name, call it with bindings as 'this'
             const trimmedExpr = expression.trim();
-            if (identifiers.includes(trimmedExpr) && typeof vNode.bindings?.get(trimmedExpr) === 'function') {
+            if (identifiers.includes(trimmedExpr) && typeof bindings?.get(trimmedExpr) === 'function') {
                 const methodName = trimmedExpr;
-                const originalMethod = vNode.vApplication.bindings?.get(methodName);
+                const originalMethod = bindings?.get(methodName);
 
                 // Call the method with bindings as 'this' context
                 // This allows the method to access and modify bindings properties via 'this'
-                return originalMethod.call(vNode.vApplication.bindings?.raw, event);
+                return originalMethod(event);
             }
 
             // For inline expressions, evaluate normally
@@ -206,7 +241,7 @@ export class VOnDirective implements VDirective {
             const args = identifiers.join(", ");
             const funcBody = `return (${expression});`;
             const func = new Function(args, funcBody) as (...args: any[]) => any;
-            return func(...values);
+            return func.call(bindings?.raw, ...values, event);
         };
     }
 }

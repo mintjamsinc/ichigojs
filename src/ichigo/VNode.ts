@@ -101,6 +101,8 @@ export class VNode {
         this.#parentVNode = args.parentVNode;
         this.#bindings = args.bindings;
 
+        this.#parentVNode?.addChild(this);
+
         // If the node is a text node, check for expressions and create a text evaluator
         if (this.#nodeType === Node.TEXT_NODE) {
             const text = this.#node as Text;
@@ -123,11 +125,11 @@ export class VNode {
 
             // Recursively create VNode instances for child nodes
             for (const childNode of Array.from(this.#node.childNodes)) {
-                this.#childVNodes.push(new VNode({
+                new VNode({
                     node: childNode,
                     vApplication: this.#vApplication,
                     parentVNode: this
-                }));
+                });
             }
         }
 
@@ -373,6 +375,14 @@ export class VNode {
                 dependentNode.update();
             }
         });
+    }
+
+    /**
+     * Adds a child virtual node to this virtual node.
+     * @param child The child virtual node to add.
+     */
+    addChild(child: VNode): void {
+        this.#childVNodes?.push(child);
     }
 
     /**
