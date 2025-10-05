@@ -208,7 +208,7 @@ export class VApplication {
 			} else {
 				buffer = null;
 				if (node.nodeType === Node.ELEMENT_NODE) {
-					this.cleanElement(node as HTMLElement);
+					this.#cleanElement(node as HTMLElement);
 				}
 			}
 		}
