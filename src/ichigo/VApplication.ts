@@ -70,9 +70,10 @@ export class VApplication {
     #updateScheduled: boolean = false;
 
     /**
-     * Set of keys that have changed since the last update.
+     * The set of identifiers that have changed since the last update.
+     * This is used to track which data properties have been modified.
      */
-    #changedKeys: Set<string> = new Set();
+    #changedIdentifiers: Set<string> = new Set();
 
     /**
      * Creates an instance of the virtual application.
@@ -100,67 +101,6 @@ export class VApplication {
 
         // Prepare the list of identifiers that can trigger updates
         this.#preparableIdentifiers = [...Object.keys(this.#bindings)];
-    }
-
-    /**
-     * Initializes bindings from data, computed properties, and methods.
-     * @returns The initialized bindings object.
-     */
-    #initializeBindings(): VBindings {
-        const bindings: VBindings = {};
-
-        // 1. Add data properties with reactive proxy for each property
-        if (this.#options.data) {
-            const data = this.#options.data();
-            if (data && typeof data === 'object') {
-                for (const [key, value] of Object.entries(data)) {
-                    if (typeof value === 'object' && value !== null) {
-                        // Wrap objects/arrays with reactive proxy, tracking the root key
-                        bindings[key] = ReactiveProxy.create(value, () => {
-                            this.#changedKeys.add(key);
-                            this.scheduleUpdate();
-                        });
-                    } else {
-                        // Primitive values are added as-is
-                        bindings[key] = value;
-                    }
-                }
-            }
-        }
-
-        // 2. Add computed properties
-        if (this.#options.computed) {
-            for (const [key, computedFn] of Object.entries(this.#options.computed)) {
-                try {
-                    // Evaluate computed property with bindings as 'this' context
-                    bindings[key] = computedFn.call(bindings);
-                } catch (error) {
-                    this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
-                    bindings[key] = undefined;
-                }
-            }
-        }
-
-        // 3. Add methods
-        if (this.#options.methods) {
-            Object.assign(bindings, this.#options.methods);
-        }
-
-        // 4. Wrap the entire bindings object with a proxy for primitive value changes
-        return new Proxy(bindings, {
-            set: (obj, key, value) => {
-                const oldValue = Reflect.get(obj, key);
-                const result = Reflect.set(obj, key, value);
-
-                // Track changes to primitive values
-                if (oldValue !== value) {
-                    this.#changedKeys.add(key as string);
-                    this.scheduleUpdate();
-                }
-
-                return result;
-            }
-        });
     }
 
     /**
@@ -223,7 +163,7 @@ export class VApplication {
         }
 
         // Inject utility methods into bindings
-        this.#bindings.$nextTick = (callback: () => void) => this.nextTick(callback);
+        this.#bindings.$nextTick = (callback: () => void) => this.#nextTick(callback);
 
         // Create the root virtual node
         this.#vNode = new VNode({
@@ -243,32 +183,93 @@ export class VApplication {
     }
 
     /**
+     * Initializes bindings from data, computed properties, and methods.
+     * @returns The initialized bindings object.
+     */
+    #initializeBindings(): VBindings {
+        const bindings: VBindings = {};
+
+        // 1. Add data properties with reactive proxy for each property
+        if (this.#options.data) {
+            const data = this.#options.data();
+            if (data && typeof data === 'object') {
+                for (const [key, value] of Object.entries(data)) {
+                    if (typeof value === 'object' && value !== null) {
+                        // Wrap objects/arrays with reactive proxy, tracking the root key
+                        bindings[key] = ReactiveProxy.create(value, () => {
+                            this.#changedIdentifiers.add(key);
+                            this.#scheduleUpdate();
+                        });
+                    } else {
+                        // Primitive values are added as-is
+                        bindings[key] = value;
+                    }
+                }
+            }
+        }
+
+        // 2. Add computed properties
+        if (this.#options.computed) {
+            for (const [key, computedFn] of Object.entries(this.#options.computed)) {
+                try {
+                    // Evaluate computed property with bindings as 'this' context
+                    bindings[key] = computedFn.call(bindings);
+                } catch (error) {
+                    this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
+                    bindings[key] = undefined;
+                }
+            }
+        }
+
+        // 3. Add methods
+        if (this.#options.methods) {
+            Object.assign(bindings, this.#options.methods);
+        }
+
+        // 4. Wrap the entire bindings object with a proxy for primitive value changes
+        return new Proxy(bindings, {
+            set: (obj, key, value) => {
+                const oldValue = Reflect.get(obj, key);
+                const result = Reflect.set(obj, key, value);
+
+                // Track changes to primitive values
+                if (oldValue !== value) {
+                    this.#changedIdentifiers.add(key as string);
+                    this.#scheduleUpdate();
+                }
+
+                return result;
+            }
+        });
+    }
+
+    /**
      * Schedules a DOM update in the next microtask.
      * Multiple calls within the same event loop will be batched into a single update.
      */
-    scheduleUpdate(): void {
+    #scheduleUpdate(): void {
         if (this.#updateScheduled) {
             return;
         }
 
         this.#updateScheduled = true;
         queueMicrotask(() => {
+            this.#update();
             this.#updateScheduled = false;
-            this.update();
         });
     }
 
     /**
      * Executes an immediate DOM update.
      */
-    update(): void {
+    #update(): void {
         if (!this.#vNode) {
             return;
         }
 
         // Get the changed data properties
-        const dataChanges = Array.from(this.#changedKeys);
-        this.#changedKeys.clear();
+        const dataChanges = Array.from(this.#changedIdentifiers);
+        this.#changedIdentifiers.clear();
 
         // Re-evaluate all computed properties
         const computedChanges: string[] = [];
@@ -305,7 +306,7 @@ export class VApplication {
      * Executes a callback after the next DOM update.
      * @param callback The callback to execute.
      */
-    nextTick(callback: () => void): void {
+    #nextTick(callback: () => void): void {
         if (this.#updateScheduled) {
             queueMicrotask(() => {
                 queueMicrotask(callback);

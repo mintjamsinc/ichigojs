@@ -199,9 +199,6 @@ export class VModelDirective implements VDirective {
 
             // Update the binding
             this.#updateBinding(newValue);
-
-            // Schedule a DOM update
-            this.#vNode.vApplication.scheduleUpdate();
         };
 
         element.addEventListener(eventName, this.#listener);
