@@ -33,7 +33,7 @@ export class VForDirective implements VDirective {
     /**
      * A list of variable and function names used in the directive's expression.
      */
-    #identifiers?: string[];
+    #dependentIdentifiers?: string[];
 
     /**
      * A function that evaluates the directive's expression to get the source data.
@@ -79,7 +79,7 @@ export class VForDirective implements VDirective {
             this.#sourceName = parsed.sourceName;
 
             // Extract identifiers from the source expression
-            this.#identifiers = ExpressionUtils.extractIdentifiers(parsed.sourceName, context.vNode.vApplication.functionDependencies);
+            this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(parsed.sourceName, context.vNode.vApplication.functionDependencies);
             this.#evaluateSource = this.#createSourceEvaluator(parsed.sourceName);
         }
  
@@ -119,7 +119,7 @@ export class VForDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#identifiers ?? [];
+        const identifiers = this.#dependentIdentifiers ?? [];
         const render = () => this.#render();
 
         // Create and return the DOM updater
@@ -132,6 +132,20 @@ export class VForDirective implements VDirective {
             }
         };
         return updater;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get templatize(): boolean {
+        return true;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get dependentIdentifiers(): string[] {
+        return this.#dependentIdentifiers ?? [];
     }
 
     /**
@@ -241,7 +255,7 @@ export class VForDirective implements VDirective {
                     parent.appendChild(vNode.node);
                 }
 
-                vNode.update();
+                vNode.forceUpdate();
             } else {
                 // Reuse existing item
                 newRenderedItems.set(key, vNode);
@@ -300,7 +314,7 @@ export class VForDirective implements VDirective {
      * Creates a function to evaluate the source data expression.
      */
     #createSourceEvaluator(expression: string): () => any {
-        const identifiers = this.#identifiers ?? [];
+        const identifiers = this.#dependentIdentifiers ?? [];
         const args = identifiers.join(", ");
         const funcBody = `return (${expression});`;
 

@@ -111,9 +111,30 @@ export class VDirectiveManager {
     #parseDirectives(): VDirective[] | undefined {
         const element = this.#vNode.node as HTMLElement;
 
+        // Collect relevant attributes
+        const attributes: Attr[] = [];
+        if (element.hasAttribute(StandardDirectiveName.V_FOR)) {
+            attributes.push(element.getAttributeNode(StandardDirectiveName.V_FOR)!);
+
+            for (const attr of Array.from(element.attributes)) {
+                if (['v-bind:key', ':key'].includes(attr.name)) {
+                    attributes.push(attr);
+                    break;
+                }
+            }
+        } else if (element.hasAttribute(StandardDirectiveName.V_IF)) {
+            attributes.push(element.getAttributeNode(StandardDirectiveName.V_IF)!);
+        } else if (element.hasAttribute(StandardDirectiveName.V_ELSE_IF)) {
+            attributes.push(element.getAttributeNode(StandardDirectiveName.V_ELSE_IF)!);
+        } else if (element.hasAttribute(StandardDirectiveName.V_ELSE)) {
+            attributes.push(element.getAttributeNode(StandardDirectiveName.V_ELSE)!);
+        } else {
+            attributes.push(...Array.from(element.attributes));
+        }
+
         // Parse directives from attributes
         const directives: VDirective[] = [];
-        for (const attribute of Array.from(element.attributes)) {
+        for (const attribute of attributes) {
             // Create a context for parsing the directive
             const context: VDirectiveParseContext = {
                 vNode: this.#vNode,

@@ -49,6 +49,25 @@ export interface VDirective {
     get domUpdater(): VDOMUpdater | undefined;
 
     /**
+     * Indicates whether this directive requires the template content to be preserved.
+     * If true, the original template content will be kept intact and used as needed by the directive.
+     * This is typically true for directives that need to re-render or clone the template content,
+     * such as v-for and v-if.
+     * If false, the template content may be modified or removed as part of the directive's processing.
+     * Directives that do not need to preserve the original template content should return false.
+     * This property is used by the VNode to determine how to handle the template content.
+     * Note: This property should be implemented as a getter to allow dynamic evaluation based on directive state.
+     */
+    get templatize(): boolean;
+
+    /**
+     * Gets the list of dependent identifiers for this directive.
+     * These are the variable and function names that the directive depends on.
+     * @returns An array of dependent identifier names.
+     */
+    get dependentIdentifiers(): string[];
+
+    /**
      * Cleans up any resources used by the directive.
      * This method is called when the directive is no longer needed.
      */

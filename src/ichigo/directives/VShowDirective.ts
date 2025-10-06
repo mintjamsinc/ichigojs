@@ -27,7 +27,7 @@ export class VShowDirective implements VDirective {
     /**
      * A list of variable and function names used in the directive's expression.
      */
-    #identifiers: string[];
+    #dependentIdentifiers: string[];
 
     /*
      * A function that evaluates the directive's condition.
@@ -48,7 +48,7 @@ export class VShowDirective implements VDirective {
 
         // Parse the expression to extract identifiers and create the evaluator
         const expression = context.attribute.value;
-        this.#identifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
+        this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
         this.#evaluate = this.#createEvaluator(expression);
 
         // Remove the directive attribute from the element
@@ -91,7 +91,7 @@ export class VShowDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#identifiers ?? [];
+        const identifiers = this.#dependentIdentifiers ?? [];
         const evaluate = this.#evaluate;
         const visibleNode = () => this.visibleNode();
         const invisibleNode = () => this.invisibleNode();
@@ -111,6 +111,20 @@ export class VShowDirective implements VDirective {
             }
         };
         return updater;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get templatize(): boolean {
+        return false;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get dependentIdentifiers(): string[] {
+        return this.#dependentIdentifiers ?? [];
     }
 
     /**
@@ -160,7 +174,7 @@ export class VShowDirective implements VDirective {
      * @returns A function that evaluates the directive's condition.
      */
     #createEvaluator(expression: string): () => boolean {
-        const identifiers = this.#identifiers ?? [];
+        const identifiers = this.#dependentIdentifiers ?? [];
         const args = identifiers.join(", ");
         const funcBody = `return (${expression});`;
 

@@ -117,19 +117,21 @@ export class VNode {
         if (this.#nodeType === Node.ELEMENT_NODE && this.#node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
             const element = this.#node as HTMLElement;
 
-            // Initialize directive manager
-            this.#directiveManager = new VDirectiveManager(this);
-
             // Initialize child virtual nodes
             this.#childVNodes = [];
 
-            // Recursively create VNode instances for child nodes
-            for (const childNode of Array.from(this.#node.childNodes)) {
-                new VNode({
-                    node: childNode,
-                    vApplication: this.#vApplication,
-                    parentVNode: this
-                });
+            // Initialize directive manager
+            this.#directiveManager = new VDirectiveManager(this);
+
+            // For non-v-for elements, recursively create VNode instances for child nodes
+            if (!this.#directiveManager.directives?.some(d => d.templatize)) {
+                for (const childNode of Array.from(this.#node.childNodes)) {
+                    new VNode({
+                        node: childNode,
+                        vApplication: this.#vApplication,
+                        parentVNode: this
+                    });
+                }
             }
         }
 
@@ -374,6 +376,46 @@ export class VNode {
             if (changed) {
                 dependentNode.update();
             }
+        });
+    }
+
+    /**
+     * Forces an update of the virtual node and its children, regardless of changed identifiers.
+     * This method evaluates any expressions in text nodes and applies effectors from directives.
+     * It also recursively updates child virtual nodes.
+     * This is useful when an immediate update is needed, bypassing the usual change detection.
+     */
+    forceUpdate(): void {
+        // If this is a text node with a text evaluator, update its content if needed
+        if (this.#nodeType === Node.TEXT_NODE && this.#textEvaluator) {
+            const text = this.#node as Text;
+            text.data = this.#textEvaluator.evaluate(this.bindings);
+            return;
+        }
+
+        // Prepare new bindings using directive bindings preparers, if any
+        if (this.#directiveManager?.bindingsPreparers) {
+            // Ensure local bindings are initialized
+            if (!this.#bindings) {
+                this.#bindings = new VBindings({ parent: this.bindings });
+            }
+
+            // Prepare bindings for each preparer if relevant identifiers have changed
+            for (const preparer of this.#directiveManager.bindingsPreparers) {
+                preparer.prepareBindings();
+            }
+        }
+
+        // Apply DOM updaters from directives, if any
+        if (this.#directiveManager?.domUpdaters) {
+            for (const updater of this.#directiveManager.domUpdaters) {
+                updater.applyToDOM();
+            }
+        }
+
+        // Recursively update child virtual nodes
+        this.#childVNodes?.forEach(childVNode => {
+            childVNode.forceUpdate();
         });
     }
 

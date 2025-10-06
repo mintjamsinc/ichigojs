@@ -31,7 +31,7 @@ export class VOnDirective implements VDirective {
     /**
      * A list of variable and function names used in the directive's expression.
      */
-    #identifiers?: string[];
+    #dependentIdentifiers?: string[];
 
     /**
      * The event handler wrapper function, generated once and reused.
@@ -77,7 +77,7 @@ export class VOnDirective implements VDirective {
         // Parse the expression to extract identifiers and create the handler wrapper
         const expression = context.attribute.value;
         if (expression) {
-            this.#identifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
+            this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
             this.#handlerWrapper = this.#createHandlerWrapper(expression);
         }
 
@@ -123,6 +123,20 @@ export class VOnDirective implements VDirective {
      */
     get domUpdater(): VDOMUpdater | undefined {
         return undefined;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get templatize(): boolean {
+        return false;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get dependentIdentifiers(): string[] {
+        return this.#dependentIdentifiers ?? [];
     }
 
     /**
@@ -218,12 +232,12 @@ export class VOnDirective implements VDirective {
      * @returns A function that handles the event.
      */
     #createHandlerWrapper(expression: string): (event: Event) => any {
-        const identifiers = this.#identifiers ?? [];
+        const identifiers = this.#dependentIdentifiers ?? [];
         const vNode = this.#vNode;
 
         // Return a function that handles the event with proper scope
         return (event: Event) => {
-            const bindings = vNode.vApplication.bindings;
+            const bindings = vNode.bindings;
 
             // If the expression is just a method name, call it with bindings as 'this'
             const trimmedExpr = expression.trim();

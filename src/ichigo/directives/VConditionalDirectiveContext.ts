@@ -6,7 +6,23 @@ import { VConditionalDirective } from "./VConditionalDirective";
  * Context for managing related conditional directives (v-if, v-else-if, v-else).
  */
 export class VConditionalDirectiveContext {
+    /**
+     * A list of directives (v-if, v-else-if, v-else) in the order they appear in the template.
+     */
     #directives: VConditionalDirective[] = [];
+
+    /**
+     * A cached list of all variable and function names used in the expressions of the associated directives.
+     */
+    #allDependentIdentifiers: string[] = [];
+ 
+    /**
+     * Gets a list of all variable and function names used in the expressions of the associated directives.
+     * This is useful for determining dependencies for re-evaluation when data changes.
+     */
+    get allDependentIdentifiers(): string[] {
+        return this.#allDependentIdentifiers;
+    }
 
     /**
      * Adds a directive (v-else-if or v-else) to the conditional context.
@@ -14,6 +30,15 @@ export class VConditionalDirectiveContext {
      */
     addDirective(directive: VConditionalDirective): void {
         this.#directives.push(directive);
+
+        // Update the cached list of all dependent identifiers
+        if (directive.dependentIdentifiers) {
+            for (const id of directive.dependentIdentifiers) {
+                if (!this.#allDependentIdentifiers.includes(id)) {
+                    this.#allDependentIdentifiers.push(id);
+                }
+            }
+        }
     }
 
     /**

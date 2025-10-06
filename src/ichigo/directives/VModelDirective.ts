@@ -28,7 +28,7 @@ export class VModelDirective implements VDirective {
     /**
      * A list of variable and function names used in the directive's expression.
      */
-    #identifiers?: string[];
+    #dependentIdentifiers?: string[];
 
     /**
      * A function that evaluates the directive's expression.
@@ -69,7 +69,7 @@ export class VModelDirective implements VDirective {
         const expression = context.attribute.value;
         if (expression) {
             this.#expression = expression;
-            this.#identifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
+            this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
             this.#evaluate = this.#createEvaluator(expression);
 
             // Attach event listener for two-way binding
@@ -112,7 +112,7 @@ export class VModelDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#identifiers ?? [];
+        const identifiers = this.#dependentIdentifiers ?? [];
         const render = () => this.#render();
 
         // Create and return the DOM updater
@@ -125,6 +125,20 @@ export class VModelDirective implements VDirective {
             }
         };
         return updater;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get templatize(): boolean {
+        return false;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get dependentIdentifiers(): string[] {
+        return this.#dependentIdentifiers ?? [];
     }
 
     /**
@@ -266,16 +280,13 @@ export class VModelDirective implements VDirective {
             return;
         }
 
-        // Simple property assignment (e.g., "message")
-        // For now, only support simple identifiers
-        const trimmed = this.#expression.trim();
-        if (trimmed && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(trimmed)) {
-            this.#vNode.vApplication.bindings?.set(trimmed, newValue);
-        } else {
-            // For complex expressions like "user.name", we'd need more sophisticated parsing
-            this.#vNode.vApplication.logManager.getLogger('VModelDirective')
-                .warn(`v-model only supports simple identifiers for now: ${this.#expression}`);
-        }
+        const expression = this.#expression.trim();
+
+        const values = [newValue];
+        const args = ['$newValue'].join(", ");
+        const funcBody = `(this.${expression} = $newValue);`;
+        const func = new Function(args, funcBody) as (...args: any[]) => any;
+        func.call(this.#vNode.bindings?.raw, ...values);
     }
 
     /**
@@ -284,7 +295,7 @@ export class VModelDirective implements VDirective {
      * @returns A function that evaluates the directive's condition.
      */
     #createEvaluator(expression: string): () => any {
-        const identifiers = this.#identifiers ?? [];
+        const identifiers = this.#dependentIdentifiers ?? [];
         const args = identifiers.join(", ");
         const funcBody = `return (${expression});`;
 
@@ -294,7 +305,7 @@ export class VModelDirective implements VDirective {
         // Return a function that calls the dynamic function with the current values from bindings
         return () => {
             // Gather the current values of the identifiers from the bindings
-            const values = identifiers.map(id => this.#vNode.vApplication.bindings?.get(id));
+            const values = identifiers.map(id => this.#vNode.bindings?.get(id));
 
             // Call the dynamic function with the gathered values
             return func(...values);

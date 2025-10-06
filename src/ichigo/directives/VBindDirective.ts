@@ -32,7 +32,7 @@ export class VBindDirective implements VDirective {
     /**
      * A list of variable and function names used in the directive's expression.
      */
-    #identifiers?: string[];
+    #dependentIdentifiers?: string[];
 
     /**
      * A function that evaluates the directive's expression.
@@ -49,6 +49,18 @@ export class VBindDirective implements VDirective {
      * The original expression string from the directive.
      */
     #expression?: string;
+
+    /**
+     * The set of class names managed by this directive (used when binding to the "class" attribute).
+     * This helps in tracking which classes were added by this directive to avoid conflicts with other class manipulations.
+     */
+    #managedClasses: Set<string> = new Set();
+
+    /**
+     * The set of style properties managed by this directive (used when binding to the "style" attribute).
+     * This helps in tracking which styles were added by this directive to avoid conflicts with other style manipulations.
+     */
+    #managedStyles: Set<string> = new Set();
 
     /**
      * @param context The context for parsing the directive.
@@ -68,7 +80,7 @@ export class VBindDirective implements VDirective {
         // Parse the expression to extract identifiers and create the evaluator
         this.#expression = context.attribute.value;
         if (this.#expression) {
-            this.#identifiers = ExpressionUtils.extractIdentifiers(this.#expression, context.vNode.vApplication.functionDependencies);
+            this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(this.#expression, context.vNode.vApplication.functionDependencies);
             this.#evaluate = this.#createEvaluator(this.#expression);
         }
 
@@ -108,7 +120,7 @@ export class VBindDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#identifiers ?? [];
+        const identifiers = this.#dependentIdentifiers ?? [];
         const render = () => this.#render();
 
         // Create an updater that handles the attribute binding
@@ -121,6 +133,20 @@ export class VBindDirective implements VDirective {
             }
         };
         return updater;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get templatize(): boolean {
+        return false;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get dependentIdentifiers(): string[] {
+        return this.#dependentIdentifiers ?? [];
     }
 
     /**
@@ -184,39 +210,58 @@ export class VBindDirective implements VDirective {
      * Updates the class attribute with support for string, array, and object formats.
      */
     #updateClass(element: HTMLElement, value: any): void {
-        // Clear existing classes
-        element.className = '';
-
+        // Determine the new set of classes to apply
+        let newClasses: string[] = [];
         if (typeof value === 'string') {
-            element.className = value;
+            newClasses = value.split(/\s+/).filter(Boolean);
         } else if (Array.isArray(value)) {
-            element.className = value.filter(Boolean).join(' ');
+            newClasses = value.filter(Boolean);
         } else if (typeof value === 'object' && value !== null) {
-            const classes = Object.keys(value).filter(key => value[key]);
-            element.className = classes.join(' ');
+            newClasses = Object.keys(value).filter(key => value[key]);
         }
+
+        // Remove previously managed classes
+        this.#managedClasses.forEach(cls => element.classList.remove(cls));
+
+        // Add newly managed classes
+        newClasses.forEach(cls => element.classList.add(cls));
+
+        // Update managed classes list
+        this.#managedClasses = new Set(newClasses);
     }
 
     /**
      * Updates the style attribute with support for object format.
      */
     #updateStyle(element: HTMLElement, value: any): void {
-        if (typeof value === 'string') {
-            element.style.cssText = value;
-        } else if (typeof value === 'object' && value !== null) {
-            // Clear existing inline styles
-            element.style.cssText = '';
+        let newStyles: string[] = [];
 
+        if (typeof value === 'string') {
+            // Directly set the style string
+            element.style.cssText = value;
+            // Extract managed properties
+            newStyles = value.split(';').map(s => s.split(':')[0].trim()).filter(Boolean);
+        } else if (typeof value === 'object' && value !== null) {
+            // Remove all previously managed properties
+            this.#managedStyles.forEach(prop => {
+                element.style.removeProperty(this.#camelToKebab(prop));
+            });
+
+            // Add newly managed properties
             for (const key in value) {
                 if (Object.prototype.hasOwnProperty.call(value, key)) {
                     const cssKey = this.#camelToKebab(key);
                     const cssValue = value[key];
                     if (cssValue != null) {
                         element.style.setProperty(cssKey, String(cssValue));
+                        newStyles.push(key);
                     }
                 }
             }
         }
+
+        // Update managed properties list
+        this.#managedStyles = new Set(newStyles);
     }
 
     /**
@@ -281,7 +326,7 @@ export class VBindDirective implements VDirective {
      * @returns A function that evaluates the directive's condition.
      */
     #createEvaluator(expression: string): () => any {
-        const identifiers = this.#identifiers ?? [];
+        const identifiers = this.#dependentIdentifiers ?? [];
         const args = identifiers.join(", ");
         const funcBody = `return (${expression});`;
 

@@ -40,25 +40,44 @@ export class VBindings {
 		this.#local = new Proxy({}, {
 			get: (obj, key) => {
 				if (Reflect.has(obj, key)) {
-                    return Reflect.get(obj, key);
-                }
-                return this.#parent?.get(key as string);
+					return Reflect.get(obj, key);
+				}
+				return this.#parent?.raw[key as string];
 			},
 			set: (obj, key, value) => {
-				const oldValue = Reflect.get(obj, key);
-				const result = Reflect.set(obj, key, value);
-				if (oldValue !== value) {
+				let target = obj;
+				if (!Reflect.has(target, key)) {
+					for (let parent = this.#parent; parent; parent = parent.#parent) {
+						if (Reflect.has(parent.#local, key)) {
+							target = parent.#local;
+							break;
+						}
+					}
+				}
+
+				let newValue = value;
+				if (typeof value === 'object' && value !== null) {
+					// Wrap objects/arrays with reactive proxy, tracking the root key
+					newValue = ReactiveProxy.create(value, () => {
+						this.#changes.add(key as string);
+						this.#onChange?.(key as string);
+					});
+				}
+
+				const oldValue = Reflect.get(target, key);
+				const result = Reflect.set(target, key, newValue);
+				if ((oldValue !== newValue) || (typeof oldValue === 'object' || typeof newValue === 'object')) {
 					this.#changes.add(key as string);
 					this.#onChange?.(key as string);
 				}
 				return result;
 			},
-            deleteProperty: (obj, key) => {
-                const result = Reflect.deleteProperty(obj, key);
+			deleteProperty: (obj, key) => {
+				const result = Reflect.deleteProperty(obj, key);
 				this.#changes.add(key as string);
-                this.#onChange?.(key as string);
-                return result;
-            }
+				this.#onChange?.(key as string);
+				return result;
+			}
 		});
 	}
 
@@ -90,6 +109,13 @@ export class VBindings {
 	}
 
 	/**
+	 * Indicates whether this is the root bindings (i.e., has no parent).
+	 */
+	get isRoot(): boolean {
+		return !this.#parent;
+	}
+
+	/**
 	 * Clears the set of changed identifiers.
 	 */
 	clearChanges(): void {
@@ -97,38 +123,25 @@ export class VBindings {
 	}
 
 	/**
-	 * Sets a local binding.
+	 * Sets a binding value.
 	 * @param key The binding name.
 	 * @param value The binding value.
 	 */
 	set(key: string, value: any): void {
-		if (typeof value === 'object' && value !== null) {
-			// Wrap objects/arrays with reactive proxy, tracking the root key
-			this.#local[key] = ReactiveProxy.create(value, () => {
-				this.#changes.add(key);
-				this.#onChange?.(key);
-			});
-			return;
-		}
-
 		this.#local[key] = value;
 	}
 
 	/**
-	 * Gets a binding value, searching parent bindings if not found locally.
+	 * Gets a binding value.
 	 * @param key The binding name.
 	 * @returns The binding value, or undefined if not found.
 	 */
 	get(key: string): any {
-		if (key in this.#local) {
-			return this.#local[key];
-		}
-
-		return this.#parent?.get(key);
+		return this.#local[key];
 	}
 
 	/**
-	 * Checks if a binding exists, searching parent bindings if specified.
+	 * Checks if a binding exists.
 	 * @param key The binding name.
 	 * @param recursive Whether to search parent bindings. Default is true.
 	 * @returns True if the binding exists, false otherwise.

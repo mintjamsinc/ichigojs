@@ -19,7 +19,7 @@ export abstract class VConditionalDirective implements VDirective {
      * A list of variable and function names used in the directive's expression.
      * This may be undefined if the directive does not have an expression (e.g., v-else).
      */
-    #identifiers?: string[];
+    #dependentIdentifiers?: string[];
 
     /*
      * A function that evaluates the directive's condition.
@@ -34,6 +34,11 @@ export abstract class VConditionalDirective implements VDirective {
     #conditionalContext: VConditionalDirectiveContext;
 
     /**
+     * The currently rendered virtual node, if any.
+     */
+    #renderedVNode?: VNode;
+
+    /**
      * @param context The context for parsing the directive.
      */
     constructor(context: VDirectiveParseContext) {
@@ -42,7 +47,7 @@ export abstract class VConditionalDirective implements VDirective {
         // Parse the expression to extract identifiers and create the evaluator
         const expression = context.attribute.value;
         if (expression) {
-            this.#identifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
+            this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
             this.#evaluate = this.#createEvaluator(expression);
         }
 
@@ -84,7 +89,7 @@ export abstract class VConditionalDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#identifiers ?? [];
+        const identifiers = this.#conditionalContext.allDependentIdentifiers;
         const render = () => this.#render();
 
         // Create an updater that handles the conditional rendering
@@ -97,6 +102,20 @@ export abstract class VConditionalDirective implements VDirective {
             }
         };
         return updater;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get templatize(): boolean {
+        return true;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get dependentIdentifiers(): string[] {
+        return this.#dependentIdentifiers ?? [];
     }
 
     /**
@@ -159,22 +178,14 @@ export abstract class VConditionalDirective implements VDirective {
      * If the node is already in the DOM, no action is taken.
      */
     #insertNode(): void {
-        if (this.#vNode.isInDOM) {
-            // Already in DOM, no action needed
+        if (this.#renderedVNode) {
+            // Already rendered, no action needed
             return;
         }
 
-        if (this.#vNode?.anchorNode) {
-            // Insert after the anchor node
-            this.#vNode.anchorNode.parentNode?.insertBefore(this.#vNode.node, this.#vNode.anchorNode.nextSibling);
-        } else if (this.#vNode.parentVNode) {
-            // Append to the parent node
-            const parentElement = this.#vNode.parentVNode.node as HTMLElement;
-            parentElement.appendChild(this.#vNode.node);
-        } else {
-            // No anchor or parent VNode available
-            throw new Error("Cannot insert node: No anchor or parent VNode available.");
-        }
+        this.#renderedVNode = this.#cloneTemplate(); 
+        this.#vNode.anchorNode?.parentNode?.insertBefore(this.#renderedVNode.node, this.#vNode.anchorNode.nextSibling);
+        this.#renderedVNode.forceUpdate();
     }
 
     /**
@@ -182,12 +193,31 @@ export abstract class VConditionalDirective implements VDirective {
      * If the node is not in the DOM, no action is taken.
      */
     #removedNode(): void {
-        if (!this.#vNode.isInDOM) {
-            // Already removed from DOM, no action needed
+        if (!this.#renderedVNode) {
+            // Not rendered, no action needed
             return;
         }
 
-        this.#vNode.node.parentNode?.removeChild(this.#vNode.node);
+        this.#renderedVNode.node.parentNode?.removeChild(this.#renderedVNode.node);
+        this.#renderedVNode.destroy();
+        this.#renderedVNode = undefined;
+    }
+
+    /**
+     * Clones the template element and creates a new VNode for the cloned element.
+     */
+    #cloneTemplate(): VNode {
+        const element = this.#vNode.node as HTMLElement;
+        const clone = element.cloneNode(true) as HTMLElement;
+
+        // Create a new VNode for the cloned element
+        const vNode = new VNode({
+            node: clone,
+            vApplication: this.#vNode.vApplication,
+            parentVNode: this.#vNode.parentVNode
+        });
+
+        return vNode;
     }
 
     /**
@@ -196,7 +226,7 @@ export abstract class VConditionalDirective implements VDirective {
      * @returns A function that evaluates the directive's condition.
      */
     #createEvaluator(expression: string): () => boolean {
-        const identifiers = this.#identifiers ?? [];
+        const identifiers = this.#dependentIdentifiers ?? [];
         const args = identifiers.join(", ");
         const funcBody = `return (${expression});`;
 
