@@ -91,10 +91,10 @@ export class VBindings {
 				let hasChanged = oldValue !== newValue;
 
 				// Special handling for arrays: check length changes even if same object reference
-				if (!hasChanged && Array.isArray(newValue)) {
+				if (Array.isArray(newValue)) {
 					const cachedLength = this.#lengthCache.get(key as string);
 					const currentLength = newValue.length;
-					if (cachedLength !== undefined && cachedLength !== currentLength) {
+					if (!hasChanged && cachedLength !== undefined && cachedLength !== currentLength) {
 						hasChanged = true;
 					}
 					this.#lengthCache.set(key as string, currentLength);
