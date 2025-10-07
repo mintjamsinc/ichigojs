@@ -320,14 +320,7 @@ export class VApplication {
                 // Track if the computed value actually changed
                 if (oldValue !== newValue) {
                     this.#bindings?.set(key, newValue);
-                    this.#bindings?.changes.forEach(id => {
-                        allChanges.add(id);
-
-                        const idx = id.indexOf('[');
-                        if (idx !== -1) {
-                            allChanges.add(id.substring(0, idx));
-                        }
-                    });
+                    allChanges.add(key);
                 }
             } catch (error) {
                 this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
