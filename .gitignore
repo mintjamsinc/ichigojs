@@ -67,3 +67,13 @@ vdom.min.js
 .vscode/
 *.iml
 # End of IDE settings
+
+# Claude Code settings
+.claude/
+
+# Markdown files (except README.md)
+*.md
+!README.md
+
+# Test directory
+test/
