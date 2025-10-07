@@ -449,7 +449,7 @@
               <div class="product-details">
                 <div class="product-name">{{ product.name }}</div>
                 <div class="product-description">{{ product.description }}</div>
-                <div class="product-price">¥{{ product.price.toLocaleString() }}</div>
+                <div class="product-price">${{ product.price.toLocaleString() }}</div>
               </div>
               <div class="product-action">
                 <button
@@ -481,7 +481,7 @@
                 <div class="cart-item-image">{{ item.emoji }}</div>
                 <div class="cart-item-details">
                   <div class="cart-item-name">{{ item.name }}</div>
-                  <div class="cart-item-price">¥{{ item.price.toLocaleString() }}</div>
+                  <div class="cart-item-price">${{ item.price.toLocaleString() }}</div>
                 </div>
                 <div class="cart-item-controls">
                   <div class="quantity-controls">
@@ -512,22 +512,22 @@
             <div class="cart-summary">
               <div class="summary-row">
                 <span class="summary-label">Subtotal</span>
-                <span class="summary-value">¥{{ subtotal.toLocaleString() }}</span>
+                <span class="summary-value">${{ subtotal.toLocaleString() }}</span>
               </div>
               <div class="summary-row" v-if="discount > 0">
                 <span class="summary-label">Discount ({{ discountRate }}%)</span>
-                <span class="summary-value" style="color: #ef4444;">-¥{{ discount.toLocaleString() }}</span>
+                <span class="summary-value" style="color: #ef4444;">-${{ discount.toLocaleString() }}</span>
               </div>
               <div class="summary-row">
                 <span class="summary-label">Shipping</span>
                 <span class="summary-value">
                   <span v-if="shipping === 0" style="color: #10b981;">Free</span>
-                  <span v-else>¥{{ shipping.toLocaleString() }}</span>
+                  <span v-else>${{ shipping.toLocaleString() }}</span>
                 </span>
               </div>
               <div class="summary-row total">
                 <span>Total</span>
-                <span style="color: #fa709a;">¥{{ total.toLocaleString() }}</span>
+                <span style="color: #fa709a;">${{ total.toLocaleString() }}</span>
               </div>
               <button @click="checkout" class="btn-checkout">Proceed to Checkout</button>
             </div>
@@ -556,7 +556,7 @@
               id: 1,
               name: 'Premium Headphones',
               description: 'Noise cancelling technology',
-              price: 29800,
+              price: 199,
               emoji: '🎧',
               inStock: true
             },
@@ -564,7 +564,7 @@
               id: 2,
               name: 'Smart Watch Pro',
               description: 'Latest model with health tracking',
-              price: 45000,
+              price: 300,
               emoji: '⌚',
               inStock: true
             },
@@ -572,7 +572,7 @@
               id: 3,
               name: 'Wireless Keyboard',
               description: 'Mechanical switches',
-              price: 15600,
+              price: 104,
               emoji: '⌨️',
               inStock: true
             },
@@ -580,7 +580,7 @@
               id: 4,
               name: 'Gaming Mouse',
               description: 'High-precision sensor',
-              price: 8900,
+              price: 59,
               emoji: '🖱️',
               inStock: true
             },
@@ -588,7 +588,7 @@
               id: 5,
               name: 'Portable SSD 1TB',
               description: 'Ultra-fast data transfer',
-              price: 12800,
+              price: 85,
               emoji: '💾',
               inStock: true
             },
@@ -596,7 +596,7 @@
               id: 6,
               name: '4K Web Camera',
               description: 'Perfect for remote work',
-              price: 18500,
+              price: 123,
               emoji: '📷',
               inStock: false
             }
@@ -624,8 +624,8 @@
         },
 
         shipping() {
-          // Free shipping over 10,000 yen
-          return this.subtotal >= 10000 ? 0 : 600;
+          // Free shipping over $67
+          return this.subtotal >= 67 ? 0 : 4;
         },
 
         total() {
@@ -701,7 +701,7 @@
         },
 
         checkout() {
-          alert(`Thank you for your purchase!\nTotal: ¥${this.total.toLocaleString()}`);
+          alert(`Thank you for your purchase!\nTotal: $${this.total.toLocaleString()}`);
           this.cartItems = [];
           this.couponCode = '';
           this.discountRate = 0;

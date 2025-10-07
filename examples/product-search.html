@@ -339,7 +339,7 @@
             <div class="product-name">{{ product.name }}</div>
             <div class="product-description">{{ product.description }}</div>
             <div class="product-footer">
-              <div class="product-price">¥{{ product.price.toLocaleString() }}</div>
+              <div class="product-price">${{ product.price.toLocaleString() }}</div>
               <div
                 class="product-stock"
                 :class="{
@@ -390,7 +390,7 @@
               id: 1,
               name: 'Wireless Earbuds',
               category: 'electronics',
-              price: 12800,
+              price: 85,
               stock: 45,
               emoji: '🎧',
               description: 'High-quality Bluetooth 5.0 earbuds'
@@ -399,7 +399,7 @@
               id: 2,
               name: 'Smart Watch',
               category: 'electronics',
-              price: 28000,
+              price: 187,
               stock: 8,
               emoji: '⌚',
               description: 'Smart watch with health tracking'
@@ -408,7 +408,7 @@
               id: 3,
               name: 'Denim Jacket',
               category: 'fashion',
-              price: 8900,
+              price: 59,
               stock: 23,
               emoji: '👔',
               description: 'Casual denim jacket'
@@ -417,7 +417,7 @@
               id: 4,
               name: 'Leather Bag',
               category: 'fashion',
-              price: 15000,
+              price: 100,
               stock: 12,
               emoji: '👜',
               description: 'Premium genuine leather bag'
@@ -426,7 +426,7 @@
               id: 5,
               name: 'Organic Coffee',
               category: 'food',
-              price: 1200,
+              price: 8,
               stock: 156,
               emoji: '☕',
               description: 'Organic coffee beans 200g'
@@ -435,7 +435,7 @@
               id: 6,
               name: 'Premium Chocolate',
               category: 'food',
-              price: 2500,
+              price: 17,
               stock: 67,
               emoji: '🍫',
               description: 'Belgian premium chocolate'
@@ -444,7 +444,7 @@
               id: 7,
               name: 'TypeScript Guide',
               category: 'books',
-              price: 3200,
+              price: 21,
               stock: 34,
               emoji: '📚',
               description: 'TypeScript guide for beginners'
@@ -453,7 +453,7 @@
               id: 8,
               name: 'Design Patterns',
               category: 'books',
-              price: 4800,
+              price: 32,
               stock: 0,
               emoji: '📖',
               description: 'Classic software design patterns'
@@ -462,7 +462,7 @@
               id: 9,
               name: 'Laptop',
               category: 'electronics',
-              price: 89000,
+              price: 593,
               stock: 5,
               emoji: '💻',
               description: 'High-performance laptop'
@@ -471,7 +471,7 @@
               id: 10,
               name: 'Sneakers',
               category: 'fashion',
-              price: 12000,
+              price: 80,
               stock: 18,
               emoji: '👟',
               description: 'Casual sneakers'
@@ -480,7 +480,7 @@
               id: 11,
               name: 'Green Tea Set',
               category: 'food',
-              price: 1800,
+              price: 12,
               stock: 92,
               emoji: '🍵',
               description: 'Premium Japanese green tea set'
@@ -489,7 +489,7 @@
               id: 12,
               name: 'Business Book',
               category: 'books',
-              price: 1600,
+              price: 11,
               stock: 45,
               emoji: '📕',
               description: 'Business guide for entrepreneurs'
