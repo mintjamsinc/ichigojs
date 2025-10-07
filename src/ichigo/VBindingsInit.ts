@@ -2,8 +2,6 @@
 
 import { VApplication } from "./VApplication";
 import { VBindings } from "./VBindings";
-import { VBindingsPreparer } from "./VBindingsPreparer";
-import { VNode } from "./VNode";
 
 /**
  * Initialization arguments for bindings.
@@ -19,4 +17,9 @@ export interface VBindingsInit {
 	 * @param identifier The identifier that changed.
 	 */
 	onChange?: (identifier: string) => void;
+
+	/**
+	 * The virtual application instance, if any.
+	 */
+	vApplication?: VApplication;
 }

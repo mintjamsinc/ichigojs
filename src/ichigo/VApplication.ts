@@ -194,7 +194,8 @@ export class VApplication {
         this.#bindings = new VBindings({
             onChange: (identifier) => {
                 this.#scheduleUpdate();
-            }
+            },
+            vApplication: this
         });
 
         // Inject utility methods into bindings

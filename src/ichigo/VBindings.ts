@@ -1,6 +1,7 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
 import { ReactiveProxy } from "./util/ReactiveProxy";
+import { VLogger } from "./util/VLogger";
 import { VBindingsInit } from "./VBindingsInit";
 
 /**
@@ -22,7 +23,12 @@ export class VBindings {
 	/**
 	 * The change tracker, if any.
 	 */
-	#onChange: ((identifier: string) => void) | undefined;
+	#onChange?: (identifier: string) => void;
+
+	/**
+	 * The logger instance.
+	 */
+	#logger?: VLogger;
 
 	/**
 	 * The set of changed identifiers.
@@ -41,6 +47,10 @@ export class VBindings {
 	constructor(args: VBindingsInit = {}) {
 		this.#parent = args.parent;
 		this.#onChange = args.onChange;
+		this.#logger = args.vApplication?.logManager.getLogger('VBindings');
+		if (this.#logger?.isDebugEnabled) {
+			this.#logger.debug(`VBindings created. Parent: ${this.#parent ? 'yes' : 'no'}`);
+		}
 
 		this.#local = new Proxy({}, {
 			get: (obj, key) => {
@@ -67,6 +77,7 @@ export class VBindings {
 						let path = '';
 						for (const part of changedPath?.split('.') || []) {
 							path = path ? `${path}.${part}` : part;
+							this.#logger?.debug(`Binding changed: ${path}`);
 							this.#changes.add(path);
 						}
 						this.#onChange?.(changedPath as string);
@@ -90,6 +101,13 @@ export class VBindings {
 				}
 
 				if (hasChanged) {
+					if (this.#logger?.isDebugEnabled) {
+						const oldValueString = typeof oldValue === 'string' ? `"${oldValue}"` : JSON.stringify(oldValue) || 'undefined';
+						const newValueString = typeof newValue === 'string' ? `"${newValue}"` : JSON.stringify(newValue) || 'undefined';
+						const oldValuePreview = oldValueString.length > 100 ? `${oldValueString.substring(0, 100)}...` : oldValueString;
+						const newValuePreview = newValueString.length > 100 ? `${newValueString.substring(0, 100)}...` : newValueString;
+						this.#logger.debug(`Binding set on ${target === obj ? 'local' : 'parent'}: ${key as string}: ${oldValuePreview} -> ${newValuePreview}`);
+					}
 					this.#changes.add(key as string);
 					this.#onChange?.(key as string);
 				}
@@ -97,6 +115,7 @@ export class VBindings {
 			},
 			deleteProperty: (obj, key) => {
 				const result = Reflect.deleteProperty(obj, key);
+				this.#logger?.debug(`Binding deleted: ${key as string}`);
 				this.#changes.add(key as string);
 				this.#onChange?.(key as string);
 				return result;
