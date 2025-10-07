@@ -238,10 +238,13 @@ export class VModelDirective implements VDirective {
 
         // .number modifier: convert to number
         if (this.#modifiers.has('number')) {
-            const parsed = Number(result);
-            // Only convert if it's a valid number
-            if (!isNaN(parsed)) {
-                result = parsed;
+            // Skip conversion if the value is empty string
+            if (result !== '') {
+                const parsed = Number(result);
+                // Only convert if it's a valid number
+                if (!isNaN(parsed)) {
+                    result = parsed;
+                }
             }
         }
 
