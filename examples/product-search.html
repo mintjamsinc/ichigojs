@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Product Search - ichigo.js Example</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 40px;
+      padding: 20px;
+    }
+
+    .header h1 {
+      font-size: 36px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 16px;
+    }
+
+    .search-section {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    }
+
+    .search-box {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .search-input {
+      flex: 1;
+      padding: 14px 20px;
+      border: 2px solid #e5e7eb;
+      border-radius: 12px;
+      font-size: 16px;
+      transition: all 0.2s;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: #f5576c;
+      box-shadow: 0 0 0 3px rgba(245, 87, 108, 0.1);
+    }
+
+    .filters {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .filter-group label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #6b7280;
+    }
+
+    .filter-select {
+      padding: 8px 12px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-select:focus {
+      outline: none;
+      border-color: #f5576c;
+    }
+
+    .price-range {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .price-input {
+      width: 80px;
+      padding: 8px 12px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .stats {
+      background: #f9fafb;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #6b7280;
+      margin-top: 16px;
+    }
+
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .product-card {
+      background: white;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s;
+      animation: fadeIn 0.4s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .product-card:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+    }
+
+    .product-image {
+      width: 100%;
+      height: 200px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      position: relative;
+    }
+
+    .product-badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      padding: 4px 12px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #f5576c;
+    }
+
+    .product-info {
+      padding: 20px;
+    }
+
+    .product-category {
+      font-size: 12px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .product-name {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #1f2937;
+    }
+
+    .product-description {
+      font-size: 14px;
+      color: #6b7280;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .product-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .product-price {
+      font-size: 24px;
+      font-weight: 700;
+      color: #f5576c;
+    }
+
+    .product-stock {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .product-stock.in-stock {
+      color: #10b981;
+    }
+
+    .product-stock.low-stock {
+      color: #f59e0b;
+    }
+
+    .product-stock.out-of-stock {
+      color: #ef4444;
+    }
+
+    .empty-state {
+      background: white;
+      border-radius: 16px;
+      padding: 60px 24px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .empty-state svg {
+      width: 100px;
+      height: 100px;
+      margin-bottom: 20px;
+      opacity: 0.3;
+    }
+
+    .empty-state h3 {
+      font-size: 20px;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+
+    .empty-state p {
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🍓 Product Search</h1>
+      <p>Real-time search and filtering powered by ichigo.js</p>
+    </div>
+
+    <div id="app">
+      <!-- Search Section -->
+      <div class="search-section">
+        <div class="search-box">
+          <input
+            v-model="searchQuery"
+            class="search-input"
+            type="text"
+            placeholder="商品名で検索...">
+        </div>
+
+        <div class="filters">
+          <div class="filter-group">
+            <label>カテゴリ:</label>
+            <select v-model="selectedCategory" class="filter-select">
+              <option value="">すべて</option>
+              <option value="electronics">電化製品</option>
+              <option value="fashion">ファッション</option>
+              <option value="food">食品</option>
+              <option value="books">書籍</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>並び替え:</label>
+            <select v-model="sortBy" class="filter-select">
+              <option value="name">名前順</option>
+              <option value="price-asc">価格: 安い順</option>
+              <option value="price-desc">価格: 高い順</option>
+              <option value="stock">在庫数順</option>
+            </select>
+          </div>
+
+          <div class="filter-group price-range">
+            <label>価格:</label>
+            <input
+              v-model.number="minPrice"
+              class="price-input"
+              type="number"
+              placeholder="最小">
+            <span>〜</span>
+            <input
+              v-model.number="maxPrice"
+              class="price-input"
+              type="number"
+              placeholder="最大">
+          </div>
+        </div>
+
+        <div class="stats">
+          {{ filteredProducts.length }} 件の商品が見つかりました
+          <span v-if="searchQuery"> (検索: "{{ searchQuery }}")</span>
+        </div>
+      </div>
+
+      <!-- Product Grid -->
+      <div v-if="filteredProducts.length > 0" class="product-grid">
+        <div
+          v-for="product in filteredProducts"
+          :key="product.id"
+          class="product-card">
+          <div class="product-image">
+            <span>{{ product.emoji }}</span>
+            <div v-if="product.stock < 10 && product.stock > 0" class="product-badge">
+              残りわずか
+            </div>
+          </div>
+          <div class="product-info">
+            <div class="product-category">{{ categoryNames[product.category] }}</div>
+            <div class="product-name">{{ product.name }}</div>
+            <div class="product-description">{{ product.description }}</div>
+            <div class="product-footer">
+              <div class="product-price">¥{{ product.price.toLocaleString() }}</div>
+              <div
+                class="product-stock"
+                :class="{
+                  'in-stock': product.stock > 10,
+                  'low-stock': product.stock > 0 && product.stock <= 10,
+                  'out-of-stock': product.stock === 0
+                }">
+                <span v-if="product.stock > 0">在庫: {{ product.stock }}</span>
+                <span v-else>在庫切れ</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div v-else class="empty-state">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+        </svg>
+        <h3>商品が見つかりませんでした</h3>
+        <p>検索条件を変更してみてください</p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { VDOM } from '../dist/ichigo.esm.js';
+
+    VDOM.createApp({
+      data() {
+        return {
+          searchQuery: '',
+          selectedCategory: '',
+          sortBy: 'name',
+          minPrice: null,
+          maxPrice: null,
+
+          categoryNames: {
+            electronics: '電化製品',
+            fashion: 'ファッション',
+            food: '食品',
+            books: '書籍'
+          },
+
+          products: [
+            {
+              id: 1,
+              name: 'ワイヤレスイヤホン',
+              category: 'electronics',
+              price: 12800,
+              stock: 45,
+              emoji: '🎧',
+              description: '高音質Bluetooth 5.0対応イヤホン'
+            },
+            {
+              id: 2,
+              name: 'スマートウォッチ',
+              category: 'electronics',
+              price: 28000,
+              stock: 8,
+              emoji: '⌚',
+              description: '健康管理機能付きスマートウォッチ'
+            },
+            {
+              id: 3,
+              name: 'デニムジャケット',
+              category: 'fashion',
+              price: 8900,
+              stock: 23,
+              emoji: '👔',
+              description: 'カジュアルなデニムジャケット'
+            },
+            {
+              id: 4,
+              name: 'レザーバッグ',
+              category: 'fashion',
+              price: 15000,
+              stock: 12,
+              emoji: '👜',
+              description: '本革使用の高級バッグ'
+            },
+            {
+              id: 5,
+              name: 'オーガニックコーヒー',
+              category: 'food',
+              price: 1200,
+              stock: 156,
+              emoji: '☕',
+              description: '有機栽培コーヒー豆 200g'
+            },
+            {
+              id: 6,
+              name: 'プレミアムチョコレート',
+              category: 'food',
+              price: 2500,
+              stock: 67,
+              emoji: '🍫',
+              description: 'ベルギー産高級チョコレート'
+            },
+            {
+              id: 7,
+              name: 'TypeScript入門書',
+              category: 'books',
+              price: 3200,
+              stock: 34,
+              emoji: '📚',
+              description: '初心者向けTypeScript解説書'
+            },
+            {
+              id: 8,
+              name: 'デザインパターン',
+              category: 'books',
+              price: 4800,
+              stock: 0,
+              emoji: '📖',
+              description: 'ソフトウェア設計の定番書'
+            },
+            {
+              id: 9,
+              name: 'ノートPC',
+              category: 'electronics',
+              price: 89000,
+              stock: 5,
+              emoji: '💻',
+              description: '高性能ノートパソコン'
+            },
+            {
+              id: 10,
+              name: 'スニーカー',
+              category: 'fashion',
+              price: 12000,
+              stock: 18,
+              emoji: '👟',
+              description: 'カジュアルスニーカー'
+            },
+            {
+              id: 11,
+              name: '緑茶セット',
+              category: 'food',
+              price: 1800,
+              stock: 92,
+              emoji: '🍵',
+              description: '高級日本茶セット'
+            },
+            {
+              id: 12,
+              name: 'ビジネス書',
+              category: 'books',
+              price: 1600,
+              stock: 45,
+              emoji: '📕',
+              description: '起業家のためのビジネス入門'
+            }
+          ]
+        };
+      },
+
+      computed: {
+        filteredProducts() {
+          let result = this.products;
+
+          // Search filter
+          if (this.searchQuery) {
+            const query = this.searchQuery.toLowerCase();
+            result = result.filter(p =>
+              p.name.toLowerCase().includes(query) ||
+              p.description.toLowerCase().includes(query)
+            );
+          }
+
+          // Category filter
+          if (this.selectedCategory) {
+            result = result.filter(p => p.category === this.selectedCategory);
+          }
+
+          // Price filter
+          if (this.minPrice !== null && this.minPrice !== '') {
+            result = result.filter(p => p.price >= this.minPrice);
+          }
+          if (this.maxPrice !== null && this.maxPrice !== '') {
+            result = result.filter(p => p.price <= this.maxPrice);
+          }
+
+          // Sort
+          const sorted = [...result];
+          if (this.sortBy === 'name') {
+            sorted.sort((a, b) => a.name.localeCompare(b.name));
+          } else if (this.sortBy === 'price-asc') {
+            sorted.sort((a, b) => a.price - b.price);
+          } else if (this.sortBy === 'price-desc') {
+            sorted.sort((a, b) => b.price - a.price);
+          } else if (this.sortBy === 'stock') {
+            sorted.sort((a, b) => b.stock - a.stock);
+          }
+
+          return sorted;
+        }
+      },
+
+      logLevel: 'debug'
+    }).mount('#app');
+  </script>
+</body>
+</html>

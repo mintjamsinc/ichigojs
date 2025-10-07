@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shopping Cart - ichigo.js Example</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 40px;
+      padding: 20px;
+    }
+
+    .header h1 {
+      font-size: 36px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 16px;
+    }
+
+    .main-content {
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      gap: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      .main-content {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .products-section {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    }
+
+    .section-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      color: #1f2937;
+    }
+
+    .product-list {
+      display: grid;
+      gap: 16px;
+    }
+
+    .product-item {
+      display: grid;
+      grid-template-columns: 80px 1fr auto;
+      gap: 16px;
+      padding: 16px;
+      border: 2px solid #f3f4f6;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+
+    .product-item:hover {
+      border-color: #fa709a;
+      background: #fffbf7;
+    }
+
+    .product-image {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+    }
+
+    .product-details {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .product-name {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #1f2937;
+    }
+
+    .product-description {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+
+    .product-price {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fa709a;
+    }
+
+    .product-action {
+      display: flex;
+      align-items: center;
+    }
+
+    .btn-add-cart {
+      padding: 10px 20px;
+      background: #fa709a;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-add-cart:hover {
+      background: #f85a8d;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(250, 112, 154, 0.4);
+    }
+
+    .btn-add-cart:disabled {
+      background: #d1d5db;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .cart-section {
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+      height: fit-content;
+      position: sticky;
+      top: 20px;
+    }
+
+    .cart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .cart-count {
+      background: #fa709a;
+      color: white;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .cart-items {
+      max-height: 400px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+
+    .cart-item {
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      border-bottom: 1px solid #f3f4f6;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .cart-item-image {
+      width: 50px;
+      height: 50px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .cart-item-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .cart-item-name {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #1f2937;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cart-item-price {
+      font-size: 13px;
+      color: #6b7280;
+    }
+
+    .cart-item-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .quantity-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #f9fafb;
+      border-radius: 6px;
+      padding: 4px;
+    }
+
+    .btn-quantity {
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: white;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      color: #6b7280;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .btn-quantity:hover {
+      background: #fa709a;
+      color: white;
+    }
+
+    .quantity-display {
+      width: 30px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .btn-remove {
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: #fee2e2;
+      color: #ef4444;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .btn-remove:hover {
+      background: #ef4444;
+      color: white;
+    }
+
+    .cart-summary {
+      border-top: 2px solid #f3f4f6;
+      padding-top: 16px;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+
+    .summary-row.total {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1f2937;
+      padding-top: 12px;
+      border-top: 1px solid #f3f4f6;
+    }
+
+    .summary-label {
+      color: #6b7280;
+    }
+
+    .summary-value {
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .btn-checkout {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 16px;
+      transition: all 0.2s;
+    }
+
+    .btn-checkout:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(250, 112, 154, 0.4);
+    }
+
+    .btn-checkout:disabled {
+      background: #d1d5db;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .empty-cart {
+      text-align: center;
+      padding: 40px 20px;
+      color: #9ca3af;
+    }
+
+    .empty-cart svg {
+      width: 60px;
+      height: 60px;
+      margin-bottom: 12px;
+      opacity: 0.3;
+    }
+
+    .discount-section {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #f3f4f6;
+    }
+
+    .discount-input {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .discount-input input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 2px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    .discount-input input:focus {
+      outline: none;
+      border-color: #fa709a;
+    }
+
+    .btn-apply {
+      padding: 8px 16px;
+      background: #f3f4f6;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-apply:hover {
+      background: #fa709a;
+      color: white;
+    }
+
+    .discount-message {
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .discount-message.success {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .discount-message.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🍓 Shopping Cart</h1>
+      <p>Interactive shopping experience powered by ichigo.js</p>
+    </div>
+
+    <div id="app">
+      <div class="main-content">
+        <!-- Products Section -->
+        <div class="products-section">
+          <h2 class="section-title">商品一覧</h2>
+          <div class="product-list">
+            <div
+              v-for="product in products"
+              :key="product.id"
+              class="product-item">
+              <div class="product-image">{{ product.emoji }}</div>
+              <div class="product-details">
+                <div class="product-name">{{ product.name }}</div>
+                <div class="product-description">{{ product.description }}</div>
+                <div class="product-price">¥{{ product.price.toLocaleString() }}</div>
+              </div>
+              <div class="product-action">
+                <button
+                  @click="addToCart(product)"
+                  :disabled="!product.inStock"
+                  class="btn-add-cart">
+                  <span v-if="product.inStock">カートに追加</span>
+                  <span v-else>在庫切れ</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cart Section -->
+        <div class="cart-section">
+          <div class="cart-header">
+            <h2 class="section-title">ショッピングカート</h2>
+            <div class="cart-count">{{ totalItems }}</div>
+          </div>
+
+          <!-- Cart Items -->
+          <div v-if="cartItems.length > 0">
+            <div class="cart-items">
+              <div
+                v-for="item in cartItems"
+                :key="item.id"
+                class="cart-item">
+                <div class="cart-item-image">{{ item.emoji }}</div>
+                <div class="cart-item-details">
+                  <div class="cart-item-name">{{ item.name }}</div>
+                  <div class="cart-item-price">¥{{ item.price.toLocaleString() }}</div>
+                </div>
+                <div class="cart-item-controls">
+                  <div class="quantity-controls">
+                    <button @click="decreaseQuantity(item.id)" class="btn-quantity">-</button>
+                    <div class="quantity-display">{{ item.quantity }}</div>
+                    <button @click="increaseQuantity(item.id)" class="btn-quantity">+</button>
+                  </div>
+                  <button @click="removeFromCart(item.id)" class="btn-remove">×</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Discount Section -->
+            <div class="discount-section">
+              <div class="discount-input">
+                <input
+                  v-model="couponCode"
+                  type="text"
+                  placeholder="クーポンコードを入力">
+                <button @click="applyCoupon" class="btn-apply">適用</button>
+              </div>
+              <div v-if="discountMessage" :class="['discount-message', discountType]">
+                {{ discountMessage }}
+              </div>
+            </div>
+
+            <!-- Cart Summary -->
+            <div class="cart-summary">
+              <div class="summary-row">
+                <span class="summary-label">小計</span>
+                <span class="summary-value">¥{{ subtotal.toLocaleString() }}</span>
+              </div>
+              <div class="summary-row" v-if="discount > 0">
+                <span class="summary-label">割引 ({{ discountRate }}%)</span>
+                <span class="summary-value" style="color: #ef4444;">-¥{{ discount.toLocaleString() }}</span>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">送料</span>
+                <span class="summary-value">
+                  <span v-if="shipping === 0" style="color: #10b981;">無料</span>
+                  <span v-else>¥{{ shipping.toLocaleString() }}</span>
+                </span>
+              </div>
+              <div class="summary-row total">
+                <span>合計</span>
+                <span style="color: #fa709a;">¥{{ total.toLocaleString() }}</span>
+              </div>
+              <button @click="checkout" class="btn-checkout">購入手続きへ</button>
+            </div>
+          </div>
+
+          <!-- Empty Cart -->
+          <div v-else class="empty-cart">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
+            </svg>
+            <p>カートは空です</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { VDOM } from '../dist/ichigo.esm.js';
+
+    VDOM.createApp({
+      data() {
+        return {
+          products: [
+            {
+              id: 1,
+              name: 'プレミアムヘッドホン',
+              description: 'ノイズキャンセリング機能付き',
+              price: 29800,
+              emoji: '🎧',
+              inStock: true
+            },
+            {
+              id: 2,
+              name: 'スマートウォッチ Pro',
+              description: '最新モデル、健康管理機能搭載',
+              price: 45000,
+              emoji: '⌚',
+              inStock: true
+            },
+            {
+              id: 3,
+              name: 'ワイヤレスキーボード',
+              description: 'メカニカルスイッチ採用',
+              price: 15600,
+              emoji: '⌨️',
+              inStock: true
+            },
+            {
+              id: 4,
+              name: 'ゲーミングマウス',
+              description: '高精度センサー搭載',
+              price: 8900,
+              emoji: '🖱️',
+              inStock: true
+            },
+            {
+              id: 5,
+              name: 'ポータブルSSD 1TB',
+              description: '超高速データ転送',
+              price: 12800,
+              emoji: '💾',
+              inStock: true
+            },
+            {
+              id: 6,
+              name: 'Webカメラ 4K',
+              description: 'リモートワークに最適',
+              price: 18500,
+              emoji: '📷',
+              inStock: false
+            }
+          ],
+
+          cartItems: [],
+          couponCode: '',
+          discountRate: 0,
+          discountMessage: '',
+          discountType: ''
+        };
+      },
+
+      computed: {
+        totalItems() {
+          return this.cartItems.reduce((sum, item) => sum + item.quantity, 0);
+        },
+
+        subtotal() {
+          return this.cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        },
+
+        discount() {
+          return Math.floor(this.subtotal * (this.discountRate / 100));
+        },
+
+        shipping() {
+          // 10,000円以上で送料無料
+          return this.subtotal >= 10000 ? 0 : 600;
+        },
+
+        total() {
+          return this.subtotal - this.discount + this.shipping;
+        }
+      },
+
+      methods: {
+        addToCart(product) {
+          const existingItem = this.cartItems.find(item => item.id === product.id);
+          if (existingItem) {
+            existingItem.quantity++;
+          } else {
+            this.cartItems.push({
+              id: product.id,
+              name: product.name,
+              price: product.price,
+              emoji: product.emoji,
+              quantity: 1
+            });
+          }
+        },
+
+        removeFromCart(itemId) {
+          const index = this.cartItems.findIndex(item => item.id === itemId);
+          if (index !== -1) {
+            this.cartItems.splice(index, 1);
+          }
+        },
+
+        increaseQuantity(itemId) {
+          const item = this.cartItems.find(item => item.id === itemId);
+          if (item) {
+            item.quantity++;
+          }
+        },
+
+        decreaseQuantity(itemId) {
+          const item = this.cartItems.find(item => item.id === itemId);
+          if (item) {
+            if (item.quantity > 1) {
+              item.quantity--;
+            } else {
+              this.removeFromCart(itemId);
+            }
+          }
+        },
+
+        applyCoupon() {
+          const code = this.couponCode.toUpperCase().trim();
+          if (!code) {
+            this.discountMessage = 'クーポンコードを入力してください';
+            this.discountType = 'error';
+            return;
+          }
+
+          // Sample coupons
+          const coupons = {
+            'ICHIGO10': 10,
+            'ICHIGO20': 20,
+            'WELCOME': 15
+          };
+
+          if (coupons[code]) {
+            this.discountRate = coupons[code];
+            this.discountMessage = `クーポン適用: ${this.discountRate}% OFF`;
+            this.discountType = 'success';
+          } else {
+            this.discountRate = 0;
+            this.discountMessage = '無効なクーポンコードです';
+            this.discountType = 'error';
+          }
+        },
+
+        checkout() {
+          alert(`ご購入ありがとうございます!\n合計金額: ¥${this.total.toLocaleString()}`);
+          this.cartItems = [];
+          this.couponCode = '';
+          this.discountRate = 0;
+          this.discountMessage = '';
+        }
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

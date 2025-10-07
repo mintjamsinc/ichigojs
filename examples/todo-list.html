@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Todo List - ichigo.js Example</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding-top: 60px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 600px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+
+    .input-section {
+      padding: 24px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 12px;
+    }
+
+    .input-group input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: all 0.2s;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .filters {
+      padding: 16px 24px;
+      background: #f9fafb;
+      display: flex;
+      gap: 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .filter-btn {
+      padding: 8px 16px;
+      border: 2px solid #e5e7eb;
+      background: white;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-btn.active {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+    }
+
+    .stats {
+      padding: 16px 24px;
+      background: #f9fafb;
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      color: #6b7280;
+    }
+
+    .todo-list {
+      list-style: none;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .todo-item {
+      padding: 16px 24px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: background 0.2s;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .todo-item:hover {
+      background: #f9fafb;
+    }
+
+    .todo-item.completed {
+      opacity: 0.6;
+    }
+
+    .todo-checkbox {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      accent-color: #667eea;
+    }
+
+    .todo-text {
+      flex: 1;
+      font-size: 15px;
+      transition: all 0.2s;
+    }
+
+    .todo-item.completed .todo-text {
+      text-decoration: line-through;
+      color: #9ca3af;
+    }
+
+    .todo-time {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    .btn-delete {
+      padding: 6px 12px;
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-delete:hover {
+      background: #dc2626;
+      transform: scale(1.05);
+    }
+
+    .empty-state {
+      padding: 60px 24px;
+      text-align: center;
+      color: #9ca3af;
+    }
+
+    .empty-state svg {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 16px;
+      opacity: 0.3;
+    }
+
+    .actions {
+      padding: 16px 24px;
+      background: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .btn-clear {
+      width: 100%;
+      padding: 10px;
+      background: #f3f4f6;
+      color: #6b7280;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-clear:hover {
+      background: #ef4444;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🍓 Todo List</h1>
+      <p>Powered by ichigo.js</p>
+    </div>
+
+    <div id="app">
+      <!-- Input Section -->
+      <div class="input-section">
+        <div class="input-group">
+          <input
+            v-model.trim="newTodo"
+            @keyup.enter="addTodo"
+            placeholder="新しいタスクを入力..."
+            type="text">
+          <button @click="addTodo" class="btn btn-primary">追加</button>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="filters">
+        <button
+          @click="setFilter('all')"
+          :class="{ active: filter === 'all' }"
+          class="filter-btn">
+          すべて
+        </button>
+        <button
+          @click="setFilter('active')"
+          :class="{ active: filter === 'active' }"
+          class="filter-btn">
+          未完了
+        </button>
+        <button
+          @click="setFilter('completed')"
+          :class="{ active: filter === 'completed' }"
+          class="filter-btn">
+          完了済み
+        </button>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats">
+        <span>全 {{ totalCount }} 件</span>
+        <span>未完了 {{ activeCount }} 件</span>
+        <span>完了 {{ completedCount }} 件</span>
+      </div>
+
+      <!-- Todo List -->
+      <ul class="todo-list" v-if="filteredTodos.length > 0">
+        <li
+          v-for="(todo, index) in filteredTodos"
+          :key="todo.id"
+          :class="{ completed: todo.completed }"
+          class="todo-item">
+          <input
+            type="checkbox"
+            v-model="todo.completed"
+            class="todo-checkbox">
+          <span class="todo-text">{{ todo.text }}</span>
+          <span class="todo-time">{{ todo.time }}</span>
+          <button @click="deleteTodo(todo.id)" class="btn-delete">削除</button>
+        </li>
+      </ul>
+
+      <!-- Empty State -->
+      <div v-else class="empty-state">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        <p v-if="filter === 'all'">タスクがありません</p>
+        <p v-else-if="filter === 'active'">未完了のタスクがありません</p>
+        <p v-else>完了したタスクがありません</p>
+      </div>
+
+      <!-- Actions -->
+      <div class="actions" v-if="completedCount > 0">
+        <button @click="clearCompleted" class="btn-clear">
+          完了したタスクを削除 ({{ completedCount }})
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { VDOM } from '../dist/ichigo.esm.js';
+
+    VDOM.createApp({
+      data() {
+        // Load from localStorage
+        const savedTodos = localStorage.getItem('ichigo-todos');
+        const todos = savedTodos ? JSON.parse(savedTodos) : [];
+
+        return {
+          todos,
+          newTodo: '',
+          filter: 'all'
+        };
+      },
+
+      computed: {
+        filteredTodos() {
+          if (this.filter === 'active') {
+            return this.todos.filter(todo => !todo.completed);
+          }
+          if (this.filter === 'completed') {
+            return this.todos.filter(todo => todo.completed);
+          }
+          return this.todos;
+        },
+
+        totalCount() {
+          return this.todos.length;
+        },
+
+        activeCount() {
+          return this.todos.filter(todo => !todo.completed).length;
+        },
+
+        completedCount() {
+          return this.todos.filter(todo => todo.completed).length;
+        }
+      },
+
+      methods: {
+        addTodo() {
+          if (this.newTodo.trim()) {
+            const now = new Date();
+            const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+            this.todos.push({
+              id: Date.now(),
+              text: this.newTodo.trim(),
+              completed: false,
+              time: time
+            });
+            this.newTodo = '';
+            this.saveTodos();
+          }
+        },
+
+        deleteTodo(id) {
+          const index = this.todos.findIndex(todo => todo.id === id);
+          if (index !== -1) {
+            this.todos.splice(index, 1);
+            this.saveTodos();
+          }
+        },
+
+        setFilter(filter) {
+          this.filter = filter;
+        },
+
+        clearCompleted() {
+          this.todos = this.todos.filter(todo => !todo.completed);
+          this.saveTodos();
+        },
+
+        saveTodos() {
+          this.$nextTick(() => {
+            localStorage.setItem('ichigo-todos', JSON.stringify(this.todos));
+          });
+        }
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
