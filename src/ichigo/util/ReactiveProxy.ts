@@ -5,38 +5,49 @@
  */
 export class ReactiveProxy {
     /**
-     * A WeakMap to store the original target for each proxy.
-     * This allows us to avoid creating multiple proxies for the same object.
+     * A WeakMap to store the proxy for each target object and path combination.
+     * This prevents creating multiple proxies for the same object accessed from different paths.
      */
-    private static proxyMap = new WeakMap<object, any>();
+    private static proxyCache = new WeakMap<object, Map<string, any>>();
 
     /**
      * Creates a reactive proxy for the given object.
      * The proxy will call the onChange callback whenever a property is modified.
      *
      * @param target The object to make reactive.
-     * @param onChange Callback function to call when the object changes. Receives the changed key name.
+     * @param onChange Callback function to call when the object changes. Receives the full path of the changed property.
+     * @param path The current path in the object tree (used internally for nested objects).
      * @returns A reactive proxy of the target object.
      */
-    static create<T extends object>(target: T, onChange: (changedKey?: string) => void): T {
+    static create<T extends object>(target: T, onChange: (changedPath?: string) => void, path: string = ''): T {
         // If the target is not an object or is null, return it as-is
         if (typeof target !== 'object' || target === null) {
             return target;
         }
 
-        // If this object already has a proxy, return the existing proxy
-        if (this.proxyMap.has(target)) {
-            return this.proxyMap.get(target);
+        // Check if we already have a proxy for this target with this path
+        let pathMap = this.proxyCache.get(target);
+        if (pathMap) {
+            const existingProxy = pathMap.get(path);
+            if (existingProxy) {
+                return existingProxy;
+            }
+        } else {
+            pathMap = new Map();
+            this.proxyCache.set(target, pathMap);
         }
 
-        // Create the proxy
+        // Create the proxy with path captured in closure
         const proxy = new Proxy(target, {
             get(obj, key) {
                 const value = Reflect.get(obj, key);
 
                 // If the value is an object or array, make it reactive too
                 if (typeof value === 'object' && value !== null) {
-                    return ReactiveProxy.create(value, onChange);
+                    // Build the nested path
+                    const keyStr = String(key);
+                    const nestedPath = path ? (Array.isArray(obj) ? `${path}[${keyStr}]` : `${path}.${keyStr}`) : keyStr;
+                    return ReactiveProxy.create(value, onChange, nestedPath);
                 }
 
                 // For arrays, intercept mutation methods
@@ -46,7 +57,7 @@ export class ReactiveProxy {
                     if (arrayMutationMethods.includes(key as string)) {
                         return function (this: any, ...args: any[]) {
                             const result = (value as Function).apply(this, args);
-                            onChange();
+                            onChange(path || undefined);
                             return result;
                         };
                     }
@@ -61,7 +72,9 @@ export class ReactiveProxy {
 
                 // Only trigger onChange if the value actually changed
                 if (oldValue !== value) {
-                    onChange(key as string);
+                    const keyStr = String(key);
+                    const fullPath = path ? (Array.isArray(obj) ? `${path}[${keyStr}]` : `${path}.${keyStr}`) : keyStr;
+                    onChange(fullPath);
                 }
 
                 return result;
@@ -69,13 +82,15 @@ export class ReactiveProxy {
 
             deleteProperty(obj, key) {
                 const result = Reflect.deleteProperty(obj, key);
-                onChange(key as string);
+                const keyStr = String(key);
+                const fullPath = path ? (Array.isArray(obj) ? `${path}[${keyStr}]` : `${path}.${keyStr}`) : keyStr;
+                onChange(fullPath);
                 return result;
             }
         });
 
-        // Store the proxy so we can return it if requested again
-        this.proxyMap.set(target, proxy);
+        // Cache the proxy for this path
+        pathMap.set(path, proxy);
 
         return proxy;
     }
@@ -87,7 +102,7 @@ export class ReactiveProxy {
      * @returns True if the object is a reactive proxy, false otherwise.
      */
     static isReactive(obj: any): boolean {
-        return this.proxyMap.has(obj);
+        return this.proxyCache.has(obj);
     }
 
     /**

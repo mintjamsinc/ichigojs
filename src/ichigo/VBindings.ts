@@ -30,6 +30,11 @@ export class VBindings {
 	#changes: Set<string> = new Set();
 
 	/**
+	 * Cache for array lengths to detect length changes when the same object reference is used.
+	 */
+	#lengthCache: Map<string, number> = new Map();
+
+	/**
 	 * Creates a new instance of VBindings.
 	 * @param parent The parent bindings, if any.
 	 */
@@ -58,15 +63,33 @@ export class VBindings {
 				let newValue = value;
 				if (typeof value === 'object' && value !== null) {
 					// Wrap objects/arrays with reactive proxy, tracking the root key
-					newValue = ReactiveProxy.create(value, () => {
-						this.#changes.add(key as string);
-						this.#onChange?.(key as string);
-					});
+					newValue = ReactiveProxy.create(value, (changedPath) => {
+						let path = '';
+						for (const part of changedPath?.split('.') || []) {
+							path = path ? `${path}.${part}` : part;
+							this.#changes.add(path);
+						}
+						this.#onChange?.(changedPath as string);
+					}, key as string);
 				}
 
 				const oldValue = Reflect.get(target, key);
 				const result = Reflect.set(target, key, newValue);
-				if ((oldValue !== newValue) || (typeof oldValue === 'object' || typeof newValue === 'object')) {
+
+				// Detect changes
+				let hasChanged = oldValue !== newValue;
+
+				// Special handling for arrays: check length changes even if same object reference
+				if (!hasChanged && Array.isArray(newValue)) {
+					const cachedLength = this.#lengthCache.get(key as string);
+					const currentLength = newValue.length;
+					if (cachedLength !== undefined && cachedLength !== currentLength) {
+						hasChanged = true;
+					}
+					this.#lengthCache.set(key as string, currentLength);
+				}
+
+				if (hasChanged) {
 					this.#changes.add(key as string);
 					this.#onChange?.(key as string);
 				}

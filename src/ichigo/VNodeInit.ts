@@ -29,4 +29,10 @@ export interface VNodeInit {
 	 * This is optional and may be undefined if there are no bindings.
 	 */
 	bindings?: VBindings;
+
+	/**
+	 * The set of identifiers that this node depends on.
+	 * This is optional and may be undefined if there are no dependent identifiers.
+	 */
+	dependentIdentifiers?: string[];
 }

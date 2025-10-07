@@ -51,6 +51,12 @@ export class VNode {
     #bindings?: VBindings;
 
     /**
+     * The initial set of identifiers that this node depends on.
+     * This is optional and may be undefined if there are no dependent identifiers.
+     */
+    #initDependentIdentifiers?: string[];
+
+    /**
      * An evaluator for text nodes that contain expressions in {{...}}.
      * This is used to dynamically update the text content based on data bindings.
      * This is optional and may be undefined if the node is not a text node or does not contain expressions.
@@ -100,6 +106,7 @@ export class VNode {
         this.#nodeName = args.node.nodeName;
         this.#parentVNode = args.parentVNode;
         this.#bindings = args.bindings;
+        this.#initDependentIdentifiers = args.dependentIdentifiers;
 
         this.#parentVNode?.addChild(this);
 
@@ -279,6 +286,9 @@ export class VNode {
         // Collect identifiers from text evaluator and directives
         const ids: string[] = [];
 
+        // Include initial dependent identifiers, if any
+        ids.push(...this.#initDependentIdentifiers ?? []);
+
         // If this is a text node with a text evaluator, include its identifiers
         if (this.#textEvaluator) {
             ids.push(...this.#textEvaluator.identifiers);
@@ -318,6 +328,31 @@ export class VNode {
         this.#preparableIdentifiers = preparableIdentifiers.length === 0 ? [] : [...new Set(preparableIdentifiers)];
 
         return this.#preparableIdentifiers;
+    }
+
+    /**
+     * The DOM path of this virtual node.
+     * This is a string representation of the path from the root to this node,
+     * using the node names and their indices among siblings with the same name.
+     * For example: "DIV[0]/SPAN[1]/#text[0]"
+     * @return The DOM path as a string.
+     */
+    get domPath(): string {
+        const path: string[] = [];
+        let node: VNode | undefined = this;
+        while (node) {
+            if (node.parentVNode && node.parentVNode.childVNodes) {
+                const siblings = node.parentVNode.childVNodes.filter(
+                    v => v.nodeName === node?.nodeName
+                );
+                const index = siblings.indexOf(node);
+                path.unshift(`${node.nodeName}[${index}]`);
+            } else {
+                path.unshift(node.nodeName);
+            }
+            node = node.parentVNode;
+        }
+        return path.join('/');
     }
 
     /**
@@ -430,20 +465,38 @@ export class VNode {
     /**
      * Adds a dependent virtual node that relies on this node's bindings.
      * @param dependent The dependent virtual node to add.
+     * @param dependentIdentifiers The identifiers that the dependent node relies on.
+     * If not provided, the dependent node's own identifiers will be used.
      * @returns A list of closers to unregister the dependency, or undefined if no dependency was added.
      */
-    addDependent(dependent: VNode): VCloser[] | undefined {
+    addDependent(dependent: VNode, dependentIdentifiers: string[] | undefined = undefined): VCloser[] | undefined {
         // List of closers to unregister the dependency
         const closers: VCloser[] = [];
 
-        // Check if any of the dependent node's identifiers are in this node's identifiers
-        let hasIdentifier = dependent.dependentIdentifiers.some(id => this.preparableIdentifiers.includes(id));
-        if (!hasIdentifier) {
-            hasIdentifier = dependent.dependentIdentifiers.some(id => this.#bindings?.has(id, false) ?? false);
+        // If dependent identifiers are not provided, use the dependent node's own identifiers
+        if (!dependentIdentifiers) {
+            dependentIdentifiers = [...dependent.dependentIdentifiers];
+        }
+
+        // Prepare alternative identifiers by stripping array indices (e.g., "items[0]" -> "items")
+        const allDeps = new Set<string>();
+        dependentIdentifiers.forEach(id => {
+            allDeps.add(id);
+
+            const idx = id.indexOf('[');
+            if (idx !== -1) {
+                allDeps.add(id.substring(0, idx));
+            }
+        });
+
+        // Get this node's identifiers
+        const thisIds = [...this.preparableIdentifiers];
+        if (this.#bindings) {
+            thisIds.push(...this.#bindings?.raw ? Object.keys(this.#bindings.raw) : []);
         }
 
         // If the dependent node has an identifier in this node's identifiers, add it as a dependency
-        if (hasIdentifier) {
+        if ([...allDeps].some(id => thisIds.includes(id))) {
             // If the dependencies list is not initialized, create it
             if (!this.#dependents) {
                 this.#dependents = [];
@@ -451,6 +504,14 @@ export class VNode {
 
             // Add the dependent node to the list
             this.#dependents.push(dependent);
+
+            // Remove the matched identifiers from the dependent node's identifiers to avoid duplicate dependencies
+            thisIds.forEach(id => {
+                const idx = dependentIdentifiers.indexOf(id);
+                if (idx !== -1) {
+                    dependentIdentifiers.splice(idx, 1);
+                }
+            });
 
             // Create a closer to unregister the dependency
             closers.push({
@@ -465,7 +526,7 @@ export class VNode {
         }
 
         // Recursively add the dependency to the parent node, if any
-        this.#parentVNode?.addDependent(dependent)?.forEach(closer => closers.push(closer));
+        this.#parentVNode?.addDependent(dependent, dependentIdentifiers)?.forEach(closer => closers.push(closer));
 
         // Return a closer to unregister the dependency
         return closers.length > 0 ? closers : undefined;

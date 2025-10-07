@@ -370,7 +370,8 @@ export class VForDirective implements VDirective {
             node: clone,
             vApplication: this.#vNode.vApplication,
             parentVNode: this.#vNode.parentVNode,
-            bindings
+            bindings,
+            dependentIdentifiers: [`${this.#sourceName}[${context.index}]`]
         });
 
         return vNode;

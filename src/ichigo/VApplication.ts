@@ -192,7 +192,7 @@ export class VApplication {
     #initializeBindings(): void {
         // Create bindings with change tracking
         this.#bindings = new VBindings({
-            onChange: (key) => {
+            onChange: (identifier) => {
                 this.#scheduleUpdate();
             }
         });
@@ -269,6 +269,17 @@ export class VApplication {
         const computed = new Set<string>();
         const processing = new Set<string>();
 
+        // Gather all changed identifiers, including parent properties for array items
+        const allChanges = new Set<string>();
+        this.#bindings?.changes.forEach(id => {
+            allChanges.add(id);
+
+            const idx = id.indexOf('[');
+            if (idx !== -1) {
+                allChanges.add(id.substring(0, idx));
+            }
+        });
+
         // Helper function to recursively compute a property
         const compute = (key: string): void => {
             // Skip if already computed in this update cycle
@@ -288,7 +299,7 @@ export class VApplication {
             const deps = this.#computedDependencies[key] || [];
 
             // If none of the dependencies have changed, skip recomputation
-            if (!deps.some(dep => this.#bindings?.changes.includes(dep))) {
+            if (!deps.some(dep => allChanges.has(dep))) {
                 computed.add(key);
                 return;
             }
@@ -309,7 +320,14 @@ export class VApplication {
                 // Track if the computed value actually changed
                 if (oldValue !== newValue) {
                     this.#bindings?.set(key, newValue);
-                    this.#logger.debug(`Computed property '${key}' changed: ${oldValue} -> ${newValue}`);
+                    this.#bindings?.changes.forEach(id => {
+                        allChanges.add(id);
+
+                        const idx = id.indexOf('[');
+                        if (idx !== -1) {
+                            allChanges.add(id.substring(0, idx));
+                        }
+                    });
                 }
             } catch (error) {
                 this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
@@ -322,7 +340,7 @@ export class VApplication {
         // Find all computed properties that need to be recomputed
         for (const [key, deps] of Object.entries(this.#computedDependencies)) {
             // Check if any dependency has changed
-            if (deps.some(dep => this.#bindings?.changes.includes(dep))) {
+            if (deps.some(dep => allChanges.has(dep))) {
                 compute(key);
             }
         }
