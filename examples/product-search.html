@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -275,50 +275,50 @@
             v-model="searchQuery"
             class="search-input"
             type="text"
-            placeholder="商品名で検索...">
+            placeholder="Search products...">
         </div>
 
         <div class="filters">
           <div class="filter-group">
-            <label>カテゴリ:</label>
+            <label>Category:</label>
             <select v-model="selectedCategory" class="filter-select">
-              <option value="">すべて</option>
-              <option value="electronics">電化製品</option>
-              <option value="fashion">ファッション</option>
-              <option value="food">食品</option>
-              <option value="books">書籍</option>
+              <option value="">All</option>
+              <option value="electronics">Electronics</option>
+              <option value="fashion">Fashion</option>
+              <option value="food">Food</option>
+              <option value="books">Books</option>
             </select>
           </div>
 
           <div class="filter-group">
-            <label>並び替え:</label>
+            <label>Sort by:</label>
             <select v-model="sortBy" class="filter-select">
-              <option value="name">名前順</option>
-              <option value="price-asc">価格: 安い順</option>
-              <option value="price-desc">価格: 高い順</option>
-              <option value="stock">在庫数順</option>
+              <option value="name">Name</option>
+              <option value="price-asc">Price: Low to High</option>
+              <option value="price-desc">Price: High to Low</option>
+              <option value="stock">Stock</option>
             </select>
           </div>
 
           <div class="filter-group price-range">
-            <label>価格:</label>
+            <label>Price:</label>
             <input
               v-model.number="minPrice"
               class="price-input"
               type="number"
-              placeholder="最小">
+              placeholder="Min">
             <span>〜</span>
             <input
               v-model.number="maxPrice"
               class="price-input"
               type="number"
-              placeholder="最大">
+              placeholder="Max">
           </div>
         </div>
 
         <div class="stats">
-          {{ filteredProducts.length }} 件の商品が見つかりました
-          <span v-if="searchQuery"> (検索: "{{ searchQuery }}")</span>
+          {{ filteredProducts.length }} products found
+          <span v-if="searchQuery"> (Search: "{{ searchQuery }}")</span>
         </div>
       </div>
 
@@ -331,7 +331,7 @@
           <div class="product-image">
             <span>{{ product.emoji }}</span>
             <div v-if="product.stock < 10 && product.stock > 0" class="product-badge">
-              残りわずか
+              Low Stock
             </div>
           </div>
           <div class="product-info">
@@ -347,8 +347,8 @@
                   'low-stock': product.stock > 0 && product.stock <= 10,
                   'out-of-stock': product.stock === 0
                 }">
-                <span v-if="product.stock > 0">在庫: {{ product.stock }}</span>
-                <span v-else>在庫切れ</span>
+                <span v-if="product.stock > 0">Stock: {{ product.stock }}</span>
+                <span v-else>Out of Stock</span>
               </div>
             </div>
           </div>
@@ -360,8 +360,8 @@
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
         </svg>
-        <h3>商品が見つかりませんでした</h3>
-        <p>検索条件を変更してみてください</p>
+        <h3>No products found</h3>
+        <p>Try adjusting your search criteria</p>
       </div>
     </div>
   </div>
@@ -379,120 +379,120 @@
           maxPrice: null,
 
           categoryNames: {
-            electronics: '電化製品',
-            fashion: 'ファッション',
-            food: '食品',
-            books: '書籍'
+            electronics: 'Electronics',
+            fashion: 'Fashion',
+            food: 'Food',
+            books: 'Books'
           },
 
           products: [
             {
               id: 1,
-              name: 'ワイヤレスイヤホン',
+              name: 'Wireless Earbuds',
               category: 'electronics',
               price: 12800,
               stock: 45,
               emoji: '🎧',
-              description: '高音質Bluetooth 5.0対応イヤホン'
+              description: 'High-quality Bluetooth 5.0 earbuds'
             },
             {
               id: 2,
-              name: 'スマートウォッチ',
+              name: 'Smart Watch',
               category: 'electronics',
               price: 28000,
               stock: 8,
               emoji: '⌚',
-              description: '健康管理機能付きスマートウォッチ'
+              description: 'Smart watch with health tracking'
             },
             {
               id: 3,
-              name: 'デニムジャケット',
+              name: 'Denim Jacket',
               category: 'fashion',
               price: 8900,
               stock: 23,
               emoji: '👔',
-              description: 'カジュアルなデニムジャケット'
+              description: 'Casual denim jacket'
             },
             {
               id: 4,
-              name: 'レザーバッグ',
+              name: 'Leather Bag',
               category: 'fashion',
               price: 15000,
               stock: 12,
               emoji: '👜',
-              description: '本革使用の高級バッグ'
+              description: 'Premium genuine leather bag'
             },
             {
               id: 5,
-              name: 'オーガニックコーヒー',
+              name: 'Organic Coffee',
               category: 'food',
               price: 1200,
               stock: 156,
               emoji: '☕',
-              description: '有機栽培コーヒー豆 200g'
+              description: 'Organic coffee beans 200g'
             },
             {
               id: 6,
-              name: 'プレミアムチョコレート',
+              name: 'Premium Chocolate',
               category: 'food',
               price: 2500,
               stock: 67,
               emoji: '🍫',
-              description: 'ベルギー産高級チョコレート'
+              description: 'Belgian premium chocolate'
             },
             {
               id: 7,
-              name: 'TypeScript入門書',
+              name: 'TypeScript Guide',
               category: 'books',
               price: 3200,
               stock: 34,
               emoji: '📚',
-              description: '初心者向けTypeScript解説書'
+              description: 'TypeScript guide for beginners'
             },
             {
               id: 8,
-              name: 'デザインパターン',
+              name: 'Design Patterns',
               category: 'books',
               price: 4800,
               stock: 0,
               emoji: '📖',
-              description: 'ソフトウェア設計の定番書'
+              description: 'Classic software design patterns'
             },
             {
               id: 9,
-              name: 'ノートPC',
+              name: 'Laptop',
               category: 'electronics',
               price: 89000,
               stock: 5,
               emoji: '💻',
-              description: '高性能ノートパソコン'
+              description: 'High-performance laptop'
             },
             {
               id: 10,
-              name: 'スニーカー',
+              name: 'Sneakers',
               category: 'fashion',
               price: 12000,
               stock: 18,
               emoji: '👟',
-              description: 'カジュアルスニーカー'
+              description: 'Casual sneakers'
             },
             {
               id: 11,
-              name: '緑茶セット',
+              name: 'Green Tea Set',
               category: 'food',
               price: 1800,
               stock: 92,
               emoji: '🍵',
-              description: '高級日本茶セット'
+              description: 'Premium Japanese green tea set'
             },
             {
               id: 12,
-              name: 'ビジネス書',
+              name: 'Business Book',
               category: 'books',
               price: 1600,
               stock: 45,
               emoji: '📕',
-              description: '起業家のためのビジネス入門'
+              description: 'Business guide for entrepreneurs'
             }
           ]
         };

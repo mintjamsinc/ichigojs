@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -256,9 +256,9 @@
           <input
             v-model.trim="newTodo"
             @keyup.enter="addTodo"
-            placeholder="新しいタスクを入力..."
+            placeholder="Enter a new task..."
             type="text">
-          <button @click="addTodo" class="btn btn-primary">追加</button>
+          <button @click="addTodo" class="btn btn-primary">Add</button>
         </div>
       </div>
 
@@ -268,27 +268,27 @@
           @click="setFilter('all')"
           :class="{ active: filter === 'all' }"
           class="filter-btn">
-          すべて
+          All
         </button>
         <button
           @click="setFilter('active')"
           :class="{ active: filter === 'active' }"
           class="filter-btn">
-          未完了
+          Active
         </button>
         <button
           @click="setFilter('completed')"
           :class="{ active: filter === 'completed' }"
           class="filter-btn">
-          完了済み
+          Completed
         </button>
       </div>
 
       <!-- Stats -->
       <div class="stats">
-        <span>全 {{ totalCount }} 件</span>
-        <span>未完了 {{ activeCount }} 件</span>
-        <span>完了 {{ completedCount }} 件</span>
+        <span>Total: {{ totalCount }}</span>
+        <span>Active: {{ activeCount }}</span>
+        <span>Completed: {{ completedCount }}</span>
       </div>
 
       <!-- Todo List -->
@@ -304,7 +304,7 @@
             class="todo-checkbox">
           <span class="todo-text">{{ todo.text }}</span>
           <span class="todo-time">{{ todo.time }}</span>
-          <button @click="deleteTodo(todo.id)" class="btn-delete">削除</button>
+          <button @click="deleteTodo(todo.id)" class="btn-delete">Delete</button>
         </li>
       </ul>
 
@@ -313,15 +313,15 @@
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
         </svg>
-        <p v-if="filter === 'all'">タスクがありません</p>
-        <p v-else-if="filter === 'active'">未完了のタスクがありません</p>
-        <p v-else>完了したタスクがありません</p>
+        <p v-if="filter === 'all'">No tasks yet</p>
+        <p v-else-if="filter === 'active'">No active tasks</p>
+        <p v-else>No completed tasks</p>
       </div>
 
       <!-- Actions -->
       <div class="actions" v-if="completedCount > 0">
         <button @click="clearCompleted" class="btn-clear">
-          完了したタスクを削除 ({{ completedCount }})
+          Clear completed tasks ({{ completedCount }})
         </button>
       </div>
     </div>

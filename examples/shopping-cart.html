@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -439,7 +439,7 @@
       <div class="main-content">
         <!-- Products Section -->
         <div class="products-section">
-          <h2 class="section-title">商品一覧</h2>
+          <h2 class="section-title">Products</h2>
           <div class="product-list">
             <div
               v-for="product in products"
@@ -456,8 +456,8 @@
                   @click="addToCart(product)"
                   :disabled="!product.inStock"
                   class="btn-add-cart">
-                  <span v-if="product.inStock">カートに追加</span>
-                  <span v-else>在庫切れ</span>
+                  <span v-if="product.inStock">Add to Cart</span>
+                  <span v-else>Out of Stock</span>
                 </button>
               </div>
             </div>
@@ -467,7 +467,7 @@
         <!-- Cart Section -->
         <div class="cart-section">
           <div class="cart-header">
-            <h2 class="section-title">ショッピングカート</h2>
+            <h2 class="section-title">Shopping Cart</h2>
             <div class="cart-count">{{ totalItems }}</div>
           </div>
 
@@ -500,8 +500,8 @@
                 <input
                   v-model="couponCode"
                   type="text"
-                  placeholder="クーポンコードを入力">
-                <button @click="applyCoupon" class="btn-apply">適用</button>
+                  placeholder="Enter coupon code">
+                <button @click="applyCoupon" class="btn-apply">Apply</button>
               </div>
               <div v-if="discountMessage" :class="['discount-message', discountType]">
                 {{ discountMessage }}
@@ -511,25 +511,25 @@
             <!-- Cart Summary -->
             <div class="cart-summary">
               <div class="summary-row">
-                <span class="summary-label">小計</span>
+                <span class="summary-label">Subtotal</span>
                 <span class="summary-value">¥{{ subtotal.toLocaleString() }}</span>
               </div>
               <div class="summary-row" v-if="discount > 0">
-                <span class="summary-label">割引 ({{ discountRate }}%)</span>
+                <span class="summary-label">Discount ({{ discountRate }}%)</span>
                 <span class="summary-value" style="color: #ef4444;">-¥{{ discount.toLocaleString() }}</span>
               </div>
               <div class="summary-row">
-                <span class="summary-label">送料</span>
+                <span class="summary-label">Shipping</span>
                 <span class="summary-value">
-                  <span v-if="shipping === 0" style="color: #10b981;">無料</span>
+                  <span v-if="shipping === 0" style="color: #10b981;">Free</span>
                   <span v-else>¥{{ shipping.toLocaleString() }}</span>
                 </span>
               </div>
               <div class="summary-row total">
-                <span>合計</span>
+                <span>Total</span>
                 <span style="color: #fa709a;">¥{{ total.toLocaleString() }}</span>
               </div>
-              <button @click="checkout" class="btn-checkout">購入手続きへ</button>
+              <button @click="checkout" class="btn-checkout">Proceed to Checkout</button>
             </div>
           </div>
 
@@ -538,7 +538,7 @@
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
             </svg>
-            <p>カートは空です</p>
+            <p>Your cart is empty</p>
           </div>
         </div>
       </div>
@@ -554,48 +554,48 @@
           products: [
             {
               id: 1,
-              name: 'プレミアムヘッドホン',
-              description: 'ノイズキャンセリング機能付き',
+              name: 'Premium Headphones',
+              description: 'Noise cancelling technology',
               price: 29800,
               emoji: '🎧',
               inStock: true
             },
             {
               id: 2,
-              name: 'スマートウォッチ Pro',
-              description: '最新モデル、健康管理機能搭載',
+              name: 'Smart Watch Pro',
+              description: 'Latest model with health tracking',
               price: 45000,
               emoji: '⌚',
               inStock: true
             },
             {
               id: 3,
-              name: 'ワイヤレスキーボード',
-              description: 'メカニカルスイッチ採用',
+              name: 'Wireless Keyboard',
+              description: 'Mechanical switches',
               price: 15600,
               emoji: '⌨️',
               inStock: true
             },
             {
               id: 4,
-              name: 'ゲーミングマウス',
-              description: '高精度センサー搭載',
+              name: 'Gaming Mouse',
+              description: 'High-precision sensor',
               price: 8900,
               emoji: '🖱️',
               inStock: true
             },
             {
               id: 5,
-              name: 'ポータブルSSD 1TB',
-              description: '超高速データ転送',
+              name: 'Portable SSD 1TB',
+              description: 'Ultra-fast data transfer',
               price: 12800,
               emoji: '💾',
               inStock: true
             },
             {
               id: 6,
-              name: 'Webカメラ 4K',
-              description: 'リモートワークに最適',
+              name: '4K Web Camera',
+              description: 'Perfect for remote work',
               price: 18500,
               emoji: '📷',
               inStock: false
@@ -624,7 +624,7 @@
         },
 
         shipping() {
-          // 10,000円以上で送料無料
+          // Free shipping over 10,000 yen
           return this.subtotal >= 10000 ? 0 : 600;
         },
 
@@ -677,7 +677,7 @@
         applyCoupon() {
           const code = this.couponCode.toUpperCase().trim();
           if (!code) {
-            this.discountMessage = 'クーポンコードを入力してください';
+            this.discountMessage = 'Please enter a coupon code';
             this.discountType = 'error';
             return;
           }
@@ -691,17 +691,17 @@
 
           if (coupons[code]) {
             this.discountRate = coupons[code];
-            this.discountMessage = `クーポン適用: ${this.discountRate}% OFF`;
+            this.discountMessage = `Coupon applied: ${this.discountRate}% OFF`;
             this.discountType = 'success';
           } else {
             this.discountRate = 0;
-            this.discountMessage = '無効なクーポンコードです';
+            this.discountMessage = 'Invalid coupon code';
             this.discountType = 'error';
           }
         },
 
         checkout() {
-          alert(`ご購入ありがとうございます!\n合計金額: ¥${this.total.toLocaleString()}`);
+          alert(`Thank you for your purchase!\nTotal: ¥${this.total.toLocaleString()}`);
           this.cartItems = [];
           this.couponCode = '';
           this.discountRate = 0;
