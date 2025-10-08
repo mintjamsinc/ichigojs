@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chart.js Integration - ichigo.js Examples</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 40px;
+        }
+
+        .example-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .example-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .description {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            position: relative;
+            height: 400px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            opacity: 0.9;
+            font-size: 0.9em;
+        }
+
+        .code-example {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .code-example pre {
+            margin: 0;
+        }
+
+        .keyword { color: #c586c0; }
+        .string { color: #ce9178; }
+        .function { color: #dcdcaa; }
+        .comment { color: #6a9955; }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+
+            .chart-container {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <h1>📊 Chart.js Integration</h1>
+        <p class="subtitle">Professional charting library integration using lifecycle hooks</p>
+
+        <!-- Example 1: Line Chart -->
+        <div class="example-section">
+            <h2>Example 1: Dynamic Line Chart</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Initialize Chart.js on mount, update on data changes, and cleanup on unmount.</p>
+                <p><strong>Library:</strong> <a href="https://www.chartjs.org/" target="_blank" style="color: #667eea;">Chart.js</a></p>
+            </div>
+
+            <div class="button-group">
+                <button @click="toggleLineChart">{{ showLineChart ? 'Hide Chart' : 'Show Chart' }}</button>
+                <button @click="addDataPoint" :disabled="!showLineChart">Add Data Point</button>
+                <button @click="randomizeData" :disabled="!showLineChart">Randomize Data</button>
+            </div>
+
+            <div v-if="showLineChart"
+                 :data-update="lineDataPoints.length + lineDataPoints.join(',')"
+                 @mounted="initLineChart"
+                 @updated="updateLineChart"
+                 @unmounted="destroyLineChart"
+                 class="chart-container">
+                <canvas id="lineChart"></canvas>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Lifecycle hooks for Chart.js</span>
+<span class="keyword">methods</span>: {
+  <span class="function">initLineChart</span>() {
+    <span class="keyword">const</span> ctx = document.getElementById(<span class="string">'lineChart'</span>).getContext(<span class="string">'2d'</span>);
+    <span class="keyword">this</span>.lineChart = <span class="keyword">new</span> Chart(ctx, {
+      type: <span class="string">'line'</span>,
+      data: <span class="keyword">this</span>.lineChartData,
+      options: { <span class="comment">/* ... */</span> }
+    });
+  },
+  <span class="function">updateLineChart</span>() {
+    <span class="keyword">if</span> (<span class="keyword">this</span>.lineChart) {
+      <span class="comment">// Convert reactive arrays to plain arrays</span>
+      <span class="keyword">this</span>.lineChart.data.labels = [...<span class="keyword">this</span>.lineLabels];
+      <span class="keyword">this</span>.lineChart.data.datasets[<span class="string">0</span>].data = [...<span class="keyword">this</span>.lineDataPoints];
+      <span class="keyword">this</span>.lineChart.update();
+    }
+  },
+  <span class="function">destroyLineChart</span>() {
+    <span class="keyword">if</span> (<span class="keyword">this</span>.lineChart) {
+      <span class="keyword">this</span>.lineChart.destroy();
+      <span class="keyword">this</span>.lineChart = <span class="keyword">null</span>;
+    }
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Example 2: Bar Chart with Stats -->
+        <div class="example-section">
+            <h2>Example 2: Bar Chart with Statistics</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Display computed statistics alongside a dynamic bar chart.</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{{ totalSales }}</div>
+                    <div class="stat-label">Total Sales</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ averageSales }}</div>
+                    <div class="stat-label">Average</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ maxSales }}</div>
+                    <div class="stat-label">Maximum</div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button @click="toggleBarChart">{{ showBarChart ? 'Hide Chart' : 'Show Chart' }}</button>
+                <button @click="addMonth" :disabled="!showBarChart">Add Month</button>
+                <button @click="updateSales" :disabled="!showBarChart">Update Sales</button>
+            </div>
+
+            <div v-if="showBarChart"
+                 :data-update="salesData.length + salesData.join(',')"
+                 @mounted="initBarChart"
+                 @updated="updateBarChart"
+                 @unmounted="destroyBarChart"
+                 class="chart-container">
+                <canvas id="barChart"></canvas>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Computed properties work with charts</span>
+<span class="keyword">computed</span>: {
+  <span class="function">totalSales</span>() {
+    <span class="keyword">return</span> <span class="keyword">this</span>.salesData.reduce((a, b) => a + b, <span class="string">0</span>);
+  },
+  <span class="function">averageSales</span>() {
+    <span class="keyword">return</span> Math.round(<span class="keyword">this</span>.totalSales / <span class="keyword">this</span>.salesData.length);
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Example 3: Doughnut Chart -->
+        <div class="example-section">
+            <h2>Example 3: Responsive Doughnut Chart</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Category distribution visualization with automatic updates.</p>
+            </div>
+
+            <div class="button-group">
+                <button @click="toggleDoughnutChart">{{ showDoughnutChart ? 'Hide Chart' : 'Show Chart' }}</button>
+                <button @click="randomizeCategories" :disabled="!showDoughnutChart">Randomize Values</button>
+            </div>
+
+            <div v-if="showDoughnutChart"
+                 :data-update="categoryData.join(',')"
+                 @mounted="initDoughnutChart"
+                 @updated="updateDoughnutChart"
+                 @unmounted="destroyDoughnutChart"
+                 class="chart-container"
+                 style="height: 350px;">
+                <canvas id="doughnutChart"></canvas>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Responsive chart configuration</span>
+options: {
+  responsive: <span class="keyword">true</span>,
+  maintainAspectRatio: <span class="keyword">true</span>,
+  plugins: {
+    legend: {
+      position: <span class="string">'bottom'</span>
+    }
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Installation -->
+        <div class="example-section">
+            <h2>📦 Installation</h2>
+            <div class="description">
+                <p>Include Chart.js via CDN or npm:</p>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">&lt;!-- Via CDN --&gt;</span>
+<span class="keyword">&lt;script</span> <span class="string">src</span>=<span class="string">"https://cdn.jsdelivr.net/npm/chart.js@4"</span><span class="keyword">&gt;&lt;/script&gt;</span>
+
+<span class="comment">// Via npm</span>
+npm install chart.js</pre>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 40px;">
+            <a href="index.html" style="color: #667eea; text-decoration: none; font-weight: 600;">← Back to Examples</a>
+        </div>
+    </div>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+    <script type="module">
+        import { VDOM } from 'https://cdn.jsdelivr.net/npm/@mintjamsinc/ichigojs@0.1.4/dist/ichigo.esm.js';
+
+        VDOM.createApp({
+            data() {
+                return {
+                    // Line chart
+                    showLineChart: false,
+                    lineDataPoints: [65, 59, 80, 81, 56, 55, 40],
+                    lineLabels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'],
+
+                    // Bar chart
+                    showBarChart: false,
+                    salesData: [120, 190, 300, 250, 200, 300],
+                    salesLabels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+
+                    // Doughnut chart
+                    showDoughnutChart: false,
+                    categoryData: [300, 150, 200, 100],
+                    categoryLabels: ['Category A', 'Category B', 'Category C', 'Category D']
+                };
+            },
+            computed: {
+                lineChartData() {
+                    return {
+                        labels: this.lineLabels,
+                        datasets: [{
+                            label: 'Revenue ($)',
+                            data: this.lineDataPoints,
+                            borderColor: 'rgb(102, 126, 234)',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    };
+                },
+                totalSales() {
+                    return this.salesData.reduce((a, b) => a + b, 0);
+                },
+                averageSales() {
+                    return Math.round(this.totalSales / this.salesData.length);
+                },
+                maxSales() {
+                    return Math.max(...this.salesData);
+                }
+            },
+            methods: {
+                // Line Chart
+                toggleLineChart() {
+                    this.showLineChart = !this.showLineChart;
+                },
+                initLineChart(el) {
+                    this.$nextTick(() => {
+                        const canvas = el.querySelector('#lineChart');
+                        const ctx = canvas.getContext('2d');
+                        // Store chart instance on DOM element to avoid reactive proxy issues
+                        canvas._chartInstance = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: [...this.lineLabels],
+                                datasets: [{
+                                    label: 'Revenue ($)',
+                                    data: [...this.lineDataPoints],
+                                    borderColor: 'rgb(102, 126, 234)',
+                                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                                    tension: 0.4,
+                                    fill: true
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        display: true,
+                                        position: 'top'
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true
+                                    }
+                                }
+                            }
+                        });
+                    });
+                },
+                updateLineChart(el) {
+                    const canvas = el.querySelector('#lineChart');
+                    const chart = canvas?._chartInstance;
+                    if (chart) {
+                        // Convert reactive arrays to plain arrays
+                        chart.data.labels = [...this.lineLabels];
+                        chart.data.datasets[0].data = [...this.lineDataPoints];
+                        chart.update();
+                    }
+                },
+                destroyLineChart(el) {
+                    const canvas = el.querySelector('#lineChart');
+                    const chart = canvas?._chartInstance;
+                    if (chart) {
+                        chart.destroy();
+                        delete canvas._chartInstance;
+                    }
+                },
+                addDataPoint() {
+                    const months = ['Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const nextMonth = months[this.lineLabels.length - 7];
+                    if (nextMonth) {
+                        this.lineLabels.push(nextMonth);
+                        this.lineDataPoints.push(Math.floor(Math.random() * 100));
+                    }
+                },
+                randomizeData() {
+                    this.lineDataPoints = this.lineDataPoints.map(() =>
+                        Math.floor(Math.random() * 100)
+                    );
+                },
+
+                // Bar Chart
+                toggleBarChart() {
+                    this.showBarChart = !this.showBarChart;
+                },
+                initBarChart(el) {
+                    this.$nextTick(() => {
+                        const canvas = el.querySelector('#barChart');
+                        const ctx = canvas.getContext('2d');
+                        // Store chart instance on DOM element to avoid reactive proxy issues
+                        canvas._chartInstance = new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: [...this.salesLabels],
+                                datasets: [{
+                                    label: 'Sales ($)',
+                                    data: [...this.salesData],
+                                    backgroundColor: [
+                                        'rgba(102, 126, 234, 0.8)',
+                                        'rgba(118, 75, 162, 0.8)',
+                                        'rgba(240, 147, 251, 0.8)',
+                                        'rgba(245, 87, 108, 0.8)',
+                                        'rgba(250, 112, 154, 0.8)',
+                                        'rgba(254, 225, 64, 0.8)'
+                                    ],
+                                    borderRadius: 8
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        display: false
+                                    }
+                                },
+                                scales: {
+                                    y: {
+                                        beginAtZero: true
+                                    }
+                                }
+                            }
+                        });
+                    });
+                },
+                updateBarChart(el) {
+                    const canvas = el.querySelector('#barChart');
+                    const chart = canvas?._chartInstance;
+                    if (chart) {
+                        // Convert reactive arrays to plain arrays
+                        chart.data.labels = [...this.salesLabels];
+                        chart.data.datasets[0].data = [...this.salesData];
+                        chart.update();
+                    }
+                },
+                destroyBarChart(el) {
+                    const canvas = el.querySelector('#barChart');
+                    const chart = canvas?._chartInstance;
+                    if (chart) {
+                        chart.destroy();
+                        delete canvas._chartInstance;
+                    }
+                },
+                addMonth() {
+                    const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const nextMonth = months[this.salesLabels.length - 6];
+                    if (nextMonth) {
+                        this.salesLabels.push(nextMonth);
+                        this.salesData.push(Math.floor(Math.random() * 300) + 50);
+                    }
+                },
+                updateSales() {
+                    this.salesData = this.salesData.map(() =>
+                        Math.floor(Math.random() * 300) + 50
+                    );
+                },
+
+                // Doughnut Chart
+                toggleDoughnutChart() {
+                    this.showDoughnutChart = !this.showDoughnutChart;
+                },
+                initDoughnutChart(el) {
+                    this.$nextTick(() => {
+                        const canvas = el.querySelector('#doughnutChart');
+                        const ctx = canvas.getContext('2d');
+                        // Store chart instance on DOM element to avoid reactive proxy issues
+                        canvas._chartInstance = new Chart(ctx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: [...this.categoryLabels],
+                                datasets: [{
+                                    data: [...this.categoryData],
+                                    backgroundColor: [
+                                        'rgba(102, 126, 234, 0.8)',
+                                        'rgba(245, 87, 108, 0.8)',
+                                        'rgba(254, 225, 64, 0.8)',
+                                        'rgba(118, 75, 162, 0.8)'
+                                    ],
+                                    borderWidth: 0
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                plugins: {
+                                    legend: {
+                                        position: 'bottom'
+                                    }
+                                }
+                            }
+                        });
+                    });
+                },
+                updateDoughnutChart(el) {
+                    const canvas = el.querySelector('#doughnutChart');
+                    const chart = canvas?._chartInstance;
+                    if (chart) {
+                        // Convert reactive array to plain array
+                        chart.data.datasets[0].data = [...this.categoryData];
+                        chart.update();
+                    }
+                },
+                destroyDoughnutChart(el) {
+                    const canvas = el.querySelector('#doughnutChart');
+                    const chart = canvas?._chartInstance;
+                    if (chart) {
+                        chart.destroy();
+                        delete canvas._chartInstance;
+                    }
+                },
+                randomizeCategories() {
+                    this.categoryData = this.categoryData.map(() =>
+                        Math.floor(Math.random() * 300) + 50
+                    );
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

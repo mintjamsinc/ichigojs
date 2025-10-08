@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lifecycle Hooks - ichigo.js Examples</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 40px;
+        }
+
+        .example-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .example-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .example-section h3 {
+            color: #555;
+            margin: 20px 0 10px 0;
+            font-size: 1.2em;
+        }
+
+        .description {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .demo-box {
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+            transition: all 0.3s ease;
+        }
+
+        .demo-box:hover {
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .item-list {
+            display: grid;
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .item {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3);
+        }
+
+        .item:hover {
+            transform: translateX(5px);
+        }
+
+        .item-content {
+            flex: 1;
+        }
+
+        .item-name {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .item-count {
+            opacity: 0.9;
+            font-size: 0.95em;
+        }
+
+        .badge {
+            background: rgba(255, 255, 255, 0.3);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+
+        .event-log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 10px;
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+
+        .event-log::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .event-log::-webkit-scrollbar-track {
+            background: #2d2d2d;
+            border-radius: 10px;
+        }
+
+        .event-log::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 10px;
+        }
+
+        .log-entry {
+            padding: 8px 0;
+            border-bottom: 1px solid #333;
+            display: flex;
+            gap: 15px;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-time {
+            color: #4fc3f7;
+            flex-shrink: 0;
+        }
+
+        .log-message {
+            flex: 1;
+        }
+
+        .log-mount { color: #66bb6a; }
+        .log-mounted { color: #81c784; }
+        .log-update { color: #ffa726; }
+        .log-updated { color: #ffb74d; }
+        .log-unmount { color: #ef5350; }
+        .log-unmounted { color: #e57373; }
+
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            height: 300px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-around;
+            gap: 10px;
+            border: 2px solid #e0e0e0;
+        }
+
+        .bar {
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            border-radius: 5px 5px 0 0;
+            min-width: 40px;
+            flex: 1;
+            position: relative;
+            transition: height 0.5s ease;
+            box-shadow: 0 -2px 10px rgba(102, 126, 234, 0.3);
+        }
+
+        .bar-value {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .code-example {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .code-example pre {
+            margin: 0;
+        }
+
+        .keyword { color: #c586c0; }
+        .string { color: #ce9178; }
+        .function { color: #dcdcaa; }
+        .comment { color: #6a9955; }
+
+        /* Animation styles */
+        .fade-slide-enter {
+            opacity: 0;
+            transform: translateY(-30px);
+        }
+
+        .fade-slide-enter-active {
+            transition: all 0.5s ease-out;
+        }
+
+        .fade-slide-leave {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .fade-slide-leave-active {
+            transition: all 0.3s ease-in;
+            opacity: 0;
+            transform: translateY(30px);
+        }
+
+        .animated-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            margin: 20px 0;
+        }
+
+        .animated-card h3 {
+            margin-bottom: 10px;
+            font-size: 1.5em;
+        }
+
+        .animated-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .animated-tile {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .animated-tile:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <h1>🍓 Lifecycle Hooks</h1>
+        <p class="subtitle">Integrate with third-party libraries, manage animations, and handle resource cleanup</p>
+
+        <!-- Example 1: Third-party Library Integration -->
+        <div class="example-section">
+            <h2>📊 Example 1: Chart Integration</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Initialize a chart library when the element is mounted and clean it up when unmounted.</p>
+                <p><strong>Hooks Used:</strong> <code>@mounted</code>, <code>@updated</code>, <code>@unmounted</code></p>
+            </div>
+
+            <div class="button-group">
+                <button @click="toggleChart">{{ showChart ? 'Hide Chart' : 'Show Chart' }}</button>
+                <button @click="addChartData" :disabled="!showChart">Add Data Point</button>
+                <button @click="updateChartData" :disabled="!showChart">Update Data</button>
+            </div>
+
+            <div v-if="showChart"
+                 @mounted="initChart"
+                 @updated="updateChart"
+                 @unmounted="destroyChart"
+                 class="demo-box">
+                <h3>Sales Data</h3>
+                <div class="chart-container">
+                    <div v-for="(value, index) in chartData"
+                         :key="index"
+                         class="bar"
+                         :style="{ height: value * 2 + 'px' }">
+                        <span class="bar-value">{{ value }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="code-example">
+<pre><span class="keyword">methods</span>: {
+  <span class="function">initChart</span>() {
+    <span class="comment">// Initialize chart when element is mounted</span>
+    <span class="keyword">this</span>.$nextTick(() => {
+      console.log(<span class="string">'Chart initialized'</span>);
+    });
+  },
+  <span class="function">updateChart</span>() {
+    <span class="comment">// Update chart when data changes</span>
+    console.log(<span class="string">'Chart updated with new data'</span>);
+  },
+  <span class="function">destroyChart</span>() {
+    <span class="comment">// Clean up chart resources</span>
+    console.log(<span class="string">'Chart destroyed'</span>);
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Example 2: Dynamic List Management -->
+        <div class="example-section">
+            <h2>📋 Example 2: Dynamic List with Lifecycle</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Track when list items are added or removed, useful for animations and logging.</p>
+                <p><strong>Hooks Used:</strong> <code>@mounted</code>, <code>@unmounted</code></p>
+            </div>
+
+            <div class="button-group">
+                <button @click="addItem">Add Item</button>
+                <button @click="removeLastItem">Remove Last Item</button>
+                <button @click="clearItems">Clear All</button>
+            </div>
+
+            <div class="item-list">
+                <div v-for="item in items"
+                     :key="item.id"
+                     @mounted="onItemMounted"
+                     @unmounted="onItemUnmounted"
+                     class="item">
+                    <div class="item-content">
+                        <div class="item-name">{{ item.name }}</div>
+                        <div class="item-count">Created: {{ item.created }}</div>
+                    </div>
+                    <span class="badge">ID: {{ item.id }}</span>
+                </div>
+            </div>
+
+            <div v-if="items.length === 0" class="demo-box" style="text-align: center; color: #999;">
+                No items yet. Click "Add Item" to get started!
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">&lt;!-- Each item tracks its lifecycle --&gt;</span>
+<span class="keyword">&lt;div</span> <span class="string">v-for</span>=<span class="string">"item in items"</span>
+     <span class="string">:key</span>=<span class="string">"item.id"</span>
+     <span class="string">@mounted</span>=<span class="string">"onItemMounted"</span>
+     <span class="string">@unmounted</span>=<span class="string">"onItemUnmounted"</span><span class="keyword">&gt;</span>
+  {{ item.name }}
+<span class="keyword">&lt;/div&gt;</span></pre>
+            </div>
+        </div>
+
+        <!-- Example 3: CSS Animations -->
+        <div class="example-section">
+            <h2>✨ Example 3: CSS Animation Integration</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Apply enter/leave animations using CSS transitions with lifecycle hooks.</p>
+                <p><strong>Hooks Used:</strong> <code>@mounted</code>, <code>@unmount</code></p>
+            </div>
+
+            <div class="button-group">
+                <button @click="toggleAnimatedCard">{{ showAnimatedCard ? 'Hide Card' : 'Show Card' }}</button>
+                <button @click="addTile">Add Tile</button>
+                <button @click="removeTile">Remove Tile</button>
+            </div>
+
+            <div v-if="showAnimatedCard"
+                 @mount="onCardMount"
+                 @mounted="onCardEnter"
+                 @unmount="onCardLeave"
+                 class="animated-card">
+                <h3>🎨 Animated Card</h3>
+                <p>This card fades and slides in when shown, and slides out when hidden.</p>
+                <p style="margin-top: 10px; opacity: 0.9;">Using CSS transitions with lifecycle hooks for smooth animations!</p>
+            </div>
+
+            <div class="animated-grid">
+                <div v-for="tile in tiles"
+                     :key="tile.id"
+                     @mount="onTileMount"
+                     @mounted="onTileEnter"
+                     @unmount="onTileLeave"
+                     class="animated-tile">
+                    {{ tile.emoji }}
+                </div>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">/* CSS Transitions */</span>
+<span class="keyword">.fade-slide-enter</span> {
+  opacity: <span class="string">0</span>;
+  transform: <span class="function">translateY</span>(<span class="string">-30px</span>);
+}
+
+<span class="keyword">.fade-slide-enter-active</span> {
+  transition: <span class="string">all 0.5s ease-out</span>;
+}
+
+<span class="comment">// JavaScript - Two-phase animation</span>
+<span class="keyword">methods</span>: {
+  <span class="function">onCardMount</span>(el) {
+    <span class="comment">// Phase 1: Set initial state BEFORE DOM insertion</span>
+    el.classList.add(<span class="string">'fade-slide-enter'</span>);
+  },
+  <span class="function">onCardEnter</span>(el) {
+    <span class="comment">// Phase 2: Trigger transition AFTER DOM insertion</span>
+    el.offsetHeight; <span class="comment">// Force reflow</span>
+    requestAnimationFrame(() => {
+      el.classList.add(<span class="string">'fade-slide-enter-active'</span>);
+      el.classList.remove(<span class="string">'fade-slide-enter'</span>);
+    });
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Event Log -->
+        <div class="example-section">
+            <h2>📝 Event Log</h2>
+            <div class="description">
+                <p>Real-time log of all lifecycle events. Watch how hooks are called when elements are added, updated, or removed.</p>
+            </div>
+
+            <button @click="clearLog">Clear Log</button>
+
+            <div class="event-log">
+                <div v-for="log in logs" :key="log.id" class="log-entry">
+                    <span class="log-time">{{ log.time }}</span>
+                    <span class="log-message" :class="'log-' + log.type">
+                        {{ log.message }}
+                    </span>
+                </div>
+                <div v-if="logs.length === 0" style="text-align: center; opacity: 0.5; padding: 20px;">
+                    No events yet. Interact with the examples above to see lifecycle events.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { VDOM } from 'https://cdn.jsdelivr.net/npm/@mintjamsinc/ichigojs@0.1.4/dist/ichigo.esm.js';
+
+        VDOM.createApp({
+            data() {
+                return {
+                    // Chart example
+                    showChart: false,
+                    chartData: [45, 67, 89, 56, 78],
+
+                    // List example
+                    items: [],
+                    nextId: 1,
+
+                    // Animation example
+                    showAnimatedCard: false,
+                    tiles: [],
+                    nextTileId: 1,
+                    tileEmojis: ['🍓', '🍎', '🍊', '🍋', '🍌', '🍉', '🍇', '🍑', '🥝', '🍍'],
+
+                    // Event log
+                    logs: [],
+                    logId: 0
+                };
+            },
+            methods: {
+                // Chart methods
+                toggleChart() {
+                    this.showChart = !this.showChart;
+                },
+                addChartData() {
+                    const newValue = Math.floor(Math.random() * 100) + 20;
+                    this.chartData.push(newValue);
+                },
+                updateChartData() {
+                    this.chartData = this.chartData.map(() =>
+                        Math.floor(Math.random() * 100) + 20
+                    );
+                },
+                initChart() {
+                    this.addLog('mounted', '📊 Chart initialized');
+                },
+                updateChart() {
+                    this.addLog('updated', '📊 Chart updated with new data');
+                },
+                destroyChart() {
+                    this.addLog('unmounted', '📊 Chart destroyed and cleaned up');
+                },
+
+                // List methods
+                addItem() {
+                    const id = this.nextId++;
+                    const now = new Date().toLocaleTimeString();
+                    this.items.push({
+                        id,
+                        name: `Item ${id}`,
+                        created: now
+                    });
+                },
+                removeLastItem() {
+                    if (this.items.length > 0) {
+                        this.items.pop();
+                    }
+                },
+                clearItems() {
+                    this.items = [];
+                },
+                onItemMounted() {
+                    this.addLog('mounted', '📋 List item added to DOM');
+                },
+                onItemUnmounted() {
+                    this.addLog('unmounted', '📋 List item removed from DOM');
+                },
+
+                // Animation methods
+                toggleAnimatedCard() {
+                    this.showAnimatedCard = !this.showAnimatedCard;
+                },
+                addTile() {
+                    const emoji = this.tileEmojis[Math.floor(Math.random() * this.tileEmojis.length)];
+                    this.tiles.push({
+                        id: this.nextTileId++,
+                        emoji
+                    });
+                },
+                removeTile() {
+                    if (this.tiles.length > 0) {
+                        this.tiles.pop();
+                    }
+                },
+                onCardMount(el) {
+                    // Set initial state BEFORE DOM insertion
+                    el.classList.add('fade-slide-enter');
+                    this.addLog('mount', '✨ Card mount - initial state set');
+                },
+                onCardEnter(el) {
+                    // Trigger animation AFTER DOM insertion
+                    // Force reflow to ensure initial state is applied
+                    el.offsetHeight;
+
+                    // Remove enter class and let CSS transition take over
+                    requestAnimationFrame(() => {
+                        el.classList.add('fade-slide-enter-active');
+                        el.classList.remove('fade-slide-enter');
+                        this.addLog('mounted', '✨ Card animation started');
+                    });
+                },
+                onCardLeave(el) {
+                    el.classList.add('fade-slide-leave');
+                    el.classList.add('fade-slide-leave-active');
+
+                    this.addLog('unmount', '✨ Card animating out');
+                },
+                onTileMount(el) {
+                    // Set initial state BEFORE DOM insertion
+                    el.style.opacity = '0';
+                    el.style.transform = 'scale(0.8)';
+                    this.addLog('mount', '✨ Tile mount - initial state set');
+                },
+                onTileEnter(el) {
+                    // Trigger animation AFTER DOM insertion
+                    requestAnimationFrame(() => {
+                        el.style.transition = 'all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+                        el.style.opacity = '1';
+                        el.style.transform = 'scale(1)';
+                        this.addLog('mounted', '✨ Tile animation started');
+                    });
+                },
+                onTileLeave(el) {
+                    el.style.transition = 'all 0.3s ease-in';
+                    el.style.opacity = '0';
+                    el.style.transform = 'scale(0.8) rotate(10deg)';
+
+                    this.addLog('unmount', '✨ Tile animating out');
+                },
+
+                // Log methods
+                addLog(type, message) {
+                    const now = new Date();
+                    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}.${String(now.getMilliseconds()).padStart(3, '0')}`;
+
+                    this.$nextTick(() => {
+                        this.logs = [...this.logs, {
+                            id: this.logId++,
+                            time,
+                            type,
+                            message
+                        }];
+
+                        // Keep only last 100 logs
+                        if (this.logs.length > 100) {
+                            this.logs = this.logs.slice(-100);
+                        }
+                    });
+                },
+                clearLog() {
+                    this.logs = [];
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

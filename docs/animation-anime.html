@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anime.js Integration - ichigo.js Examples</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 40px;
+        }
+
+        .example-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .example-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .description {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .demo-area {
+            min-height: 300px;
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .animated-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 15px;
+            font-size: 1.5em;
+            font-weight: bold;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+            text-align: center;
+        }
+
+        .particle-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .particle {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            width: 100%;
+            padding-bottom: 100%;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3);
+        }
+
+        .morphing-shape {
+            width: 200px;
+            height: 200px;
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(250, 112, 154, 0.4);
+        }
+
+        .code-example {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .code-example pre {
+            margin: 0;
+        }
+
+        .keyword { color: #c586c0; }
+        .string { color: #ce9178; }
+        .function { color: #dcdcaa; }
+        .comment { color: #6a9955; }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <h1>🎬 Anime.js Integration</h1>
+        <p class="subtitle">Powerful animation library integration using lifecycle hooks</p>
+
+        <!-- Example 1: Basic Fade & Slide -->
+        <div class="example-section">
+            <h2>Example 1: Fade & Slide Animation</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Smooth enter/exit animations for conditional elements.</p>
+                <p><strong>Library:</strong> <a href="https://animejs.com/" target="_blank" style="color: #667eea;">Anime.js</a></p>
+            </div>
+
+            <div class="button-group">
+                <button @click="toggleBox1">{{ showBox1 ? 'Hide Box' : 'Show Box' }}</button>
+            </div>
+
+            <div class="demo-area">
+                <div v-if="showBox1"
+                     @mounted="animateBoxIn"
+                     @unmount="animateBoxOut"
+                     class="animated-box">
+                    ✨ Animated Box
+                </div>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Using Anime.js for smooth animations</span>
+<span class="keyword">methods</span>: {
+  <span class="function">animateBoxIn</span>(el) {
+    anime({
+      targets: el,
+      opacity: [<span class="string">0</span>, <span class="string">1</span>],
+      translateY: [<span class="string">-50</span>, <span class="string">0</span>],
+      scale: [<span class="string">0.8</span>, <span class="string">1</span>],
+      duration: <span class="string">600</span>,
+      easing: <span class="string">'easeOutElastic(1, .6)'</span>
+    });
+  },
+  <span class="function">animateBoxOut</span>(el) {
+    anime({
+      targets: el,
+      opacity: <span class="string">0</span>,
+      translateY: <span class="string">50</span>,
+      scale: <span class="string">0.8</span>,
+      duration: <span class="string">400</span>,
+      easing: <span class="string">'easeInQuad'</span>
+    });
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Example 2: Staggered Grid Animation -->
+        <div class="example-section">
+            <h2>Example 2: Staggered Grid Animation</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Animate multiple elements with stagger effect for v-for lists.</p>
+            </div>
+
+            <div class="button-group">
+                <button @click="toggleParticles">{{ showParticles ? 'Hide Particles' : 'Show Particles' }}</button>
+                <button @click="regenerateParticles" :disabled="!showParticles">Regenerate</button>
+            </div>
+
+            <div class="demo-area">
+                <div v-if="showParticles" class="particle-grid">
+                    <div v-for="particle in particles"
+                         :key="particle.id"
+                         @mounted="animateParticleIn"
+                         @unmount="animateParticleOut"
+                         class="particle">
+                    </div>
+                </div>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Staggered animation for grid items</span>
+<span class="keyword">methods</span>: {
+  <span class="function">animateParticleIn</span>(el) {
+    <span class="comment">// Get index from parent</span>
+    <span class="keyword">const</span> siblings = Array.from(el.parentElement.children);
+    <span class="keyword">const</span> index = siblings.indexOf(el);
+
+    anime({
+      targets: el,
+      scale: [<span class="string">0</span>, <span class="string">1</span>],
+      opacity: [<span class="string">0</span>, <span class="string">1</span>],
+      duration: <span class="string">600</span>,
+      delay: index * <span class="string">50</span>, <span class="comment">// Stagger effect</span>
+      easing: <span class="string">'easeOutBack'</span>
+    });
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Example 3: Morphing Shape -->
+        <div class="example-section">
+            <h2>Example 3: Morphing Shape Animation</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Complex property animations on mount/update.</p>
+            </div>
+
+            <div class="button-group">
+                <button @click="toggleShape">{{ showShape ? 'Hide Shape' : 'Show Shape' }}</button>
+                <button @click="morphShape" :disabled="!showShape">Morph Shape</button>
+            </div>
+
+            <div class="demo-area">
+                <div v-if="showShape"
+                     :data-morph="morphTrigger"
+                     @mounted="animateShapeIn"
+                     @update="animateShapeMorph"
+                     class="morphing-shape">
+                </div>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Morphing animations on update</span>
+<span class="keyword">methods</span>: {
+  <span class="function">animateShapeIn</span>(el) {
+    anime({
+      targets: el,
+      rotate: [<span class="string">0</span>, <span class="string">360</span>],
+      scale: [<span class="string">0</span>, <span class="string">1</span>],
+      borderRadius: [<span class="string">'0%'</span>, <span class="string">'20px'</span>],
+      duration: <span class="string">1000</span>,
+      easing: <span class="string">'easeOutElastic(1, .5)'</span>
+    });
+  },
+  <span class="function">animateShapeMorph</span>(el) {
+    <span class="keyword">const</span> shapes = [<span class="string">'20px'</span>, <span class="string">'50%'</span>, <span class="string">'10px 50px'</span>];
+    <span class="keyword">const</span> randomShape = shapes[Math.floor(Math.random() * shapes.length)];
+
+    anime({
+      targets: el,
+      borderRadius: randomShape,
+      rotate: <span class="string">'+=180'</span>,
+      duration: <span class="string">800</span>,
+      easing: <span class="string">'easeInOutQuad'</span>
+    });
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Installation -->
+        <div class="example-section">
+            <h2>📦 Installation</h2>
+            <div class="description">
+                <p>Include Anime.js via CDN or npm:</p>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">&lt;!-- Via CDN --&gt;</span>
+<span class="keyword">&lt;script</span> <span class="string">src</span>=<span class="string">"https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"</span><span class="keyword">&gt;&lt;/script&gt;</span>
+
+<span class="comment">// Via npm</span>
+npm install animejs</pre>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 40px;">
+            <a href="index.html" style="color: #667eea; text-decoration: none; font-weight: 600;">← Back to Examples</a>
+        </div>
+    </div>
+
+    <!-- Anime.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+
+    <script type="module">
+        import { VDOM } from 'https://cdn.jsdelivr.net/npm/@mintjamsinc/ichigojs@0.1.4/dist/ichigo.esm.js';
+
+        VDOM.createApp({
+            data() {
+                return {
+                    // Example 1
+                    showBox1: false,
+
+                    // Example 2
+                    showParticles: false,
+                    particles: [],
+                    particleCount: 25,
+
+                    // Example 3
+                    showShape: false,
+                    morphTrigger: 0
+                };
+            },
+            methods: {
+                // Example 1: Basic animations
+                toggleBox1() {
+                    this.showBox1 = !this.showBox1;
+                },
+                animateBoxIn(el) {
+                    anime({
+                        targets: el,
+                        opacity: [0, 1],
+                        translateY: [-50, 0],
+                        scale: [0.8, 1],
+                        duration: 600,
+                        easing: 'easeOutElastic(1, .6)'
+                    });
+                },
+                animateBoxOut(el) {
+                    anime({
+                        targets: el,
+                        opacity: 0,
+                        translateY: 50,
+                        scale: 0.8,
+                        duration: 400,
+                        easing: 'easeInQuad'
+                    });
+                },
+
+                // Example 2: Staggered animations
+                toggleParticles() {
+                    if (this.showParticles) {
+                        this.showParticles = false;
+                        this.particles = [];
+                    } else {
+                        this.generateParticles();
+                        this.showParticles = true;
+                    }
+                },
+                generateParticles() {
+                    this.particles = Array.from({ length: this.particleCount }, (_, i) => ({
+                        id: Date.now() + i
+                    }));
+                },
+                regenerateParticles() {
+                    this.showParticles = false;
+                    this.$nextTick(() => {
+                        this.generateParticles();
+                        this.showParticles = true;
+                    });
+                },
+                animateParticleIn(el) {
+                    // Use dataset to track index at mount time
+                    this.$nextTick(() => {
+                        if (!el.parentElement) return;
+
+                        const siblings = Array.from(el.parentElement.children);
+                        const index = siblings.indexOf(el);
+
+                        // Store index for later use
+                        el.dataset.particleIndex = String(index);
+
+                        anime({
+                            targets: el,
+                            scale: [0, 1],
+                            opacity: [0, 1],
+                            rotate: [0, 360],
+                            duration: 600,
+                            delay: index * 50,
+                            easing: 'easeOutBack'
+                        });
+                    });
+                },
+                animateParticleOut(el) {
+                    // Use stored index or default to 0
+                    const index = parseInt(el.dataset.particleIndex || '0', 10);
+
+                    anime({
+                        targets: el,
+                        scale: 0,
+                        opacity: 0,
+                        duration: 400,
+                        delay: index * 30,
+                        easing: 'easeInQuad'
+                    });
+                },
+
+                // Example 3: Morphing shape
+                toggleShape() {
+                    this.showShape = !this.showShape;
+                },
+                morphShape() {
+                    this.morphTrigger++;
+                },
+                animateShapeIn(el) {
+                    anime({
+                        targets: el,
+                        rotate: [0, 360],
+                        scale: [0, 1],
+                        borderRadius: ['0%', '20px'],
+                        duration: 1000,
+                        easing: 'easeOutElastic(1, .5)'
+                    });
+                },
+                animateShapeMorph(el) {
+                    const shapes = ['20px', '50%', '10px 50px', '50px 10px'];
+                    const randomShape = shapes[Math.floor(Math.random() * shapes.length)];
+
+                    anime({
+                        targets: el,
+                        borderRadius: randomShape,
+                        rotate: '+=180',
+                        duration: 800,
+                        easing: 'easeInOutQuad'
+                    });
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
