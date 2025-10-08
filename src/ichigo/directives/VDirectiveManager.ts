@@ -149,8 +149,8 @@ export class VDirectiveManager {
                 directives.push(directive);
 
                 // If this is a key binding directive, store it separately
-                if (directive.name === StandardDirectiveName.V_BIND && (directive as VBindDirective).isKey) {
-                    this.#keyDirective = directive as VBindDirective;
+                if (directive.name === StandardDirectiveName.V_BIND && (directive as unknown as VBindDirective).isKey) {
+                    this.#keyDirective = directive as unknown as VBindDirective;
                 }
             }
         }

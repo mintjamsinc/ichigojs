@@ -164,6 +164,48 @@ export class VShowDirective implements VDirective {
     /**
      * @inheritdoc
      */
+    get onMount(): (() => void) | undefined {
+        return undefined;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get onMounted(): (() => void) | undefined {
+        return undefined;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get onUpdate(): (() => void) | undefined {
+        return undefined;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get onUpdated(): (() => void) | undefined {
+        return undefined;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get onUnmount(): (() => void) | undefined {
+        return undefined;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get onUnmounted(): (() => void) | undefined {
+        return undefined;
+    }
+
+    /**
+     * @inheritdoc
+     */
     destroy(): void {
         // No specific cleanup needed for this directive
     }

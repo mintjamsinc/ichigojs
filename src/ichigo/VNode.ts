@@ -96,6 +96,12 @@ export class VNode {
     #closers?: VCloser[];
 
     /**
+     * Indicates whether this node has been templatized by a directive.
+     * This is optional and may be undefined if the node has not been templatized.
+     */
+    #templatized?: boolean;
+
+    /**
      * Creates an instance of the virtual node.
      * @param args The initialization arguments for the virtual node.
      */
@@ -110,18 +116,18 @@ export class VNode {
 
         this.#parentVNode?.addChild(this);
 
-        // If the node is a text node, check for expressions and create a text evaluator
         if (this.#nodeType === Node.TEXT_NODE) {
+            // If the node is a text node, check for expressions and create a text evaluator
+
             const text = this.#node as Text;
 
             // Create a text evaluator if the text contains expressions
             if (VTextEvaluator.containsExpression(text.data)) {
                 this.#textEvaluator = new VTextEvaluator(text.data, this.#vApplication.functionDependencies);
             }
-        }
+        } else if (this.#nodeType === Node.ELEMENT_NODE) {
+            // If the node is an element, initialize directives and child nodes
 
-        // If the node is an element, initialize directives and child nodes
-        if (this.#nodeType === Node.ELEMENT_NODE && this.#node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
             const element = this.#node as HTMLElement;
 
             // Initialize child virtual nodes
@@ -130,8 +136,18 @@ export class VNode {
             // Initialize directive manager
             this.#directiveManager = new VDirectiveManager(this);
 
-            // For non-v-for elements, recursively create VNode instances for child nodes
-            if (!this.#directiveManager.directives?.some(d => d.templatize)) {
+            // Determine if any directive requires template preservation
+            this.#templatized = this.#directiveManager.directives?.some(d => d.templatize) ?? false;
+
+            // If no directive requires template preservation, call onMount for directives that do not templatize
+            if (!this.#templatized) {
+                this.#directiveManager.directives?.forEach(d => {
+                    d.onMount?.();
+                });
+            }
+
+            // Create child virtual nodes if template preservation is not required
+            if (!this.#templatized) {
                 for (const childNode of Array.from(this.#node.childNodes)) {
                     new VNode({
                         node: childNode,
@@ -140,12 +156,20 @@ export class VNode {
                     });
                 }
             }
+
+            // After creating child nodes, call onMounted for directives that do not templatize
+            if (!this.#templatized) {
+                // animation frame to ensure DOM is updated
+                requestAnimationFrame(() => {
+                    this.#directiveManager?.directives?.forEach(d => {
+                        d.onMounted?.();
+                    });
+                });
+            }
         }
 
-        // If there is a parent virtual node, add this node as a dependency
-        if (this.#parentVNode) {
-            this.#closers = this.#parentVNode.addDependent(this);
-        }
+        // Register this node as a dependent of the parent node, if any
+        this.#closers = this.#parentVNode?.addDependent(this);
     }
 
     /**
@@ -365,8 +389,9 @@ export class VNode {
     update(): void {
         const changes = this.bindings?.changes || [];
 
-        // If this is a text node with a text evaluator, update its content if needed
         if (this.#nodeType === Node.TEXT_NODE && this.#textEvaluator) {
+            // If this is a text node with a text evaluator, update its content if needed
+
             // Check if any of the identifiers are in the changed identifiers
             const changed = this.#textEvaluator.identifiers.some(id => changes.includes(id));
 
@@ -375,43 +400,57 @@ export class VNode {
                 const text = this.#node as Text;
                 text.data = this.#textEvaluator.evaluate(this.bindings);
             }
+        } else if (this.#nodeType === Node.ELEMENT_NODE) {
+            // If this is an element node, update directives and child nodes
 
-            return;
-        }
-
-        // Prepare new bindings using directive bindings preparers, if any
-        if (this.#directiveManager?.bindingsPreparers) {
-            // Ensure local bindings are initialized
-            if (!this.#bindings) {
-                this.#bindings = new VBindings({ parent: this.bindings });
+            // If no directive requires template preservation, call onUpdate for directives that do not templatize
+            if (!this.#templatized) {
+                this.#directiveManager?.directives?.forEach(d => {
+                    d.onUpdate?.();
+                });
             }
 
-            // Prepare bindings for each preparer if relevant identifiers have changed
-            for (const preparer of this.#directiveManager.bindingsPreparers) {
-                const changed = preparer.dependentIdentifiers.some(id => changes.includes(id));
-                if (changed) {
-                    preparer.prepareBindings();
+            // Prepare new bindings using directive bindings preparers, if any
+            if (this.#directiveManager?.bindingsPreparers) {
+                // Ensure local bindings are initialized
+                if (!this.#bindings) {
+                    this.#bindings = new VBindings({ parent: this.bindings });
+                }
+
+                // Prepare bindings for each preparer if relevant identifiers have changed
+                for (const preparer of this.#directiveManager.bindingsPreparers) {
+                    const changed = preparer.dependentIdentifiers.some(id => changes.includes(id));
+                    if (changed) {
+                        preparer.prepareBindings();
+                    }
                 }
             }
-        }
 
-        // Apply DOM updaters from directives, if any
-        if (this.#directiveManager?.domUpdaters) {
-            for (const updater of this.#directiveManager.domUpdaters) {
-                const changed = updater.dependentIdentifiers.some(id => changes.includes(id));
-                if (changed) {
-                    updater.applyToDOM();
+            // Apply DOM updaters from directives, if any
+            if (this.#directiveManager?.domUpdaters) {
+                for (const updater of this.#directiveManager.domUpdaters) {
+                    const changed = updater.dependentIdentifiers.some(id => changes.includes(id));
+                    if (changed) {
+                        updater.applyToDOM();
+                    }
                 }
             }
-        }
 
-        // Recursively update dependent virtual nodes
-        this.#dependents?.forEach(dependentNode => {
-            const changed = dependentNode.dependentIdentifiers.some(id => changes.includes(id));
-            if (changed) {
-                dependentNode.update();
+            // Recursively update dependent virtual nodes
+            this.#dependents?.forEach(dependentNode => {
+                const changed = dependentNode.dependentIdentifiers.some(id => changes.includes(id));
+                if (changed) {
+                    dependentNode.update();
+                }
+            });
+
+            // If no directive requires template preservation, call onUpdated for directives that do not templatize
+            if (!this.#templatized) {
+                this.#directiveManager?.directives?.forEach(d => {
+                    d.onUpdated?.();
+                });
             }
-        });
+        }
     }
 
     /**
@@ -421,37 +460,53 @@ export class VNode {
      * This is useful when an immediate update is needed, bypassing the usual change detection.
      */
     forceUpdate(): void {
-        // If this is a text node with a text evaluator, update its content if needed
         if (this.#nodeType === Node.TEXT_NODE && this.#textEvaluator) {
+            // If this is a text node with a text evaluator, update its content if needed
+
             const text = this.#node as Text;
             text.data = this.#textEvaluator.evaluate(this.bindings);
-            return;
-        }
+        } else if (this.#nodeType === Node.ELEMENT_NODE) {
+            // If this is an element node, update directives and child nodes
 
-        // Prepare new bindings using directive bindings preparers, if any
-        if (this.#directiveManager?.bindingsPreparers) {
-            // Ensure local bindings are initialized
-            if (!this.#bindings) {
-                this.#bindings = new VBindings({ parent: this.bindings });
+            // If no directive requires template preservation, call onUpdate for directives that do not templatize
+            if (!this.#templatized) {
+                this.#directiveManager?.directives?.forEach(d => {
+                    d.onUpdate?.();
+                });
             }
 
-            // Prepare bindings for each preparer if relevant identifiers have changed
-            for (const preparer of this.#directiveManager.bindingsPreparers) {
-                preparer.prepareBindings();
+            // Prepare new bindings using directive bindings preparers, if any
+            if (this.#directiveManager?.bindingsPreparers) {
+                // Ensure local bindings are initialized
+                if (!this.#bindings) {
+                    this.#bindings = new VBindings({ parent: this.bindings });
+                }
+
+                // Prepare bindings for each preparer if relevant identifiers have changed
+                for (const preparer of this.#directiveManager.bindingsPreparers) {
+                    preparer.prepareBindings();
+                }
+            }
+
+            // Apply DOM updaters from directives, if any
+            if (this.#directiveManager?.domUpdaters) {
+                for (const updater of this.#directiveManager.domUpdaters) {
+                    updater.applyToDOM();
+                }
+            }
+
+            // Recursively update child virtual nodes
+            this.#childVNodes?.forEach(childVNode => {
+                childVNode.forceUpdate();
+            });
+
+            // If no directive requires template preservation, call onUpdated for directives that do not templatize
+            if (!this.#templatized) {
+                this.#directiveManager?.directives?.forEach(d => {
+                    d.onUpdated?.();
+                });
             }
         }
-
-        // Apply DOM updaters from directives, if any
-        if (this.#directiveManager?.domUpdaters) {
-            for (const updater of this.#directiveManager.domUpdaters) {
-                updater.applyToDOM();
-            }
-        }
-
-        // Recursively update child virtual nodes
-        this.#childVNodes?.forEach(childVNode => {
-            childVNode.forceUpdate();
-        });
     }
 
     /**
@@ -537,6 +592,13 @@ export class VNode {
      * This method is called when the virtual node is no longer needed.
      */
     destroy(): void {
+        // If no directive requires template preservation, call onUnmount for directives that do not templatize
+        if (!this.#templatized) {
+            this.#directiveManager?.directives?.forEach(d => {
+                d.onUnmount?.();
+            });
+        }
+
         // Recursively destroy child nodes
         if (this.#childVNodes) {
             for (const childVNode of this.#childVNodes) {
@@ -557,6 +619,13 @@ export class VNode {
                     this.#vApplication.logManager.getLogger(this.constructor.name).error(`Error closing dependency closer: ${error}`);
                 }
             }
+        }
+
+        // If no directive requires template preservation, call onUnmounted for directives that do not templatize
+        if (!this.#templatized) {
+            this.#directiveManager?.directives?.forEach(d => {
+                d.onUnmounted?.();
+            });
         }
 
         // Clean up directive handler

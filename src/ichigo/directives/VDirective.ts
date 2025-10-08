@@ -68,6 +68,42 @@ export interface VDirective {
     get dependentIdentifiers(): string[];
 
     /**
+     * Lifecycle hook called before the directive is mounted to the DOM.
+     * This is called once, before the element is inserted into the DOM.
+     */
+    get onMount(): (() => void) | undefined;
+    
+    /**
+     * Lifecycle hook called after the directive is mounted to the DOM.
+     * This is called once, after the element is inserted into the DOM.
+     */
+    get onMounted(): (() => void) | undefined;
+
+    /**
+     * Lifecycle hook called before the directive is updated.
+     * This is called before the element is re-rendered.
+     */
+    get onUpdate(): (() => void) | undefined;
+
+    /**
+     * Lifecycle hook called after the directive is updated.
+     * This is called after the element is re-rendered.
+     */
+    get onUpdated(): (() => void) | undefined;
+
+    /**
+     * Lifecycle hook called before the directive is unmounted from the DOM.
+     * This is called once, before the element is removed from the DOM.
+     */
+    get onUnmount(): (() => void) | undefined;
+
+    /**
+     * Lifecycle hook called after the directive is unmounted from the DOM.
+     * This is called once, after the element is removed from the DOM.
+     */
+    get onUnmounted(): (() => void) | undefined;
+
+    /**
      * Cleans up any resources used by the directive.
      * This method is called when the directive is no longer needed.
      */

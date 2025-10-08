@@ -9,7 +9,7 @@ import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 
 /**
- * Directive for binding event listeners to DOM elements.
+ * Directive for binding event listeners to DOM elements and lifecycle hooks.
  * The `v-on` directive allows you to listen to DOM events and execute specified methods when those events are triggered.
  * The syntax for using the `v-on` directive is `v-on:event="methodName"`, where `event` is the name of the event to listen for (e.g., `click`, `mouseover`, etc.), and `methodName` is the name of the method to be called when the event occurs.
  * Example usage:
@@ -18,7 +18,16 @@ import { VDOMUpdater } from "../VDOMUpdater";
  * You can also use the shorthand `@event` instead of `v-on:event`. For example, `@click="handleClick"` is equivalent to `v-on:click="handleClick"`.
  * The `v-on` directive supports event modifiers such as `.stop`, `.prevent`, `.capture`, `.self`, and `.once` to modify the behavior of the event listener.
  * For example, `v-on:click.stop="handleClick"` will stop the event from propagating up the DOM tree.
- * This directive is essential for handling user interactions in your application.
+ *
+ * Additionally, this directive supports lifecycle hooks:
+ *     @mount="onMount"       - Called before the element is inserted into the DOM
+ *     @mounted="onMounted"   - Called after the element is inserted into the DOM
+ *     @update="onUpdate"     - Called before the element is updated
+ *     @updated="onUpdated"   - Called after the element is updated
+ *     @unmount="onUnmount"   - Called before the element is removed from the DOM
+ *     @unmounted="onUnmounted" - Called after the element is removed from the DOM
+ *
+ * This directive is essential for handling user interactions and lifecycle events in your application.
  * Note that the methods referenced in the directive should be defined in the component's methods object.
  */
 export class VOnDirective implements VDirective {
@@ -35,11 +44,13 @@ export class VOnDirective implements VDirective {
 
     /**
      * The event handler wrapper function, generated once and reused.
+     * For lifecycle hooks, this is a no-argument function.
+     * For DOM events, this accepts an Event parameter.
      */
-    #handlerWrapper?: (event: Event) => any;
+    #handlerWrapper?: ((event: Event) => any) | (() => any);
 
     /**
-     * The event name (e.g., "click", "input", "keydown").
+     * The event name (e.g., "click", "input", "keydown") or lifecycle hook name (e.g., "mount", "mounted").
      */
     #eventName?: string;
 
@@ -49,9 +60,14 @@ export class VOnDirective implements VDirective {
     #modifiers: Set<string> = new Set();
 
     /**
-     * The event listener function.
+     * The event listener function for DOM events.
      */
     #listener?: (event: Event) => void;
+
+    /**
+     * Map of lifecycle hook names to their handler functions.
+     */
+    #lifecycleHooks: Map<string, () => void> = new Map();
 
     /**
      * @param context The context for parsing the directive.
@@ -78,11 +94,22 @@ export class VOnDirective implements VDirective {
         const expression = context.attribute.value;
         if (expression) {
             this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
-            this.#handlerWrapper = this.#createHandlerWrapper(expression);
         }
 
-        // Create and attach the event listener
-        if (this.#eventName) {
+        // Check if this is a lifecycle hook or a regular event
+        if (this.#eventName && this.#isLifecycleHook(this.#eventName)) {
+            // Create handler wrapper for lifecycle hook (no event parameter)
+            if (expression) {
+                const handler = this.#createLifecycleHandlerWrapper(expression);
+                this.#handlerWrapper = handler;
+                this.#lifecycleHooks.set(this.#eventName, handler);
+            }
+        } else if (this.#eventName) {
+            // Create handler wrapper for DOM event (with event parameter)
+            if (expression) {
+                this.#handlerWrapper = this.#createEventHandlerWrapper(expression);
+            }
+            // Create and attach DOM event listener
             this.#attachEventListener();
         }
 
@@ -137,6 +164,48 @@ export class VOnDirective implements VDirective {
      */
     get dependentIdentifiers(): string[] {
         return this.#dependentIdentifiers ?? [];
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get onMount(): (() => void) | undefined {
+        return this.#lifecycleHooks.get('mount');
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get onMounted(): (() => void) | undefined {
+        return this.#lifecycleHooks.get('mounted');
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get onUpdate(): (() => void) | undefined {
+        return this.#lifecycleHooks.get('update');
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get onUpdated(): (() => void) | undefined {
+        return this.#lifecycleHooks.get('updated');
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get onUnmount(): (() => void) | undefined {
+        return this.#lifecycleHooks.get('unmount');
+    }
+
+    /**
+     * @inheritdoc
+     */
+    get onUnmounted(): (() => void) | undefined {
+        return this.#lifecycleHooks.get('unmounted');
     }
 
     /**
@@ -227,11 +296,53 @@ export class VOnDirective implements VDirective {
     }
 
     /**
-     * Creates a wrapper function for the event handler, generated once and reused.
+     * Checks if the event name is a lifecycle hook.
+     * @param eventName The event name to check.
+     * @returns True if the event name is a lifecycle hook, false otherwise.
+     */
+    #isLifecycleHook(eventName: string): boolean {
+        return ['mount', 'mounted', 'update', 'updated', 'unmount', 'unmounted'].includes(eventName);
+    }
+
+    /**
+     * Creates a wrapper function for lifecycle hooks (no event parameter).
+     * @param expression The expression string to evaluate.
+     * @returns A function that handles the lifecycle hook.
+     */
+    #createLifecycleHandlerWrapper(expression: string): () => any {
+        const identifiers = this.#dependentIdentifiers ?? [];
+        const vNode = this.#vNode;
+
+        // Return a function that handles the lifecycle hook with proper scope
+        return () => {
+            const bindings = vNode.bindings;
+
+            // If the expression is just a method name, call it with bindings as 'this'
+            const trimmedExpr = expression.trim();
+            if (identifiers.includes(trimmedExpr) && typeof bindings?.get(trimmedExpr) === 'function') {
+                const methodName = trimmedExpr;
+                const originalMethod = bindings?.get(methodName);
+
+                // Call the method with bindings as 'this' context
+                // This allows the method to access and modify bindings properties via 'this'
+                return originalMethod();
+            }
+
+            // For inline expressions, evaluate normally
+            const values = identifiers.map(id => vNode.bindings?.get(id));
+            const args = identifiers.join(", ");
+            const funcBody = `return (${expression});`;
+            const func = new Function(args, funcBody) as (...args: any[]) => any;
+            return func.call(bindings?.raw, ...values);
+        };
+    }
+
+    /**
+     * Creates a wrapper function for DOM event handlers (with event parameter).
      * @param expression The expression string to evaluate.
      * @returns A function that handles the event.
      */
-    #createHandlerWrapper(expression: string): (event: Event) => any {
+    #createEventHandlerWrapper(expression: string): (event: Event) => any {
         const identifiers = this.#dependentIdentifiers ?? [];
         const vNode = this.#vNode;
 
