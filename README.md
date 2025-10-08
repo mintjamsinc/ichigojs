@@ -11,6 +11,7 @@ A simple and intuitive reactive framework. Lightweight, fast, and user-friendly 
 - ⚡ **Reactive Proxy System** - Automatic change detection without manual triggers
 - 🎯 **Computed Properties** - Automatic dependency tracking and re-evaluation
 - 🔄 **Two-way Binding** - `v-model` with modifiers (`.lazy`, `.number`, `.trim`)
+- 🔌 **Lifecycle Hooks** - `@mount`, `@mounted`, `@update`, `@updated`, `@unmount`, `@unmounted`
 - 📦 **Lightweight** - Minimal bundle size
 - 🚀 **High Performance** - Efficient batched updates via microtask queue
 - 💪 **TypeScript** - Written in TypeScript with full type support
@@ -158,6 +159,71 @@ Event handling with modifiers:
 
 Supported modifiers: `.stop`, `.prevent`, `.capture`, `.self`, `.once`
 
+#### Lifecycle Hooks
+
+Lifecycle hooks allow you to run code at specific stages of an element's lifecycle:
+
+```html
+<div v-if="show"
+     @mount="onMount"
+     @mounted="onMounted"
+     @update="onUpdate"
+     @updated="onUpdated"
+     @unmount="onUnmount"
+     @unmounted="onUnmounted">
+  Content
+</div>
+```
+
+**Available hooks:**
+
+- `@mount` - Called before the element is inserted into the DOM
+- `@mounted` - Called after the element is inserted into the DOM
+- `@update` - Called before the element is updated
+- `@updated` - Called after the element is updated
+- `@unmount` - Called before the element is removed from the DOM
+- `@unmounted` - Called after the element is removed from the DOM
+
+**Use cases:**
+
+```javascript
+methods: {
+  onMounted(el) {
+    // Initialize third-party library (el is the DOM element)
+    const canvas = el.querySelector('canvas');
+    canvas._chartInstance = new Chart(canvas.getContext('2d'), { /* ... */ });
+  },
+  onUpdated(el) {
+    // Update chart with new data
+    const canvas = el.querySelector('canvas');
+    canvas._chartInstance?.update();
+  },
+  onUnmounted(el) {
+    // Clean up resources
+    const canvas = el.querySelector('canvas');
+    canvas._chartInstance?.destroy();
+    delete canvas._chartInstance;
+  }
+}
+```
+
+**Works with v-if and v-for:**
+
+```html
+<!-- With v-if: hooks called on show/hide -->
+<div v-if="isVisible" @mounted="onShow" @unmounted="onHide">
+  Conditional content
+</div>
+
+<!-- With v-for: hooks called for each item -->
+<div v-for="item in items"
+     :key="item.id"
+     @mounted="onItemAdded"
+     @unmounted="onItemRemoved">
+  {{ item.name }}
+</div>
+```
+
 #### v-model
 
 Two-way data binding:
@@ -258,7 +324,15 @@ VDOM.createApp<AppData>({
 
 ## Examples
 
-See the [examples](./examples) directory for more usage examples.
+See the [docs](https://mintjamsinc.github.io/ichigojs/) for live examples:
+
+- **Basic Usage** - Getting started with ichigo.js
+- **Todo List** - Complete task management application
+- **Component System** - Reusable components with props and events
+- **Advanced Features**:
+  - **Lifecycle Hooks** - CSS animations and Chart.js integration
+  - **Anime.js Integration** - Particle animations and morphing shapes
+  - **Chart.js Integration** - Dynamic charts with automatic updates
 
 ## API Reference
 
