@@ -305,7 +305,7 @@ export class VOnDirective implements VDirective {
     }
 
     /**
-     * Creates a wrapper function for lifecycle hooks (no event parameter).
+     * Creates a wrapper function for lifecycle hooks (with element parameter).
      * @param expression The expression string to evaluate.
      * @returns A function that handles the lifecycle hook.
      */
@@ -316,6 +316,7 @@ export class VOnDirective implements VDirective {
         // Return a function that handles the lifecycle hook with proper scope
         return () => {
             const bindings = vNode.bindings;
+            const el = vNode.node as HTMLElement;
 
             // If the expression is just a method name, call it with bindings as 'this'
             const trimmedExpr = expression.trim();
@@ -323,17 +324,17 @@ export class VOnDirective implements VDirective {
                 const methodName = trimmedExpr;
                 const originalMethod = bindings?.get(methodName);
 
-                // Call the method with bindings as 'this' context
-                // This allows the method to access and modify bindings properties via 'this'
-                return originalMethod();
+                // Call the method with bindings as 'this' context and element as parameter
+                // This allows the method to access the DOM element and bindings
+                return originalMethod(el);
             }
 
-            // For inline expressions, evaluate normally
+            // For inline expressions, evaluate normally with element parameter
             const values = identifiers.map(id => vNode.bindings?.get(id));
-            const args = identifiers.join(", ");
+            const args = [...identifiers, 'el'].join(", ");
             const funcBody = `return (${expression});`;
             const func = new Function(args, funcBody) as (...args: any[]) => any;
-            return func.call(bindings?.raw, ...values);
+            return func.call(bindings?.raw, ...values, el);
         };
     }
 

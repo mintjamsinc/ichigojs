@@ -195,12 +195,18 @@ export class VForDirective implements VDirective {
      */
     destroy(): void {
         // Clean up all rendered items
+        // First destroy all VNodes (calls @unmount hooks), then remove from DOM
+        for (const vNode of this.#renderedItems.values()) {
+            vNode.destroy();
+        }
+
+        // Then remove DOM nodes
         for (const vNode of this.#renderedItems.values()) {
             if (vNode.node.parentNode) {
                 vNode.node.parentNode.removeChild(vNode.node);
             }
-            vNode.destroy();
         }
+
         this.#renderedItems.clear();
         this.#previousIterations = [];
     }
@@ -269,12 +275,19 @@ export class VForDirective implements VDirective {
         const neededKeys = new Set(newIterations.map(ctx => ctx.key));
 
         // Remove items that are no longer needed
+        // First destroy VNodes (calls @unmount hooks while DOM is still accessible)
+        const nodesToRemove: VNode[] = [];
         for (const [key, vNode] of this.#renderedItems) {
             if (!neededKeys.has(key)) {
-                if (vNode.node.parentNode) {
-                    vNode.node.parentNode.removeChild(vNode.node);
-                }
+                nodesToRemove.push(vNode);
                 vNode.destroy();
+            }
+        }
+
+        // Then remove from DOM
+        for (const vNode of nodesToRemove) {
+            if (vNode.node.parentNode) {
+                vNode.node.parentNode.removeChild(vNode.node);
             }
         }
 

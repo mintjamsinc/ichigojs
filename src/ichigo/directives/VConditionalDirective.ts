@@ -240,8 +240,11 @@ export abstract class VConditionalDirective implements VDirective {
             return;
         }
 
-        this.#renderedVNode.node.parentNode?.removeChild(this.#renderedVNode.node);
+        // Destroy VNode first (calls @unmount hooks while DOM is still accessible)
         this.#renderedVNode.destroy();
+
+        // Then remove from DOM
+        this.#renderedVNode.node.parentNode?.removeChild(this.#renderedVNode.node);
         this.#renderedVNode = undefined;
     }
 

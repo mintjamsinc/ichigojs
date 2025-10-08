@@ -621,14 +621,14 @@ export class VNode {
             }
         }
 
+        // Clean up directive handler
+        this.#directiveManager?.destroy();
+
         // If no directive requires template preservation, call onUnmounted for directives that do not templatize
         if (!this.#templatized) {
             this.#directiveManager?.directives?.forEach(d => {
                 d.onUnmounted?.();
             });
         }
-
-        // Clean up directive handler
-        this.#directiveManager?.destroy();
     }
 }
