@@ -11,7 +11,8 @@ A simple and intuitive reactive framework. Lightweight, fast, and user-friendly 
 - ⚡ **Reactive Proxy System** - Automatic change detection without manual triggers
 - 🎯 **Computed Properties** - Automatic dependency tracking and re-evaluation
 - 🔄 **Two-way Binding** - `v-model` with modifiers (`.lazy`, `.number`, `.trim`)
-- 🔌 **Lifecycle Hooks** - `@mount`, `@mounted`, `@update`, `@updated`, `@unmount`, `@unmounted`
+- 🔌 **Lifecycle Hooks** - `@mount`, `@mounted`, `@update`, `@updated`, `@unmount`, `@unmounted` with context (`$ctx`)
+- 💾 **userData Storage** - Proxy-free storage for third-party library instances with auto-cleanup
 - 📦 **Lightweight** - Minimal bundle size
 - 🚀 **High Performance** - Efficient batched updates via microtask queue
 - 💪 **TypeScript** - Written in TypeScript with full type support
@@ -161,7 +162,7 @@ Supported modifiers: `.stop`, `.prevent`, `.capture`, `.self`, `.once`
 
 #### Lifecycle Hooks
 
-Lifecycle hooks allow you to run code at specific stages of an element's lifecycle:
+Lifecycle hooks allow you to run code at specific stages of an element's lifecycle. Each hook receives a **lifecycle context** (`$ctx`) with access to the element, VNode, and userData storage.
 
 ```html
 <div v-if="show"
@@ -184,28 +185,82 @@ Lifecycle hooks allow you to run code at specific stages of an element's lifecyc
 - `@unmount` - Called before the element is removed from the DOM
 - `@unmounted` - Called after the element is removed from the DOM
 
-**Use cases:**
+**Lifecycle Context (`$ctx`):**
+
+Every lifecycle hook receives a context object with:
+
+- `$ctx.element` - The DOM element
+- `$ctx.vnode` - The VNode instance
+- `$ctx.userData` - Proxy-free storage Map for user data
+
+**userData Storage:**
+
+`$ctx.userData` is a safe space to store data associated with the element's lifecycle. It's not affected by Vue's reactive proxy system, making it perfect for storing third-party library instances.
 
 ```javascript
 methods: {
-  onMounted(el) {
-    // Initialize third-party library (el is the DOM element)
-    const canvas = el.querySelector('canvas');
-    canvas._chartInstance = new Chart(canvas.getContext('2d'), { /* ... */ });
+  onMounted($ctx) {
+    // Initialize third-party library
+    const canvas = $ctx.element.querySelector('canvas');
+    const chart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: { /* ... */ }
+    });
+
+    // Store in userData (Proxy-free storage)
+    $ctx.userData.set('chart', chart);
   },
-  onUpdated(el) {
-    // Update chart with new data
-    const canvas = el.querySelector('canvas');
-    canvas._chartInstance?.update();
+
+  onUpdated($ctx) {
+    // Retrieve from userData
+    const chart = $ctx.userData.get('chart');
+    if (chart) {
+      chart.data.labels = [...this.labels];
+      chart.update();
+    }
   },
-  onUnmounted(el) {
-    // Clean up resources
-    const canvas = el.querySelector('canvas');
-    canvas._chartInstance?.destroy();
-    delete canvas._chartInstance;
+
+  onUnmount($ctx) {
+    // Clean up before removal
+    const chart = $ctx.userData.get('chart');
+    if (chart) {
+      chart.destroy();
+      $ctx.userData.delete('chart');
+    }
   }
 }
 ```
+
+**Automatic Cleanup:**
+
+Objects with a `close()` method stored in `userData` are automatically cleaned up during the destroy phase:
+
+```javascript
+methods: {
+  onMounted($ctx) {
+    // Object with close() method
+    const resource = {
+      data: someData,
+      close() {
+        // Custom cleanup logic
+        console.log('Resource cleaned up');
+      }
+    };
+
+    $ctx.userData.set('myResource', resource);
+    // resource.close() will be called automatically on unmount
+  }
+}
+```
+
+**Cleanup Order:**
+
+1. `@unmount` hook fires
+2. `userData` auto-cleanup (close() methods called)
+3. Child nodes destroyed
+4. Dependencies unregistered
+5. Directive manager cleanup
+6. `@unmounted` hook fires
 
 **Works with v-if and v-for:**
 
