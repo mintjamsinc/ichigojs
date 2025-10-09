@@ -195,7 +195,7 @@ Every lifecycle hook receives a context object with:
 
 **userData Storage:**
 
-`$ctx.userData` is a safe space to store data associated with the element's lifecycle. It's not affected by Vue's reactive proxy system, making it perfect for storing third-party library instances.
+`$ctx.userData` is a safe space to store data associated with the element's lifecycle. It's not affected by the reactive proxy system, making it perfect for storing third-party library instances.
 
 ```javascript
 methods: {
