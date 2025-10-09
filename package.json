@@ -1,6 +1,6 @@
 {
   "name": "@mintjamsinc/ichigojs",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "ichigo.js - Simple and intuitive reactive framework. Lightweight, fast, and user-friendly virtual DOM library",
   "main": "./dist/ichigo.umd.js",
   "module": "./dist/ichigo.esm.js",
