@@ -292,7 +292,7 @@ methods: {
     };
 
     $ctx.userData.set('myResource', resource);
-    // resource.close() will be called automatically on unmount
+    // resource.close() will be called automatically during destroy phase
   }
 }
 ```
