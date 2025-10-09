@@ -16,7 +16,8 @@ A simple and intuitive reactive framework. Lightweight, fast, and user-friendly 
 - 📦 **Lightweight** - Minimal bundle size
 - 🚀 **High Performance** - Efficient batched updates via microtask queue
 - 💪 **TypeScript** - Written in TypeScript with full type support
-- 🎨 **Directives** - `v-if`, `v-for`, `v-show`, `v-bind`, `v-on`, `v-model`
+- 🎨 **Directives** - `v-if`, `v-for`, `v-show`, `v-bind`, `v-on`, `v-model`, `v-resize`
+- 📐 **Resize Observer** - Monitor element size changes with `v-resize` directive
 
 ## Installation
 
@@ -159,6 +160,49 @@ Event handling with modifiers:
 ```
 
 Supported modifiers: `.stop`, `.prevent`, `.capture`, `.self`, `.once`
+
+**Event Handlers with Context:**
+
+All event handlers receive the event as the first parameter and `$ctx` as the second parameter:
+
+```javascript
+methods: {
+  handleClick(event, $ctx) {
+    // event - the DOM event object
+    // $ctx.element - the DOM element
+    // $ctx.vnode - the VNode instance
+    // $ctx.userData - Proxy-free storage
+  }
+}
+```
+
+#### v-resize
+
+Monitor element size changes using ResizeObserver:
+
+```html
+<div v-resize="onResize" class="resizable-box">
+  {{ width }}px × {{ height }}px
+</div>
+```
+
+```javascript
+methods: {
+  onResize(entries, $ctx) {
+    const entry = entries[0];
+    this.width = Math.round(entry.contentRect.width);
+    this.height = Math.round(entry.contentRect.height);
+
+    // Access element through $ctx
+    console.log('Element:', $ctx.element);
+  }
+}
+```
+
+**Features:**
+- Native ResizeObserver API for efficient resize detection
+- Automatic cleanup when element is removed
+- Access to element, VNode, and userData via `$ctx`
 
 #### Lifecycle Hooks
 
