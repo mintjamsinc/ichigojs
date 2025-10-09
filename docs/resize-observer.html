@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resize Observer - ichigo.js Examples</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 40px;
+        }
+
+        .example-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .example-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .description {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .resizable-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            resize: both;
+            overflow: auto;
+            min-width: 200px;
+            min-height: 150px;
+            max-width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .size-display {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .resize-hint {
+            opacity: 0.8;
+            font-size: 0.9em;
+        }
+
+        .info-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .info-value {
+            font-family: monospace;
+            color: #333;
+        }
+
+        .code-example {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .code-example pre {
+            margin: 0;
+        }
+
+        .keyword { color: #c586c0; }
+        .string { color: #ce9178; }
+        .function { color: #dcdcaa; }
+        .comment { color: #6a9955; }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <h1>📐 Resize Observer</h1>
+        <p class="subtitle">Monitor element size changes with v-resize directive</p>
+
+        <!-- Example 1: Basic Resize Observer -->
+        <div class="example-section">
+            <h2>Example 1: Resizable Box</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Track element dimensions in real-time using ResizeObserver API.</p>
+                <p><strong>Hint:</strong> Drag the bottom-right corner to resize the box!</p>
+            </div>
+
+            <div v-resize="onResize" class="resizable-box">
+                <div class="size-display">{{ width }}px × {{ height }}px</div>
+                <div class="resize-hint">⇲ Drag to resize</div>
+            </div>
+
+            <div class="info-card">
+                <div class="info-row">
+                    <span class="info-label">Content Width:</span>
+                    <span class="info-value">{{ contentWidth }}px</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Content Height:</span>
+                    <span class="info-value">{{ contentHeight }}px</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Border Box Width:</span>
+                    <span class="info-value">{{ borderBoxWidth }}px</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Border Box Height:</span>
+                    <span class="info-value">{{ borderBoxHeight }}px</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Resize Count:</span>
+                    <span class="info-value">{{ resizeCount }}</span>
+                </div>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Resize observer with v-resize directive</span>
+&lt;div <span class="keyword">v-resize</span>=<span class="string">"onResize"</span> class=<span class="string">"resizable-box"</span>&gt;
+  {{ width }}px × {{ height }}px
+&lt;/div&gt;
+
+<span class="keyword">methods</span>: {
+  <span class="function">onResize</span>(entries, $ctx) {
+    <span class="keyword">const</span> entry = entries[<span class="string">0</span>];
+
+    <span class="comment">// ContentRect provides content dimensions</span>
+    <span class="keyword">this</span>.width = Math.round(entry.contentRect.width);
+    <span class="keyword">this</span>.height = Math.round(entry.contentRect.height);
+
+    <span class="comment">// BorderBoxSize provides full element dimensions</span>
+    <span class="keyword">if</span> (entry.borderBoxSize) {
+      <span class="keyword">const</span> borderBox = entry.borderBoxSize[<span class="string">0</span>];
+      <span class="keyword">this</span>.borderBoxWidth = Math.round(borderBox.inlineSize);
+      <span class="keyword">this</span>.borderBoxHeight = Math.round(borderBox.blockSize);
+    }
+
+    <span class="comment">// Access element through $ctx</span>
+    console.log(<span class="string">'Element:'</span>, $ctx.element);
+    console.log(<span class="string">'VNode:'</span>, $ctx.vnode);
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Example 2: Features -->
+        <div class="example-section">
+            <h2>Key Features</h2>
+            <div class="description">
+                <ul style="list-style-position: inside; line-height: 2;">
+                    <li><strong>ResizeObserver API:</strong> Native browser API for efficient resize detection</li>
+                    <li><strong>Context Parameter:</strong> Access element, VNode, and userData via $ctx</li>
+                    <li><strong>Automatic Cleanup:</strong> Observer is disconnected when element is removed</li>
+                    <li><strong>Multiple Entries:</strong> Supports observing multiple elements simultaneously</li>
+                </ul>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Handler signature</span>
+<span class="function">onResize</span>(entries: ResizeObserverEntry[], $ctx: LifecycleContext) {
+  <span class="comment">// entries[0].contentRect - content dimensions</span>
+  <span class="comment">// entries[0].borderBoxSize - border box dimensions</span>
+  <span class="comment">// entries[0].contentBoxSize - content box dimensions</span>
+  <span class="comment">// $ctx.element - DOM element</span>
+  <span class="comment">// $ctx.vnode - VNode instance</span>
+  <span class="comment">// $ctx.userData - Proxy-free storage</span>
+}</pre>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 40px;">
+            <a href="index.html" style="color: #667eea; text-decoration: none; font-weight: 600;">← Back to Examples</a>
+        </div>
+    </div>
+
+    <script type="module">
+        import { VDOM } from 'https://cdn.jsdelivr.net/npm/@mintjamsinc/ichigojs@0.1.7/dist/ichigo.esm.js';
+
+        VDOM.createApp({
+            data() {
+                return {
+                    width: 0,
+                    height: 0,
+                    contentWidth: 0,
+                    contentHeight: 0,
+                    borderBoxWidth: 0,
+                    borderBoxHeight: 0,
+                    resizeCount: 0
+                };
+            },
+            methods: {
+                onResize(entries, $ctx) {
+                    const entry = entries[0];
+
+                    // ContentRect provides content dimensions
+                    this.width = Math.round(entry.contentRect.width);
+                    this.height = Math.round(entry.contentRect.height);
+                    this.contentWidth = Math.round(entry.contentRect.width);
+                    this.contentHeight = Math.round(entry.contentRect.height);
+
+                    // BorderBoxSize provides full element dimensions (including padding and border)
+                    if (entry.borderBoxSize && entry.borderBoxSize.length > 0) {
+                        const borderBox = entry.borderBoxSize[0];
+                        this.borderBoxWidth = Math.round(borderBox.inlineSize);
+                        this.borderBoxHeight = Math.round(borderBox.blockSize);
+                    }
+
+                    // Increment resize count
+                    this.resizeCount++;
+
+                    // You can access element, vnode, and userData through $ctx
+                    console.log('Resize event:', {
+                        element: $ctx.element,
+                        vnode: $ctx.vnode,
+                        userData: $ctx.userData
+                    });
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
