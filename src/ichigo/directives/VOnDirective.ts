@@ -24,7 +24,7 @@ import { VDOMUpdater } from "../VDOMUpdater";
  *     @mounted="onMounted"   - Called after the element is inserted into the DOM
  *     @update="onUpdate"     - Called before the element is updated
  *     @updated="onUpdated"   - Called after the element is updated
- *     @unmount="onUnmount"   - Called before the element is removed from the DOM
+ *     @unmount="onUnmount"   - Called before VNode cleanup begins
  *     @unmounted="onUnmounted" - Called after VNode cleanup is complete (element reference still available)
  *
  * This directive is essential for handling user interactions and lifecycle events in your application.
