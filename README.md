@@ -226,7 +226,7 @@ Lifecycle hooks allow you to run code at specific stages of an element's lifecyc
 - `@mounted` - Called after the element is inserted into the DOM
 - `@update` - Called before the element is updated
 - `@updated` - Called after the element is updated
-- `@unmount` - Called before the element is removed from the DOM
+- `@unmount` - Called before VNode cleanup begins
 - `@unmounted` - Called after VNode cleanup is complete (element reference still available)
 
 **Lifecycle Context (`$ctx`):**
