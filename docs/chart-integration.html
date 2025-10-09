@@ -394,12 +394,12 @@ npm install chart.js</pre>
                 toggleLineChart() {
                     this.showLineChart = !this.showLineChart;
                 },
-                initLineChart(el) {
+                initLineChart($ctx) {
                     this.$nextTick(() => {
-                        const canvas = el.querySelector('#lineChart');
-                        const ctx = canvas.getContext('2d');
-                        // Store chart instance on DOM element to avoid reactive proxy issues
-                        canvas._chartInstance = new Chart(ctx, {
+                        const canvas = $ctx.element.querySelector('#lineChart');
+                        const canvasCtx = canvas.getContext('2d');
+                        // Store chart instance in userData (Proxy-free storage)
+                        $ctx.userData.set('lineChart', new Chart(canvasCtx, {
                             type: 'line',
                             data: {
                                 labels: [...this.lineLabels],
@@ -427,12 +427,11 @@ npm install chart.js</pre>
                                     }
                                 }
                             }
-                        });
+                        }));
                     });
                 },
-                updateLineChart(el) {
-                    const canvas = el.querySelector('#lineChart');
-                    const chart = canvas?._chartInstance;
+                updateLineChart($ctx) {
+                    const chart = $ctx.userData.get('lineChart');
                     if (chart) {
                         // Convert reactive arrays to plain arrays
                         chart.data.labels = [...this.lineLabels];
@@ -440,12 +439,11 @@ npm install chart.js</pre>
                         chart.update();
                     }
                 },
-                destroyLineChart(el) {
-                    const canvas = el.querySelector('#lineChart');
-                    const chart = canvas?._chartInstance;
+                destroyLineChart($ctx) {
+                    const chart = $ctx.userData.get('lineChart');
                     if (chart) {
                         chart.destroy();
-                        delete canvas._chartInstance;
+                        $ctx.userData.delete('lineChart');
                     }
                 },
                 addDataPoint() {
@@ -466,12 +464,12 @@ npm install chart.js</pre>
                 toggleBarChart() {
                     this.showBarChart = !this.showBarChart;
                 },
-                initBarChart(el) {
+                initBarChart($ctx) {
                     this.$nextTick(() => {
-                        const canvas = el.querySelector('#barChart');
-                        const ctx = canvas.getContext('2d');
-                        // Store chart instance on DOM element to avoid reactive proxy issues
-                        canvas._chartInstance = new Chart(ctx, {
+                        const canvas = $ctx.element.querySelector('#barChart');
+                        const canvasCtx = canvas.getContext('2d');
+                        // Store chart instance in userData (Proxy-free storage)
+                        $ctx.userData.set('barChart', new Chart(canvasCtx, {
                             type: 'bar',
                             data: {
                                 labels: [...this.salesLabels],
@@ -503,12 +501,11 @@ npm install chart.js</pre>
                                     }
                                 }
                             }
-                        });
+                        }));
                     });
                 },
-                updateBarChart(el) {
-                    const canvas = el.querySelector('#barChart');
-                    const chart = canvas?._chartInstance;
+                updateBarChart($ctx) {
+                    const chart = $ctx.userData.get('barChart');
                     if (chart) {
                         // Convert reactive arrays to plain arrays
                         chart.data.labels = [...this.salesLabels];
@@ -516,12 +513,11 @@ npm install chart.js</pre>
                         chart.update();
                     }
                 },
-                destroyBarChart(el) {
-                    const canvas = el.querySelector('#barChart');
-                    const chart = canvas?._chartInstance;
+                destroyBarChart($ctx) {
+                    const chart = $ctx.userData.get('barChart');
                     if (chart) {
                         chart.destroy();
-                        delete canvas._chartInstance;
+                        $ctx.userData.delete('barChart');
                     }
                 },
                 addMonth() {
@@ -542,12 +538,12 @@ npm install chart.js</pre>
                 toggleDoughnutChart() {
                     this.showDoughnutChart = !this.showDoughnutChart;
                 },
-                initDoughnutChart(el) {
+                initDoughnutChart($ctx) {
                     this.$nextTick(() => {
-                        const canvas = el.querySelector('#doughnutChart');
-                        const ctx = canvas.getContext('2d');
-                        // Store chart instance on DOM element to avoid reactive proxy issues
-                        canvas._chartInstance = new Chart(ctx, {
+                        const canvas = $ctx.element.querySelector('#doughnutChart');
+                        const canvasCtx = canvas.getContext('2d');
+                        // Store chart instance in userData (Proxy-free storage)
+                        $ctx.userData.set('doughnutChart', new Chart(canvasCtx, {
                             type: 'doughnut',
                             data: {
                                 labels: [...this.categoryLabels],
@@ -571,24 +567,22 @@ npm install chart.js</pre>
                                     }
                                 }
                             }
-                        });
+                        }));
                     });
                 },
-                updateDoughnutChart(el) {
-                    const canvas = el.querySelector('#doughnutChart');
-                    const chart = canvas?._chartInstance;
+                updateDoughnutChart($ctx) {
+                    const chart = $ctx.userData.get('doughnutChart');
                     if (chart) {
                         // Convert reactive array to plain array
                         chart.data.datasets[0].data = [...this.categoryData];
                         chart.update();
                     }
                 },
-                destroyDoughnutChart(el) {
-                    const canvas = el.querySelector('#doughnutChart');
-                    const chart = canvas?._chartInstance;
+                destroyDoughnutChart($ctx) {
+                    const chart = $ctx.userData.get('doughnutChart');
                     if (chart) {
                         chart.destroy();
-                        delete canvas._chartInstance;
+                        $ctx.userData.delete('doughnutChart');
                     }
                 },
                 randomizeCategories() {
