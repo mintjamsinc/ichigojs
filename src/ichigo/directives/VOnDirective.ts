@@ -305,7 +305,7 @@ export class VOnDirective implements VDirective {
     }
 
     /**
-     * Creates a wrapper function for lifecycle hooks (with element parameter).
+     * Creates a wrapper function for lifecycle hooks (with context parameter).
      * @param expression The expression string to evaluate.
      * @returns A function that handles the lifecycle hook.
      */
@@ -316,7 +316,11 @@ export class VOnDirective implements VDirective {
         // Return a function that handles the lifecycle hook with proper scope
         return () => {
             const bindings = vNode.bindings;
-            const el = vNode.node as HTMLElement;
+            const $ctx = {
+                element: vNode.node as HTMLElement,
+                vnode: vNode,
+                userData: vNode.userData
+            };
 
             // If the expression is just a method name, call it with bindings as 'this'
             const trimmedExpr = expression.trim();
@@ -324,17 +328,18 @@ export class VOnDirective implements VDirective {
                 const methodName = trimmedExpr;
                 const originalMethod = bindings?.get(methodName);
 
-                // Call the method with bindings as 'this' context and element as parameter
-                // This allows the method to access the DOM element and bindings
-                return originalMethod(el);
+                // Call the method with bindings as 'this' context and context as parameter
+                // This allows the method to access the DOM element, VNode, and userData
+                return originalMethod($ctx);
             }
 
-            // For inline expressions, evaluate normally with element parameter
+            // For inline expressions, evaluate normally with $ctx parameter
+            // Note: $ctx is a reserved variable name for lifecycle context
             const values = identifiers.map(id => vNode.bindings?.get(id));
-            const args = [...identifiers, 'el'].join(", ");
+            const args = [...identifiers, '$ctx'].join(", ");
             const funcBody = `return (${expression});`;
             const func = new Function(args, funcBody) as (...args: any[]) => any;
-            return func.call(bindings?.raw, ...values, el);
+            return func.call(bindings?.raw, ...values, $ctx);
         };
     }
 

@@ -102,6 +102,14 @@ export class VNode {
     #templatized?: boolean;
 
     /**
+     * User data storage for lifecycle directives.
+     * This provides a Proxy-free space where developers can store arbitrary data
+     * associated with this VNode. The data is automatically cleaned up when the
+     * VNode is destroyed.
+     */
+    #userData?: Map<string, any>;
+
+    /**
      * Creates an instance of the virtual node.
      * @param args The initialization arguments for the virtual node.
      */
@@ -355,6 +363,19 @@ export class VNode {
     }
 
     /**
+     * Gets the user data storage for this virtual node.
+     * This is lazily initialized and provides a Proxy-free space for storing
+     * arbitrary data associated with lifecycle directives.
+     * @returns A Map for storing user data.
+     */
+    get userData(): Map<string, any> {
+        if (!this.#userData) {
+            this.#userData = new Map();
+        }
+        return this.#userData;
+    }
+
+    /**
      * The DOM path of this virtual node.
      * This is a string representation of the path from the root to this node,
      * using the node names and their indices among siblings with the same name.
@@ -590,6 +611,14 @@ export class VNode {
     /**
      * Cleans up any resources used by this virtual node.
      * This method is called when the virtual node is no longer needed.
+     *
+     * Cleanup order:
+     * 1. Call onUnmount lifecycle hooks
+     * 2. Auto-cleanup userData (close() on Closeable objects)
+     * 3. Recursively destroy child nodes
+     * 4. Unregister dependencies
+     * 5. Clean up directive manager
+     * 6. Call onUnmounted lifecycle hooks
      */
     destroy(): void {
         // If no directive requires template preservation, call onUnmount for directives that do not templatize
@@ -597,6 +626,23 @@ export class VNode {
             this.#directiveManager?.directives?.forEach(d => {
                 d.onUnmount?.();
             });
+        }
+
+        // Clean up user data, calling close() on any Closeable objects
+        // This happens after onUnmount but before other cleanup, allowing users to
+        // perform custom cleanup in onUnmount while having automatic cleanup of userData
+        if (this.#userData) {
+            for (const [key, value] of this.#userData.entries()) {
+                try {
+                    // If the value has a close() method (Closeable pattern), call it
+                    if (value && typeof value === 'object' && typeof value.close === 'function') {
+                        value.close();
+                    }
+                } catch (error) {
+                    this.#vApplication.logManager.getLogger(this.constructor.name).error(`Error closing user data '${key}': ${error}`);
+                }
+            }
+            this.#userData.clear();
         }
 
         // Recursively destroy child nodes
