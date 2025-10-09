@@ -324,7 +324,7 @@ VDOM.createApp<AppData>({
 
 ## Examples
 
-See the [docs](https://mintjamsinc.github.io/ichigojs/) for live examples:
+See the [docs](https://www.mintjams.jp/ichigojs/) for live examples:
 
 - **Basic Usage** - Getting started with ichigo.js
 - **Todo List** - Complete task management application
