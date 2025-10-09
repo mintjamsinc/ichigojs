@@ -11,6 +11,7 @@ import { VForDirective } from "./VForDirective";
 import { VIfDirective } from "./VIfDirective";
 import { VModelDirective } from "./VModelDirective";
 import { VOnDirective } from "./VOnDirective";
+import { VResizeDirective } from "./VResizeDirective";
 import { VShowDirective } from "./VShowDirective";
 
 /**
@@ -41,7 +42,9 @@ export class VStandardDirectiveParser implements VDirectiveParser {
             context.attribute.name.startsWith(":") ||
             // v-model, v-model.<modifier>
             context.attribute.name === StandardDirectiveName.V_MODEL ||
-            context.attribute.name.startsWith(StandardDirectiveName.V_MODEL + ".")) {
+            context.attribute.name.startsWith(StandardDirectiveName.V_MODEL + ".") ||
+            // v-resize
+            context.attribute.name === StandardDirectiveName.V_RESIZE) {
             return true;
         }
 
@@ -88,6 +91,11 @@ export class VStandardDirectiveParser implements VDirectiveParser {
         if (context.attribute.name === StandardDirectiveName.V_MODEL ||
             context.attribute.name.startsWith(StandardDirectiveName.V_MODEL + ".")) {
             return new VModelDirective(context);
+        }
+
+        // v-resize
+        if (context.attribute.name === StandardDirectiveName.V_RESIZE) {
+            return new VResizeDirective(context);
         }
 
         throw new Error(`The attribute "${context.attribute.name}" cannot be parsed by ${this.name}.`);

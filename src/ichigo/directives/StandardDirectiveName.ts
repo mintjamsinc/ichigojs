@@ -8,5 +8,6 @@ export enum StandardDirectiveName {
     V_FOR = "v-for",
     V_ON = "v-on",
     V_BIND = "v-bind",
-    V_MODEL = "v-model"
+    V_MODEL = "v-model",
+    V_RESIZE = "v-resize"
 }
