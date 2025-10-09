@@ -99,7 +99,8 @@ export interface VDirective {
 
     /**
      * Lifecycle hook called after the directive is unmounted from the DOM.
-     * This is called once, after the element is removed from the DOM.
+     * This is called once, after VNode cleanup is complete.
+     * The element reference is still available at this point.
      */
     get onUnmounted(): (() => void) | undefined;
 

@@ -183,7 +183,7 @@ Lifecycle hooks allow you to run code at specific stages of an element's lifecyc
 - `@update` - Called before the element is updated
 - `@updated` - Called after the element is updated
 - `@unmount` - Called before the element is removed from the DOM
-- `@unmounted` - Called after the element is removed from the DOM
+- `@unmounted` - Called after VNode cleanup is complete (element reference still available)
 
 **Lifecycle Context (`$ctx`):**
 
@@ -255,12 +255,12 @@ methods: {
 
 **Cleanup Order:**
 
-1. `@unmount` hook fires
+1. `@unmount` hook fires (element still in DOM)
 2. `userData` auto-cleanup (close() methods called)
-3. Child nodes destroyed
+3. Child nodes destroyed recursively
 4. Dependencies unregistered
 5. Directive manager cleanup
-6. `@unmounted` hook fires
+6. `@unmounted` hook fires (element removed from DOM, but reference still available in `$ctx.element`)
 
 **Works with v-if and v-for:**
 
