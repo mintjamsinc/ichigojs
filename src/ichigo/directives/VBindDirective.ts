@@ -159,6 +159,21 @@ export class VBindDirective implements VDirective {
     }
 
     /**
+     * Indicates if this directive is binding the "options" attribute or any of its sub-properties (e.g., "options.intersection").
+     * The "options" attribute is special and is used for passing options to certain directives like VIntersectionDirective.
+     */
+    get isOptions(): boolean {
+        return (this.#attributeName === 'options' || this.#attributeName?.startsWith('options.') === true);
+    }
+
+    /**
+     * Gets the name of the attribute being bound (e.g., "src", "class", "options", "options.intersection").
+     */
+    get attributeName(): string | undefined {
+        return this.#attributeName;
+    }
+
+    /**
      * Gets the original expression string from the directive.
      */
     get expression(): string | undefined {
@@ -218,8 +233,8 @@ export class VBindDirective implements VDirective {
      * Renders the bound attribute by evaluating the expression and updating the DOM element.
      */
     #render(): void {
-        // If this directive is binding the "key" attribute, do nothing
-        if (this.isKey) {
+        // Do nothing for special attributes
+        if (this.isKey || this.isOptions) {
             return;
         }
 

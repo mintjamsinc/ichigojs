@@ -8,22 +8,54 @@ import { VBindingsPreparer } from "../VBindingsPreparer";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { VBindDirective } from "./VBindDirective";
 
+/**
+ * Manages directives associated with a virtual node (VNode).
+ * This class is responsible for parsing, storing, and managing the lifecycle of directives.
+ * It also provides access to bindings preparers and DOM updaters from the associated directives.
+ */
 export class VDirectiveManager {
     /**
      * The virtual node to which this directive handler is associated.
      */
     #vNode: VNode;
 
+    /**
+     * The list of directives associated with the virtual node.
+     * This may be undefined if there are no directives.
+     */
     #directives?: VDirective[];
 
+    /**
+     * The anchor comment node used for certain directives (e.g., v-if, v-for).
+     * This may be undefined if no directive requires an anchor.
+     */
     #anchorNode?: Comment;
 
+    /**
+     * The list of bindings preparers from the associated directives.
+     * This may be undefined if no directive provides a bindings preparer.
+     */
     #bindingsPreparers?: VBindingsPreparer[];
 
+    /**
+     * The list of DOM updaters from the associated directives.
+     * This may be undefined if no directive provides a DOM updater.
+     */
     #domUpdaters?: VDOMUpdater[];
 
+    /**
+     * The directive that binds the ":key" or "v-bind:key" attribute, if any.
+     * This directive is special and is used for optimizing rendering of lists.
+     * If no such directive exists, this is undefined.
+     */
     #keyDirective?: VBindDirective;
 
+    /**
+     * A cache of VBindDirectives for options specific to certain directives.
+     * The keys are directive names (e.g., 'options', 'options.intersection').
+     */
+    #optionsDirectives: Record<string, VBindDirective | undefined> = {};
+ 
     constructor(vNode: VNode) {
         // Directives can only be associated with element nodes
         if (vNode.nodeType !== Node.ELEMENT_NODE) {
@@ -93,6 +125,40 @@ export class VDirectiveManager {
     }
 
     /**
+     * Gets a record of VBindDirectives for options specific to certain directives.
+     * The keys are directive names (e.g., 'options', 'options.intersection').
+     */
+    get optionsDirectives(): Record<string, VBindDirective | undefined> {
+        return this.#optionsDirectives;
+    }
+
+    /**
+     * Gets the VBindDirective for options specific to the given directive name.
+     * Searches in order: `:options.{directive}` -> `:options`
+     *
+     * @param directive The directive name (e.g., 'intersection', 'resize')
+     * @returns The VBindDirective instance or undefined
+     */
+    optionsDirective(directive: string): VBindDirective | undefined {
+        if (!this.#directives || this.#directives.length === 0) {
+            return undefined;
+        }
+
+        // Search for `:options.{directive}` or `v-bind:options.{directive}` first
+        const specificAttrName = `options.${directive}`;
+        if (this.#optionsDirectives[specificAttrName]) {
+            return this.#optionsDirectives[specificAttrName];
+        }
+
+        // Fallback: search for `:options` or `v-bind:options`
+        if (this.#optionsDirectives['options']) {
+            return this.#optionsDirectives['options'];
+        }
+
+        return undefined;
+    }
+
+    /**
      * Cleans up any resources used by the directive handler.
      */
     destroy(): void {
@@ -151,6 +217,11 @@ export class VDirectiveManager {
                 // If this is a key binding directive, store it separately
                 if (directive.name === StandardDirectiveName.V_BIND && (directive as unknown as VBindDirective).isKey) {
                     this.#keyDirective = directive as unknown as VBindDirective;
+                }
+
+                // If this is an options binding directive, cache it
+                if (directive.name === StandardDirectiveName.V_BIND && (directive as unknown as VBindDirective).isOptions) {
+                    this.#optionsDirectives[directive.name] = directive as unknown as VBindDirective;
                 }
             }
         }
