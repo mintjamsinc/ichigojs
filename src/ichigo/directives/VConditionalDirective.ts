@@ -9,6 +9,11 @@ import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { StandardDirectiveName } from "./StandardDirectiveName";
 
+/**
+ * Base class for conditional directives such as v-if, v-else-if, and v-else.
+ * This class manages the rendering of the associated virtual node based on the evaluation of the directive's condition.
+ * It also coordinates with other related conditional directives to ensure only one block is rendered at a time.
+ */
 export abstract class VConditionalDirective implements VDirective {
     /**
      * The virtual node to which this directive is applied.
