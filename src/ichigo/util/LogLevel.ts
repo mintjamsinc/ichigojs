@@ -4,12 +4,12 @@
  * Log level enumeration.
  */
 export enum LogLevel {
-    // Debug level
+    /** Debug level */
     DEBUG = 'debug',
-    // Info level
+    /** Info level */
     INFO = 'info',
-    // Warning level
+    /** Warning level */
     WARN = 'warn',
-    // Error level
+    /** Error level */
     ERROR = 'error'
 }

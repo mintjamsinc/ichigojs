@@ -3,6 +3,10 @@
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDirectiveParser } from "./VDirectiveParser";
 
+/**
+ * Registry for managing directive parsers.
+ * This class allows registering, unregistering, and finding directive parsers.
+ */
 export class VDirectiveParserRegistry {
     /**
      * The list of registered directive parsers.

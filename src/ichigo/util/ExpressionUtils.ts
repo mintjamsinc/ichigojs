@@ -3,6 +3,9 @@
 import * as acorn from "acorn";
 import * as walk from "acorn-walk";
 
+/**
+ * Utility class for analyzing JavaScript expressions to extract variable and function dependencies.
+ */
 export class ExpressionUtils {
     /**
      * Extracts variable and function names used in the expression.
