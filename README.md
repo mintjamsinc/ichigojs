@@ -200,8 +200,27 @@ methods: {
 }
 ```
 
+**With custom options:**
+
+```html
+<div v-resize="onResize"
+     :options.resize="{box: 'border-box'}">
+  Observe border-box dimensions
+</div>
+```
+
+You can also use `:options` for generic options:
+
+```html
+<div v-resize="onResize"
+     :options="{box: 'content-box'}">
+  Resizable content
+</div>
+```
+
 **Features:**
 - Native ResizeObserver API for efficient resize detection
+- Custom box model via `:options.resize` or `:options`
 - Automatic cleanup in destroy phase
 - Access to element, VNode, and userData via `$ctx`
 

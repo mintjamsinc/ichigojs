@@ -209,12 +209,67 @@
             </div>
         </div>
 
-        <!-- Example 2: Features -->
+        <!-- Example 2: With Options -->
+        <div class="example-section">
+            <h2>Example 2: Custom Box Model</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Configure ResizeObserver with custom options using :options.resize attribute.</p>
+                <p><strong>Hint:</strong> This example observes border-box dimensions instead of content-box!</p>
+            </div>
+
+            <div v-resize="onBorderBoxResize" :options.resize="resizeOptions" class="resizable-box" style="border: 10px solid rgba(255,255,255,0.3);">
+                <div class="size-display">{{ borderWidth }}px × {{ borderHeight }}px</div>
+                <div class="resize-hint">⇲ Border-box measurement</div>
+            </div>
+
+            <div class="info-card">
+                <div class="info-row">
+                    <span class="info-label">Box Model:</span>
+                    <span class="info-value">{{ resizeOptions.box }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Border Box Width:</span>
+                    <span class="info-value">{{ borderWidth }}px</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Border Box Height:</span>
+                    <span class="info-value">{{ borderHeight }}px</span>
+                </div>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Custom box model with :options.resize</span>
+&lt;div
+  <span class="keyword">v-resize</span>=<span class="string">"onBorderBoxResize"</span>
+  <span class="keyword">:options.resize</span>=<span class="string">"resizeOptions"</span>&gt;
+  Border-box measurement
+&lt;/div&gt;
+
+<span class="keyword">data</span>: {
+  resizeOptions: {
+    box: <span class="string">'border-box'</span>
+  }
+},
+<span class="keyword">methods</span>: {
+  <span class="function">onBorderBoxResize</span>(entries, $ctx) {
+    <span class="keyword">const</span> entry = entries[<span class="string">0</span>];
+    <span class="keyword">if</span> (entry.borderBoxSize) {
+      <span class="keyword">const</span> borderBox = entry.borderBoxSize[<span class="string">0</span>];
+      <span class="keyword">this</span>.borderWidth = Math.round(borderBox.inlineSize);
+      <span class="keyword">this</span>.borderHeight = Math.round(borderBox.blockSize);
+    }
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Example 3: Features -->
         <div class="example-section">
             <h2>Key Features</h2>
             <div class="description">
                 <ul style="list-style-position: inside; line-height: 2;">
                     <li><strong>ResizeObserver API:</strong> Native browser API for efficient resize detection</li>
+                    <li><strong>Custom Options:</strong> Configure box model via :options.resize or :options</li>
                     <li><strong>Context Parameter:</strong> Access element, VNode, and userData via $ctx</li>
                     <li><strong>Automatic Cleanup:</strong> Observer is disconnected during the destroy phase</li>
                     <li><strong>Multiple Entries:</strong> Supports observing multiple elements simultaneously</li>
@@ -230,6 +285,11 @@
   <span class="comment">// $ctx.element - DOM element</span>
   <span class="comment">// $ctx.vnode - VNode instance</span>
   <span class="comment">// $ctx.userData - Proxy-free storage</span>
+}
+
+<span class="comment">// Options format (ResizeObserverOptions)</span>
+{
+  box: <span class="string">'content-box'</span>  <span class="comment">// 'content-box' | 'border-box' | 'device-pixel-content-box'</span>
 }</pre>
             </div>
         </div>
@@ -251,7 +311,12 @@
                     contentHeight: 0,
                     borderBoxWidth: 0,
                     borderBoxHeight: 0,
-                    resizeCount: 0
+                    resizeCount: 0,
+                    borderWidth: 0,
+                    borderHeight: 0,
+                    resizeOptions: {
+                        box: 'border-box'
+                    }
                 };
             },
             methods: {
@@ -279,6 +344,24 @@
                         element: $ctx.element,
                         vnode: $ctx.vnode,
                         userData: $ctx.userData
+                    });
+                },
+
+                onBorderBoxResize(entries, $ctx) {
+                    const entry = entries[0];
+
+                    // BorderBoxSize provides full element dimensions with border-box measurement
+                    if (entry.borderBoxSize && entry.borderBoxSize.length > 0) {
+                        const borderBox = entry.borderBoxSize[0];
+                        this.borderWidth = Math.round(borderBox.inlineSize);
+                        this.borderHeight = Math.round(borderBox.blockSize);
+                    }
+
+                    console.log('Border-box resize event:', {
+                        box: this.resizeOptions.box,
+                        width: this.borderWidth,
+                        height: this.borderHeight,
+                        element: $ctx.element
                     });
                 }
             }
