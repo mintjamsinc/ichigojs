@@ -14,12 +14,17 @@ import { VDOMUpdater } from "../VDOMUpdater";
  *
  * Example usage:
  *     <div v-resize="handleResize">Resizable content</div>
+ *     <div v-resize="handleResize" :options.resize="{box: 'border-box'}">Resizable content</div>
  *
  * The handler receives ResizeObserverEntry array as the first argument and $ctx as the second:
  *     handleResize(entries, $ctx) {
  *       const { width, height } = entries[0].contentRect;
  *       console.log(`Size: ${width}x${height}`);
  *     }
+ *
+ * Options can be provided via :options or :options.resize attribute:
+ *     :options="{box: 'border-box'}"
+ *     :options.resize="{box: 'content-box'}"
  *
  * This directive is useful for responsive layouts, charts, and other components
  * that need to adapt to size changes.
@@ -130,12 +135,27 @@ export class VResizeDirective implements VDirective {
         const handler = this.#handlerWrapper;
 
         return () => {
+            // Get options from :options.resize or :options directive
+            let optionsDirective = this.#vNode.directiveManager?.optionsDirective('resize');
+
+            // Evaluate the options expression
+            let options: ResizeObserverOptions | undefined;
+            if (optionsDirective && optionsDirective.expression) {
+                // Evaluate the options expression
+                const identifiers = optionsDirective.dependentIdentifiers;
+                const values = identifiers.map(id => this.#vNode.bindings?.get(id));
+                const args = identifiers.join(", ");
+                const funcBody = `return (${optionsDirective.expression});`;
+                const func = new Function(args, funcBody) as (...args: any[]) => any;
+                options = func(...values);
+            }
+
             // Create ResizeObserver and start observing
             this.#resizeObserver = new ResizeObserver((entries) => {
                 handler(entries);
             });
 
-            this.#resizeObserver.observe(element);
+            this.#resizeObserver.observe(element, options);
         };
     }
 
