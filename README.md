@@ -16,8 +16,9 @@ A simple and intuitive reactive framework. Lightweight, fast, and user-friendly 
 - 📦 **Lightweight** - Minimal bundle size
 - 🚀 **High Performance** - Efficient batched updates via microtask queue
 - 💪 **TypeScript** - Written in TypeScript with full type support
-- 🎨 **Directives** - `v-if`, `v-for`, `v-show`, `v-bind`, `v-on`, `v-model`, `v-resize`
+- 🎨 **Directives** - `v-if`, `v-for`, `v-show`, `v-bind`, `v-on`, `v-model`, `v-resize`, `v-intersection`
 - 📐 **Resize Observer** - Monitor element size changes with `v-resize` directive
+- 👁️ **Intersection Observer** - Detect element visibility with `v-intersection` directive
 
 ## Installation
 
@@ -201,7 +202,55 @@ methods: {
 
 **Features:**
 - Native ResizeObserver API for efficient resize detection
-- Automatic cleanup when element is removed
+- Automatic cleanup in destroy phase
+- Access to element, VNode, and userData via `$ctx`
+
+#### v-intersection
+
+Detect element visibility using IntersectionObserver:
+
+```html
+<div v-intersection="onIntersection" class="observable-box">
+  I'm {{ isVisible ? 'VISIBLE' : 'NOT VISIBLE' }}
+</div>
+```
+
+```javascript
+methods: {
+  onIntersection(entries, $ctx) {
+    const entry = entries[0];
+    this.isVisible = entry.isIntersecting;
+    this.intersectionRatio = entry.intersectionRatio;
+
+    // Access element through $ctx
+    console.log('Element:', $ctx.element);
+  }
+}
+```
+
+**With custom options:**
+
+```html
+<div v-intersection="onIntersection"
+     :options.intersection="{threshold: 0.5, rootMargin: '0px'}">
+  Triggers at 50% visibility
+</div>
+```
+
+You can also use `:options` for generic options:
+
+```html
+<div v-intersection="onIntersection"
+     :options="{threshold: 0.5}">
+  Observable content
+</div>
+```
+
+**Features:**
+- Native IntersectionObserver API for efficient visibility detection
+- Custom threshold and rootMargin options via `:options.intersection` or `:options`
+- Automatic cleanup in destroy phase
+- Perfect for lazy loading, infinite scroll, and animation triggers
 - Access to element, VNode, and userData via `$ctx`
 
 #### Lifecycle Hooks
