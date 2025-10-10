@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intersection Observer - ichigo.js Examples</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 40px;
+        }
+
+        .example-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .example-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .description {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .scroll-area {
+            height: 400px;
+            overflow-y: scroll;
+            border: 2px solid #667eea;
+            border-radius: 12px;
+            padding: 20px;
+            background: white;
+        }
+
+        .spacer {
+            height: 300px;
+            background: linear-gradient(to bottom, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            margin-bottom: 20px;
+        }
+
+        .observable-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            margin: 20px 0;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: all 0.5s ease;
+        }
+
+        .observable-box.visible {
+            transform: scale(1.05);
+            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.6);
+        }
+
+        .observable-box.not-visible {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        .status-badge.visible {
+            background: #28a745;
+        }
+
+        .status-badge.not-visible {
+            background: #6c757d;
+        }
+
+        .info-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .info-value {
+            font-family: monospace;
+            color: #333;
+        }
+
+        .code-example {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .code-example pre {
+            margin: 0;
+        }
+
+        .keyword { color: #c586c0; }
+        .string { color: #ce9178; }
+        .function { color: #dcdcaa; }
+        .comment { color: #6a9955; }
+
+        .lazy-image {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .image-placeholder {
+            width: 100%;
+            height: 300px;
+            background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6c757d;
+            font-size: 1.2em;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <h1>👁️ Intersection Observer</h1>
+        <p class="subtitle">Detect element visibility with v-intersection directive</p>
+
+        <!-- Example 1: Basic Intersection Observer -->
+        <div class="example-section">
+            <h2>Example 1: Scroll Detection</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Detect when elements enter or leave the viewport using IntersectionObserver API.</p>
+                <p><strong>Hint:</strong> Scroll down to see the observable box appear!</p>
+            </div>
+
+            <div class="scroll-area">
+                <div class="spacer">↓ Scroll down ↓</div>
+                <div class="spacer">↓ Keep scrolling ↓</div>
+
+                <div
+                    v-intersection="onIntersection"
+                    :class="['observable-box', isVisible ? 'visible' : 'not-visible']">
+                    <h3>Observable Element</h3>
+                    <p>I'm {{ isVisible ? 'VISIBLE' : 'NOT VISIBLE' }}</p>
+                    <div :class="['status-badge', isVisible ? 'visible' : 'not-visible']">
+                        {{ isVisible ? '✓ Visible' : '✗ Not Visible' }}
+                    </div>
+                </div>
+
+                <div class="spacer">↓ Keep scrolling ↓</div>
+                <div class="spacer">End of scroll area</div>
+            </div>
+
+            <div class="info-card">
+                <div class="info-row">
+                    <span class="info-label">Is Visible:</span>
+                    <span class="info-value">{{ isVisible }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Intersection Ratio:</span>
+                    <span class="info-value">{{ (intersectionRatio * 100).toFixed(1) }}%</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Is Intersecting:</span>
+                    <span class="info-value">{{ isIntersecting }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Intersection Count:</span>
+                    <span class="info-value">{{ intersectionCount }}</span>
+                </div>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Intersection observer with v-intersection directive</span>
+&lt;div <span class="keyword">v-intersection</span>=<span class="string">"onIntersection"</span> class=<span class="string">"observable-box"</span>&gt;
+  I'm {{ isVisible ? <span class="string">'VISIBLE'</span> : <span class="string">'NOT VISIBLE'</span> }}
+&lt;/div&gt;
+
+<span class="keyword">methods</span>: {
+  <span class="function">onIntersection</span>(entries, $ctx) {
+    <span class="keyword">const</span> entry = entries[<span class="string">0</span>];
+
+    <span class="comment">// Check if element is intersecting with viewport</span>
+    <span class="keyword">this</span>.isVisible = entry.isIntersecting;
+    <span class="keyword">this</span>.intersectionRatio = entry.intersectionRatio;
+
+    <span class="comment">// Access element through $ctx</span>
+    console.log(<span class="string">'Element:'</span>, $ctx.element);
+    console.log(<span class="string">'VNode:'</span>, $ctx.vnode);
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Example 2: With Options -->
+        <div class="example-section">
+            <h2>Example 2: Custom Threshold</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Configure IntersectionObserver with custom options using :options.intersection attribute.</p>
+                <p><strong>Hint:</strong> This example triggers when 50% of the element is visible!</p>
+            </div>
+
+            <div class="scroll-area">
+                <div class="spacer">↓ Scroll to 50% visibility ↓</div>
+
+                <div
+                    v-intersection="onThresholdIntersection"
+                    :options.intersection="observerOptions"
+                    :class="['observable-box', isThresholdVisible ? 'visible' : 'not-visible']">
+                    <h3>50% Threshold Observer</h3>
+                    <p>Triggers at {{ observerOptions.threshold * 100 }}% visibility</p>
+                    <div :class="['status-badge', isThresholdVisible ? 'visible' : 'not-visible']">
+                        {{ isThresholdVisible ? '✓ 50% Visible' : '✗ Less than 50%' }}
+                    </div>
+                </div>
+
+                <div class="spacer">End of scroll area</div>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Custom threshold with :options.intersection</span>
+&lt;div
+  <span class="keyword">v-intersection</span>=<span class="string">"onThresholdIntersection"</span>
+  <span class="keyword">:options.intersection</span>=<span class="string">"observerOptions"</span>&gt;
+  Triggers at 50% visibility
+&lt;/div&gt;
+
+<span class="keyword">data</span>: {
+  observerOptions: {
+    threshold: <span class="string">0.5</span>,
+    rootMargin: <span class="string">'0px'</span>
+  }
+},
+<span class="keyword">methods</span>: {
+  <span class="function">onThresholdIntersection</span>(entries, $ctx) {
+    <span class="keyword">const</span> entry = entries[<span class="string">0</span>];
+    <span class="keyword">this</span>.isThresholdVisible = entry.isIntersecting;
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Example 3: Features -->
+        <div class="example-section">
+            <h2>Key Features</h2>
+            <div class="description">
+                <ul style="list-style-position: inside; line-height: 2;">
+                    <li><strong>IntersectionObserver API:</strong> Native browser API for efficient visibility detection</li>
+                    <li><strong>Custom Options:</strong> Configure threshold, rootMargin via :options.intersection or :options</li>
+                    <li><strong>Context Parameter:</strong> Access element, VNode, and userData via $ctx</li>
+                    <li><strong>Automatic Cleanup:</strong> Observer is disconnected during the destroy phase</li>
+                    <li><strong>Performance:</strong> More efficient than scroll event listeners</li>
+                </ul>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Handler signature</span>
+<span class="function">onIntersection</span>(entries: IntersectionObserverEntry[], $ctx: LifecycleContext) {
+  <span class="comment">// entries[0].isIntersecting - true if visible</span>
+  <span class="comment">// entries[0].intersectionRatio - 0.0 to 1.0</span>
+  <span class="comment">// entries[0].boundingClientRect - element position</span>
+  <span class="comment">// $ctx.element - DOM element</span>
+  <span class="comment">// $ctx.vnode - VNode instance</span>
+  <span class="comment">// $ctx.userData - Proxy-free storage</span>
+}
+
+<span class="comment">// Options format (IntersectionObserverInit)</span>
+{
+  root: <span class="keyword">null</span>,          <span class="comment">// viewport or ancestor element</span>
+  rootMargin: <span class="string">'0px'</span>,  <span class="comment">// margin around root</span>
+  threshold: <span class="string">0.5</span>      <span class="comment">// 0.0 to 1.0 or array of thresholds</span>
+}</pre>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 40px;">
+            <a href="index.html" style="color: #667eea; text-decoration: none; font-weight: 600;">← Back to Examples</a>
+        </div>
+    </div>
+
+    <script type="module">
+        import { VDOM } from 'https://cdn.jsdelivr.net/npm/@mintjamsinc/ichigojs/dist/ichigo.esm.min.js';
+
+        VDOM.createApp({
+            data() {
+                return {
+                    isVisible: false,
+                    intersectionRatio: 0,
+                    isIntersecting: false,
+                    intersectionCount: 0,
+                    isThresholdVisible: false,
+                    observerOptions: {
+                        threshold: 0.5,
+                        rootMargin: '0px'
+                    }
+                };
+            },
+            methods: {
+                onIntersection(entries, $ctx) {
+                    const entry = entries[0];
+
+                    // Update visibility state
+                    this.isVisible = entry.isIntersecting;
+                    this.intersectionRatio = entry.intersectionRatio;
+                    this.isIntersecting = entry.isIntersecting;
+
+                    // Increment intersection count
+                    this.intersectionCount++;
+
+                    // You can access element, vnode, and userData through $ctx
+                    console.log('Intersection event:', {
+                        isIntersecting: entry.isIntersecting,
+                        intersectionRatio: entry.intersectionRatio,
+                        element: $ctx.element,
+                        vnode: $ctx.vnode,
+                        userData: $ctx.userData
+                    });
+                },
+
+                onThresholdIntersection(entries, $ctx) {
+                    const entry = entries[0];
+                    this.isThresholdVisible = entry.isIntersecting;
+
+                    console.log('Threshold intersection:', {
+                        isIntersecting: entry.isIntersecting,
+                        intersectionRatio: entry.intersectionRatio,
+                        threshold: this.observerOptions.threshold
+                    });
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
