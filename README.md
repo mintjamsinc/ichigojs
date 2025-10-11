@@ -16,9 +16,10 @@ A simple and intuitive reactive framework. Lightweight, fast, and user-friendly 
 - 📦 **Lightweight** - Minimal bundle size
 - 🚀 **High Performance** - Efficient batched updates via microtask queue
 - 💪 **TypeScript** - Written in TypeScript with full type support
-- 🎨 **Directives** - `v-if`, `v-for`, `v-show`, `v-bind`, `v-on`, `v-model`, `v-resize`, `v-intersection`
+- 🎨 **Directives** - `v-if`, `v-for`, `v-show`, `v-bind`, `v-on`, `v-model`, `v-resize`, `v-intersection`, `v-performance`
 - 📐 **Resize Observer** - Monitor element size changes with `v-resize` directive
 - 👁️ **Intersection Observer** - Detect element visibility with `v-intersection` directive
+- ⚡ **Performance Observer** - Monitor performance metrics with `v-performance` directive
 
 ## Installation
 
@@ -270,6 +271,56 @@ You can also use `:options` for generic options:
 - Custom threshold and rootMargin options via `:options.intersection` or `:options`
 - Automatic cleanup in destroy phase
 - Perfect for lazy loading, infinite scroll, and animation triggers
+- Access to element, VNode, and userData via `$ctx`
+
+#### v-performance
+
+Monitor performance metrics using PerformanceObserver:
+
+```html
+<div v-performance="onPerformance">
+  Performance monitoring
+</div>
+```
+
+```javascript
+methods: {
+  onPerformance(entries, observer, options, $ctx) {
+    entries.getEntries().forEach(entry => {
+      console.log(`${entry.name}: ${entry.duration}ms`);
+    });
+
+    // Access dropped entries count if available
+    if (options?.droppedEntriesCount) {
+      console.log(`Dropped: ${options.droppedEntriesCount}`);
+    }
+  }
+}
+```
+
+**With custom options:**
+
+```html
+<div v-performance="onPerformance"
+     :options.performance="{entryTypes: ['measure', 'mark']}">
+  Observe only measures and marks
+</div>
+```
+
+You can also use `:options` for generic options:
+
+```html
+<div v-performance="onPerformance"
+     :options="{type: 'navigation', buffered: true}">
+  Performance monitoring
+</div>
+```
+
+**Features:**
+- Native PerformanceObserver API for monitoring performance metrics
+- Custom entry types and options via `:options.performance` or `:options`
+- Automatic cleanup in destroy phase
+- Monitor marks, measures, navigation, resource timing, and more
 - Access to element, VNode, and userData via `$ctx`
 
 #### Lifecycle Hooks
