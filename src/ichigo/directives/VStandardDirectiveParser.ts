@@ -12,6 +12,7 @@ import { VIfDirective } from "./VIfDirective";
 import { VIntersectionDirective } from "./VIntersectionDirective";
 import { VModelDirective } from "./VModelDirective";
 import { VOnDirective } from "./VOnDirective";
+import { VPerformanceDirective } from "./VPerformanceDirective";
 import { VResizeDirective } from "./VResizeDirective";
 import { VShowDirective } from "./VShowDirective";
 
@@ -47,7 +48,9 @@ export class VStandardDirectiveParser implements VDirectiveParser {
             // v-resize
             context.attribute.name === StandardDirectiveName.V_RESIZE ||
             // v-intersection
-            context.attribute.name === StandardDirectiveName.V_INTERSECTION) {
+            context.attribute.name === StandardDirectiveName.V_INTERSECTION ||
+            // v-performance
+            context.attribute.name === StandardDirectiveName.V_PERFORMANCE) {
             return true;
         }
 
@@ -104,6 +107,11 @@ export class VStandardDirectiveParser implements VDirectiveParser {
         // v-intersection
         if (context.attribute.name === StandardDirectiveName.V_INTERSECTION) {
             return new VIntersectionDirective(context);
+        }
+
+        // v-performance
+        if (context.attribute.name === StandardDirectiveName.V_PERFORMANCE) {
+            return new VPerformanceDirective(context);
         }
 
         throw new Error(`The attribute "${context.attribute.name}" cannot be parsed by ${this.name}.`);

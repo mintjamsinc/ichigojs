@@ -20,8 +20,10 @@ export enum StandardDirectiveName {
     V_BIND = "v-bind",
     /** Two-way data binding directives. */
     V_MODEL = "v-model",
-    /** Slot content insertion directives. */
+    /** Resize observer directives. */
     V_RESIZE = "v-resize",
     /** Intersection observer directives. */
-    V_INTERSECTION = "v-intersection"
+    V_INTERSECTION = "v-intersection",
+    /** Performance observer directives. */
+    V_PERFORMANCE = "v-performance"
 }
