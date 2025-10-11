@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performance Observer - ichigo.js Examples</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 40px;
+        }
+
+        .example-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .example-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+
+        .description {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .action-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            margin: 10px 10px 10px 0;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .action-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .action-button:active {
+            transform: translateY(0);
+        }
+
+        .info-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .info-value {
+            font-family: monospace;
+            color: #333;
+        }
+
+        .metrics-list {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .metric-entry {
+            padding: 10px;
+            border-left: 3px solid #667eea;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .metric-entry .metric-name {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .metric-entry .metric-details {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .code-example {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .code-example pre {
+            margin: 0;
+        }
+
+        .keyword { color: #c586c0; }
+        .string { color: #ce9178; }
+        .function { color: #dcdcaa; }
+        .comment { color: #6a9955; }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <h1>⚡ Performance Observer</h1>
+        <p class="subtitle">Monitor performance metrics with v-performance directive</p>
+
+        <!-- Example 1: Basic Performance Observer -->
+        <div class="example-section">
+            <h2>Example 1: Performance Marks & Measures</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Monitor performance marks and measures using PerformanceObserver API.</p>
+                <p><strong>Hint:</strong> Click the buttons to create performance marks and measures!</p>
+            </div>
+
+            <div v-performance="onPerformance">
+                <button @click="createMark" class="action-button">Create Mark</button>
+                <button @click="createMeasure" class="action-button">Create Measure</button>
+                <button @click="simulateTask" class="action-button">Simulate Task</button>
+            </div>
+
+            <div class="info-card">
+                <div class="info-row">
+                    <span class="info-label">Total Entries:</span>
+                    <span class="info-value">{{ totalEntries }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Marks:</span>
+                    <span class="info-value">{{ marksCount }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Measures:</span>
+                    <span class="info-value">{{ measuresCount }}</span>
+                </div>
+            </div>
+
+            <div class="metrics-list">
+                <div v-for="entry in performanceEntries" :key="entry.id" class="metric-entry">
+                    <div class="metric-name">{{ entry.name }} ({{ entry.entryType }})</div>
+                    <div class="metric-details">
+                        Duration: {{ entry.duration.toFixed(2) }}ms |
+                        Start Time (since page load): {{ entry.startTime.toFixed(2) }}ms
+                    </div>
+                </div>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Performance observer with v-performance directive</span>
+&lt;div <span class="keyword">v-performance</span>=<span class="string">"onPerformance"</span>&gt;
+  &lt;button @click=<span class="string">"createMark"</span>&gt;Create Mark&lt;/button&gt;
+&lt;/div&gt;
+
+<span class="keyword">methods</span>: {
+  <span class="function">onPerformance</span>(entries, observer, options, $ctx) {
+    <span class="keyword">const</span> entryList = entries.getEntries();
+
+    entryList.forEach(entry => {
+      console.log(<span class="string">`${entry.name}: ${entry.duration}ms`</span>);
+    });
+
+    <span class="comment">// Access dropped entries count if available</span>
+    <span class="keyword">if</span> (options?.droppedEntriesCount) {
+      console.log(<span class="string">`Dropped: ${options.droppedEntriesCount}`</span>);
+    }
+  },
+
+  <span class="function">createMark</span>() {
+    performance.mark(<span class="string">`mark-${Date.now()}`</span>);
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Example 2: With Options -->
+        <div class="example-section">
+            <h2>Example 2: Custom Entry Types</h2>
+            <div class="description">
+                <p><strong>Use Case:</strong> Configure PerformanceObserver with custom options using :options.performance attribute.</p>
+                <p><strong>Hint:</strong> This example only observes 'measure' entries!</p>
+            </div>
+
+            <div v-performance="onMeasurePerformance" :options.performance="measureOptions">
+                <button @click="createMeasureOnly" class="action-button">Create Measure</button>
+            </div>
+
+            <div class="info-card">
+                <div class="info-row">
+                    <span class="info-label">Entry Types:</span>
+                    <span class="info-value">{{ measureOptions.entryTypes.join(', ') }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Measures Observed:</span>
+                    <span class="info-value">{{ measuresOnlyCount }}</span>
+                </div>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Custom entry types with :options.performance</span>
+&lt;div
+  <span class="keyword">v-performance</span>=<span class="string">"onMeasurePerformance"</span>
+  <span class="keyword">:options.performance</span>=<span class="string">"measureOptions"</span>&gt;
+  Observing only measures
+&lt;/div&gt;
+
+<span class="keyword">data</span>: {
+  measureOptions: {
+    entryTypes: [<span class="string">'measure'</span>]
+  }
+},
+<span class="keyword">methods</span>: {
+  <span class="function">onMeasurePerformance</span>(entries, observer, options, $ctx) {
+    <span class="keyword">const</span> measures = entries.getEntries();
+    measures.forEach(measure => {
+      console.log(<span class="string">`Measure: ${measure.name}`</span>);
+    });
+  }
+}</pre>
+            </div>
+        </div>
+
+        <!-- Example 3: Features -->
+        <div class="example-section">
+            <h2>Key Features</h2>
+            <div class="description">
+                <ul style="list-style-position: inside; line-height: 2;">
+                    <li><strong>PerformanceObserver API:</strong> Native browser API for monitoring performance metrics</li>
+                    <li><strong>Custom Options:</strong> Configure entry types via :options.performance or :options</li>
+                    <li><strong>Context Parameter:</strong> Access element, VNode, and userData via $ctx</li>
+                    <li><strong>Automatic Cleanup:</strong> Observer is disconnected during the destroy phase</li>
+                    <li><strong>Multiple Entry Types:</strong> Observe marks, measures, navigation, resource timing, and more</li>
+                </ul>
+            </div>
+
+            <div class="code-example">
+<pre><span class="comment">// Handler signature</span>
+<span class="function">onPerformance</span>(entries: PerformanceObserverEntryList,
+              observer: PerformanceObserver,
+              options: { droppedEntriesCount?: number },
+              $ctx: LifecycleContext) {
+  <span class="comment">// entries.getEntries() - array of performance entries</span>
+  <span class="comment">// entries.getEntriesByType(type) - filter by type</span>
+  <span class="comment">// entries.getEntriesByName(name) - filter by name</span>
+  <span class="comment">// options?.droppedEntriesCount - number of dropped entries</span>
+  <span class="comment">// $ctx.element - DOM element</span>
+  <span class="comment">// $ctx.vnode - VNode instance</span>
+  <span class="comment">// $ctx.userData - Proxy-free storage</span>
+}
+
+<span class="comment">// Options format (PerformanceObserverInit)</span>
+{
+  entryTypes: [<span class="string">'mark'</span>, <span class="string">'measure'</span>], <span class="comment">// array of entry types to observe</span>
+  type: <span class="string">'navigation'</span>,              <span class="comment">// single entry type (alternative to entryTypes)</span>
+  buffered: <span class="keyword">true</span>                   <span class="comment">// include buffered entries</span>
+}</pre>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 40px;">
+            <a href="index.html" style="color: #667eea; text-decoration: none; font-weight: 600;">← Back to Examples</a>
+        </div>
+    </div>
+
+    <script type="module">
+        import { VDOM } from 'https://cdn.jsdelivr.net/npm/@mintjamsinc/ichigojs/dist/ichigo.esm.min.js';
+
+        VDOM.createApp({
+            data() {
+                return {
+                    totalEntries: 0,
+                    marksCount: 0,
+                    measuresCount: 0,
+                    performanceEntries: [],
+                    measuresOnlyCount: 0,
+                    measureOptions: {
+                        entryTypes: ['measure']
+                    },
+                    entryIdCounter: 0
+                };
+            },
+            methods: {
+                onPerformance(entries, observer, options, $ctx) {
+                    const entryList = entries.getEntries();
+
+                    // Update total count
+                    this.totalEntries += entryList.length;
+
+                    // Count by type
+                    entryList.forEach(entry => {
+                        if (entry.entryType === 'mark') {
+                            this.marksCount++;
+                        } else if (entry.entryType === 'measure') {
+                            this.measuresCount++;
+                        }
+
+                        // Add to list with unique ID
+                        this.performanceEntries.unshift({
+                            id: this.entryIdCounter++,
+                            name: entry.name,
+                            entryType: entry.entryType,
+                            duration: entry.duration,
+                            startTime: entry.startTime
+                        });
+                    });
+
+                    // Keep only last 20 entries
+                    if (this.performanceEntries.length > 20) {
+                        this.performanceEntries = this.performanceEntries.slice(0, 20);
+                    }
+
+                    // Log dropped entries if any
+                    if (options?.droppedEntriesCount) {
+                        console.log(`Dropped entries: ${options.droppedEntriesCount}`);
+                    }
+
+                    // You can access element, vnode, and userData through $ctx
+                    console.log('Performance event:', {
+                        entries: entryList,
+                        element: $ctx.element,
+                        vnode: $ctx.vnode,
+                        userData: $ctx.userData
+                    });
+                },
+
+                onMeasurePerformance(entries, observer, options, $ctx) {
+                    const measures = entries.getEntries();
+                    this.measuresOnlyCount += measures.length;
+
+                    console.log('Measures observed:', {
+                        count: measures.length,
+                        entries: measures
+                    });
+                },
+
+                createMark() {
+                    const markName = `mark-${Date.now()}`;
+                    performance.mark(markName);
+                    console.log(`Created mark: ${markName}`);
+                },
+
+                createMeasure() {
+                    const markName1 = `start-${Date.now()}`;
+                    const markName2 = `end-${Date.now()}`;
+                    const measureName = `measure-${Date.now()}`;
+
+                    performance.mark(markName1);
+
+                    // Simulate some work
+                    setTimeout(() => {
+                        performance.mark(markName2);
+                        performance.measure(measureName, markName1, markName2);
+                        console.log(`Created measure: ${measureName}`);
+                    }, Math.random() * 100);
+                },
+
+                simulateTask() {
+                    const taskStart = `task-start-${Date.now()}`;
+                    const taskEnd = `task-end-${Date.now()}`;
+                    const taskMeasure = `task-duration-${Date.now()}`;
+
+                    performance.mark(taskStart);
+
+                    // Simulate async task
+                    setTimeout(() => {
+                        // Simulate some computation
+                        let sum = 0;
+                        for (let i = 0; i < 1000000; i++) {
+                            sum += Math.random();
+                        }
+
+                        performance.mark(taskEnd);
+                        performance.measure(taskMeasure, taskStart, taskEnd);
+                        console.log(`Task completed: ${taskMeasure}`);
+                    }, Math.random() * 200);
+                },
+
+                createMeasureOnly() {
+                    const start = `measure-only-start-${Date.now()}`;
+                    const end = `measure-only-end-${Date.now()}`;
+                    const measure = `measure-only-${Date.now()}`;
+
+                    performance.mark(start);
+                    setTimeout(() => {
+                        performance.mark(end);
+                        performance.measure(measure, start, end);
+                        console.log(`Created measure (filtered): ${measure}`);
+                    }, Math.random() * 50);
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
