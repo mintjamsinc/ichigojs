@@ -58,7 +58,7 @@ export class VComponentDirective implements VDirective {
      * @inheritdoc
      */
     get needsAnchor(): boolean {
-        return false;
+        return true;
     }
 
     /**
