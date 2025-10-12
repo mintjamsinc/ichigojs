@@ -23,19 +23,9 @@ export class VComponentDirective implements VDirective {
     #vNode: VNode;
 
     /**
-     * The component ID expression.
-     */
-    #expression: string;
-
-    /**
-     * Whether the component ID is static (not reactive).
-     */
-    #isStatic: boolean = false;
-
-    /**
      * The component ID to render.
      */
-    #componentId?: string;
+    #componentId: string;
 
     /**
      * The child application instance for the component.
@@ -49,11 +39,7 @@ export class VComponentDirective implements VDirective {
 
     constructor(context: VDirectiveParseContext) {
         this.#vNode = context.vNode;
-        this.#expression = context.attribute.value;
-
-        // Check for .static modifier
-        const attrName = context.attribute.name;
-        this.#isStatic = attrName.includes('.static');
+        this.#componentId = context.attribute.value.trim();
 
         // Remove the directive attribute from the element
         (this.#vNode.node as HTMLElement).removeAttribute(context.attribute.name);
@@ -98,7 +84,7 @@ export class VComponentDirective implements VDirective {
             },
             applyToDOM: () => {
                 if (!this.#isActivated) {
-                    this.renderComponent();
+                    this.#renderComponent();
                 }
             }
         };
@@ -151,7 +137,7 @@ export class VComponentDirective implements VDirective {
      * @inheritdoc
      */
     get onUnmount(): (() => void) | undefined {
-        return () => this.cleanupComponent();
+        return () => this.#cleanupComponent();
     }
 
     /**
@@ -161,33 +147,47 @@ export class VComponentDirective implements VDirective {
         return undefined;
     }
 
+    cloneNode(): HTMLElement {
+        // Get component definition from the application's component registry
+        const component = this.#vNode.vApplication.componentRegistry.get(this.#componentId);
+        if (!component) {
+            throw new Error(`Component '${this.#componentId}' not found in registry`);
+        }
+
+        // Get template element
+        const finalTemplateID = component.templateID || component.id;
+        const templateElement = document.querySelector(`#${finalTemplateID}`);
+        if (!templateElement || !(templateElement instanceof HTMLTemplateElement)) {
+            throw new Error(`Template element '#${finalTemplateID}' not found`);
+        }
+
+        // Clone template content
+        const fragment = templateElement.content.cloneNode(true) as DocumentFragment;
+        const childNodes = Array.from(fragment.childNodes);
+
+        // Find the first element node
+        for (const node of childNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                return node as HTMLElement;
+            }
+        }
+
+        throw new Error(`No element found in template '#${finalTemplateID}'`);
+    }
+
     /**
      * @inheritdoc
      */
     destroy(): void {
-        this.cleanupComponent();
+        this.#cleanupComponent();
     }
 
     /**
      * Renders the component.
      */
-    private renderComponent(): void {
-        const element = this.#vNode.node as HTMLElement;
-        if (!element) {
-            return;
-        }
-
-        // For now, only support static component IDs
-        const componentId = this.#expression.trim();
-
-        if (!componentId) {
-            console.warn(`Component ID is empty for v-component directive`);
-            return;
-        }
-
+    #renderComponent(): void {
         // Get properties from :options or :options.component directive
         let properties: any = {};
-
         const optionsDirective = this.#vNode.directiveManager?.optionsDirective('component');
         if (optionsDirective && optionsDirective.expression) {
             // Evaluate the options expression
@@ -203,71 +203,25 @@ export class VComponentDirective implements VDirective {
             }
         }
 
-        // Store component ID
-        this.#componentId = componentId;
-
         // Get component definition from the application's component registry
-        const vApplication = this.#vNode.vApplication;
-        if (!vApplication) {
-            console.error('VApplication not found on VNode');
-            return;
-        }
-
-        const component = vApplication.componentRegistry.get(componentId);
+        const component = this.#vNode.vApplication.componentRegistry.get(this.#componentId);
         if (!component) {
-            console.error(`Component '${componentId}' not found in registry`);
-            return;
+            throw new Error(`Component '${this.#componentId}' not found in registry`);
         }
-
-        // Get template element
-        const finalTemplateID = component.templateID;
-        const templateElement = document.querySelector(`#${finalTemplateID}`);
-        if (!templateElement || !(templateElement instanceof HTMLTemplateElement)) {
-            console.error(`Template element '#${finalTemplateID}' not found`);
-            return;
-        }
-
-        // Clone template content
-        const fragment = templateElement.content.cloneNode(true) as DocumentFragment;
-        const childNodes = Array.from(fragment.childNodes);
-
-        // Find the first element node
-        let componentElement: Element | undefined;
-        for (const node of childNodes) {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-                componentElement = node as Element;
-                break;
-            }
-        }
-
-        if (!componentElement) {
-            console.error(`No element found in template '#${finalTemplateID}'`);
-            return;
-        }
-
-        // Replace element with component element
-        const parent = element.parentNode;
-        if (!parent) {
-            console.error(`Element has no parent node. Component '${componentId}' cannot be mounted.`);
-            return;
-        }
-
-        parent.insertBefore(componentElement, element);
-        parent.removeChild(element);
 
         // Create component instance
         const instance = component.createInstance(properties);
 
         // Create and mount child application using the parent application's registries
-        this.#childApp = vApplication.createChildApp(instance);
-        this.#childApp.mount(componentElement as HTMLElement);
+        this.#childApp = this.#vNode.vApplication.createChildApp(instance);
+        this.#childApp.mount(this.#vNode.node as HTMLElement);
         this.#isActivated = true;
     }
 
     /**
      * Cleans up the component.
      */
-    private cleanupComponent(): void {
+    #cleanupComponent(): void {
         if (this.#childApp) {
             this.#childApp.unmount();
             this.#childApp = undefined;
