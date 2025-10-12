@@ -57,10 +57,15 @@ export class ExpressionUtils {
                 const isFunctionExpression = source.startsWith('function');
                 const isAsyncFunction = source.startsWith('async');
 
-                // If it's a method shorthand (e.g., "methodName() { ... }"), convert to function expression
-                if (!isFunctionExpression && !isArrowFunction && !isAsyncFunction) {
+                // If it's a method shorthand (e.g., "methodName() { ... }" or "async methodName() { ... }"), convert to function expression
+                if (!isFunctionExpression && !isArrowFunction) {
                     // It's likely a method shorthand, convert to function expression
-                    source = `function ${source}`;
+                    if (isAsyncFunction) {
+                        // Remove 'async' prefix and add 'async function' prefix
+                        source = `async function ${source.substring(5).trim()}`;
+                    } else {
+                        source = `function ${source}`;
+                    }
                 }
 
                 // Wrap in parentheses for parsing
