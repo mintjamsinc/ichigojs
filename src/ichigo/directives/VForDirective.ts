@@ -402,8 +402,13 @@ export class VForDirective implements VDirective {
      */
     #cloneTemplate(context: { key: any; item: any; index: number }): VNode {
         // Clone the original element
-        const element = this.#vNode.node as HTMLElement;
-        const clone = element.cloneNode(true) as HTMLElement;
+        let clone;
+        if (this.vNode.directiveManager?.componentDirective) {
+            clone = this.vNode.directiveManager.componentDirective.cloneNode();
+        } else {
+            const element = this.#vNode.node as HTMLElement;
+            clone = element.cloneNode(true) as HTMLElement;
+        }
 
         // Prepare identifiers for the item
         const itemName = this.#itemName;

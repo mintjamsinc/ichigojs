@@ -7,6 +7,7 @@ import { VNode } from "../VNode";
 import { VBindingsPreparer } from "../VBindingsPreparer";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { VBindDirective } from "./VBindDirective";
+import { VComponentDirective } from "./VComponentDirective";
 
 /**
  * Manages directives associated with a virtual node (VNode).
@@ -55,6 +56,12 @@ export class VDirectiveManager {
      * The keys are directive names (e.g., 'options', 'options.intersection').
      */
     #optionsDirectives: Record<string, VBindDirective | undefined> = {};
+
+    /**
+     * The v-component directive associated with this node, if any.
+     * This may be undefined if there is no v-component directive.
+     */
+    #componentDirective?: VComponentDirective;
 
     constructor(vNode: VNode) {
         // Directives can only be associated with element nodes
@@ -122,6 +129,14 @@ export class VDirectiveManager {
      */
     get keyDirective(): VBindDirective | undefined {
         return this.#keyDirective;
+    }
+
+    /**
+     * Gets the v-component directive associated with this node, if any.
+     * This may be undefined if there is no v-component directive.
+     */
+    get componentDirective(): VComponentDirective | undefined {
+        return this.#componentDirective;
     }
 
     /**
@@ -218,6 +233,11 @@ export class VDirectiveManager {
                     if (attrName) {
                         this.#optionsDirectives[attrName] = bindDirective;
                     }
+                }
+
+                // If this is a v-component directive, store it separately
+                if (directive.name === StandardDirectiveName.V_COMPONENT) {
+                    this.#componentDirective = directive as unknown as VComponentDirective;
                 }
             }
         }

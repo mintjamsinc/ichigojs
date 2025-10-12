@@ -58,7 +58,7 @@ export class VComponentDirective implements VDirective {
      * @inheritdoc
      */
     get needsAnchor(): boolean {
-        return true;
+        return false;
     }
 
     /**
@@ -140,7 +140,12 @@ export class VComponentDirective implements VDirective {
         return undefined;
     }
 
-    #cloneNode(): HTMLElement {
+    /**
+     * Clones the component's template and returns the root element.
+     * @returns The cloned root HTMLElement of the component.
+     * @throws Error if the component or its template is not found.
+     */
+    cloneNode(): HTMLElement {
         // Get component definition from the application's component registry
         const component = this.#vNode.vApplication.componentRegistry.get(this.#componentId);
         if (!component) {
@@ -197,9 +202,6 @@ export class VComponentDirective implements VDirective {
             return;
         }
 
-        const clone = this.#cloneNode(); 
-        this.#vNode.anchorNode?.parentNode?.insertBefore(clone, this.#vNode.anchorNode.nextSibling);
-
         // Get properties from :options or :options.component directive
         let properties: any = {};
         const optionsDirective = this.#vNode.directiveManager?.optionsDirective('component');
@@ -228,6 +230,6 @@ export class VComponentDirective implements VDirective {
 
         // Create and mount child application using the parent application's registries
         this.#componentApp = this.#vNode.vApplication.createChildApp(instance);
-        this.#componentApp.mount(clone);
+        this.#componentApp.mount(this.#vNode.node as HTMLElement);
     }
 }
