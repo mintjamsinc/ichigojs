@@ -28,14 +28,9 @@ export class VComponentDirective implements VDirective {
     #componentId: string;
 
     /**
-     * The child application instance for the component.
+     * The application instance for the component.
      */
-    #childApp?: VApplication;
-
-    /**
-     * Whether the component has been activated.
-     */
-    #isActivated: boolean = false;
+    #componentApp?: VApplication;
 
     constructor(context: VDirectiveParseContext) {
         this.#vNode = context.vNode;
@@ -63,7 +58,7 @@ export class VComponentDirective implements VDirective {
      * @inheritdoc
      */
     get needsAnchor(): boolean {
-        return false;
+        return true;
     }
 
     /**
@@ -83,9 +78,7 @@ export class VComponentDirective implements VDirective {
                 return [];
             },
             applyToDOM: () => {
-                if (!this.#isActivated) {
-                    this.#renderComponent();
-                }
+                this.#render();
             }
         };
         return updater;
@@ -95,7 +88,7 @@ export class VComponentDirective implements VDirective {
      * @inheritdoc
      */
     get templatize(): boolean {
-        return false;
+        return true;
     }
 
     /**
@@ -137,7 +130,7 @@ export class VComponentDirective implements VDirective {
      * @inheritdoc
      */
     get onUnmount(): (() => void) | undefined {
-        return () => this.#cleanupComponent();
+        return undefined;
     }
 
     /**
@@ -147,7 +140,7 @@ export class VComponentDirective implements VDirective {
         return undefined;
     }
 
-    cloneNode(): HTMLElement {
+    #cloneNode(): HTMLElement {
         // Get component definition from the application's component registry
         const component = this.#vNode.vApplication.componentRegistry.get(this.#componentId);
         if (!component) {
@@ -179,13 +172,34 @@ export class VComponentDirective implements VDirective {
      * @inheritdoc
      */
     destroy(): void {
-        this.#cleanupComponent();
+        if (!this.#componentApp) {
+            // Not rendered, no action needed
+            return;
+        }
+
+        // Destroy component application first (calls @unmount hooks while DOM is still accessible)
+        this.#componentApp.unmount();
+
+        // Then remove from DOM
+        const componentVNode = this.#componentApp.rootVNode;
+        if (componentVNode?.node.parentNode) {
+            componentVNode.node.parentNode.removeChild(componentVNode.node);
+        }
+        this.#componentApp = undefined;
     }
 
     /**
      * Renders the component.
      */
-    #renderComponent(): void {
+    #render(): void {
+        if (this.#componentApp) {
+            // Already rendered, no action needed
+            return;
+        }
+
+        const clone = this.#cloneNode(); 
+        this.#vNode.anchorNode?.parentNode?.insertBefore(clone, this.#vNode.anchorNode.nextSibling);
+
         // Get properties from :options or :options.component directive
         let properties: any = {};
         const optionsDirective = this.#vNode.directiveManager?.optionsDirective('component');
@@ -213,19 +227,7 @@ export class VComponentDirective implements VDirective {
         const instance = component.createInstance(properties);
 
         // Create and mount child application using the parent application's registries
-        this.#childApp = this.#vNode.vApplication.createChildApp(instance);
-        this.#childApp.mount(this.#vNode.node as HTMLElement);
-        this.#isActivated = true;
-    }
-
-    /**
-     * Cleans up the component.
-     */
-    #cleanupComponent(): void {
-        if (this.#childApp) {
-            this.#childApp.unmount();
-            this.#childApp = undefined;
-        }
-        this.#isActivated = false;
+        this.#componentApp = this.#vNode.vApplication.createChildApp(instance);
+        this.#componentApp.mount(clone);
     }
 }
