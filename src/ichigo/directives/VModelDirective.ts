@@ -113,15 +113,14 @@ export class VModelDirective implements VDirective {
      */
     get domUpdater(): VDOMUpdater | undefined {
         const identifiers = this.#dependentIdentifiers ?? [];
-        const render = () => this.#render();
 
         // Create and return the DOM updater
         const updater: VDOMUpdater = {
             get dependentIdentifiers(): string[] {
                 return identifiers;
             },
-            applyToDOM(): void {
-                render();
+            applyToDOM: () => {
+                this.#render();
             }
         };
         return updater;
