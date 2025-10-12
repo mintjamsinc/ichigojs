@@ -58,10 +58,6 @@ lib-cov/
 .node_repl_history
 .tern-port
 
-# Build artifacts
-vdom.js
-vdom.min.js
-
 # IDE settings (IntelliJ, VSCode)
 .idea/
 .vscode/
