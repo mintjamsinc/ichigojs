@@ -91,8 +91,18 @@ export class VComponentDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        // Component rendering is handled through onMounted lifecycle hook
-        return undefined;
+        // Create and return the DOM updater
+        const updater: VDOMUpdater = {
+            get dependentIdentifiers(): string[] {
+                return [];
+            },
+            applyToDOM: () => {
+                if (!this.#isActivated) {
+                    this.renderComponent();
+                }
+            }
+        };
+        return updater;
     }
 
     /**
@@ -113,9 +123,7 @@ export class VComponentDirective implements VDirective {
      * @inheritdoc
      */
     get onMount(): (() => void) | undefined {
-        return () => {
-            this.renderComponent();
-        };
+        return undefined;
     }
 
     /**
@@ -239,10 +247,13 @@ export class VComponentDirective implements VDirective {
 
         // Replace element with component element
         const parent = element.parentNode;
-        if (parent) {
-            parent.insertBefore(componentElement, element);
-            parent.removeChild(element);
+        if (!parent) {
+            console.error(`Element has no parent node. Component '${componentId}' cannot be mounted.`);
+            return;
         }
+
+        parent.insertBefore(componentElement, element);
+        parent.removeChild(element);
 
         // Create component instance
         const instance = component.createInstance(properties);
