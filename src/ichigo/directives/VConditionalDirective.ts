@@ -257,8 +257,14 @@ export abstract class VConditionalDirective implements VDirective {
      * Clones the template element and creates a new VNode for the cloned element.
      */
     #cloneTemplate(): VNode {
-        const element = this.#vNode.node as HTMLElement;
-        const clone = element.cloneNode(true) as HTMLElement;
+        // Clone the original element
+        let clone;
+        if (this.vNode.directiveManager?.componentDirective) {
+            clone = this.vNode.directiveManager.componentDirective.cloneNode();
+        } else {
+            const element = this.#vNode.node as HTMLElement;
+            clone = element.cloneNode(true) as HTMLElement;
+        }
 
         // Create a new VNode for the cloned element
         const vNode = new VNode({
