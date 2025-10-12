@@ -149,14 +149,17 @@ export class VComponentDirective implements VDirective {
             return;
         }
 
+        // Get the component's root VNode
+        const componentVNode = this.#componentApp.rootVNode;
+
         // Destroy component application first (calls @unmount hooks while DOM is still accessible)
         this.#componentApp.unmount();
 
-        // Then remove from DOM
-        const componentVNode = this.#componentApp.rootVNode;
+        // Remove the component's root node from the DOM
         if (componentVNode?.node.parentNode) {
             componentVNode.node.parentNode.removeChild(componentVNode.node);
         }
+
         this.#componentApp = undefined;
     }
 
