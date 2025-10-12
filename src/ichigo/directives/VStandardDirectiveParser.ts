@@ -2,6 +2,7 @@
 
 import { StandardDirectiveName } from "./StandardDirectiveName";
 import { VBindDirective } from "./VBindDirective";
+import { VComponentDirective } from "./VComponentDirective";
 import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDirectiveParser } from "./VDirectiveParser";
@@ -50,7 +51,10 @@ export class VStandardDirectiveParser implements VDirectiveParser {
             // v-intersection
             context.attribute.name === StandardDirectiveName.V_INTERSECTION ||
             // v-performance
-            context.attribute.name === StandardDirectiveName.V_PERFORMANCE) {
+            context.attribute.name === StandardDirectiveName.V_PERFORMANCE ||
+            // v-component, v-component.<modifier>
+            context.attribute.name === StandardDirectiveName.V_COMPONENT ||
+            context.attribute.name.startsWith(StandardDirectiveName.V_COMPONENT + ".")) {
             return true;
         }
 
@@ -112,6 +116,12 @@ export class VStandardDirectiveParser implements VDirectiveParser {
         // v-performance
         if (context.attribute.name === StandardDirectiveName.V_PERFORMANCE) {
             return new VPerformanceDirective(context);
+        }
+
+        // v-component, v-component.<modifier>
+        if (context.attribute.name === StandardDirectiveName.V_COMPONENT ||
+            context.attribute.name.startsWith(StandardDirectiveName.V_COMPONENT + ".")) {
+            return new VComponentDirective(context);
         }
 
         throw new Error(`The attribute "${context.attribute.name}" cannot be parsed by ${this.name}.`);

@@ -132,12 +132,18 @@ export class VApplication {
 
     /**
      * Mounts the application.
-     * @param selectors The CSS selectors to identify the root element.
+     * @param target The CSS selector string or HTMLElement to mount the application to.
      */
-    mount(selectors: string): void {
-        const element = document.querySelector(selectors);
-        if (!element) {
-            throw new Error(`Element not found for selectors: ${selectors}`);
+    mount(target: string | HTMLElement): void {
+        let element: Element | null;
+
+        if (typeof target === 'string') {
+            element = document.querySelector(target);
+            if (!element) {
+                throw new Error(`Element not found for selector: ${target}`);
+            }
+        } else {
+            element = target;
         }
 
         // Clean the element by removing unnecessary whitespace text nodes
@@ -154,6 +160,15 @@ export class VApplication {
         this.#vNode.update();
 
         this.#logger.info('Application mounted.');
+    }
+
+    /**
+     * Creates a child application instance with the same registries.
+     * @param options The application options for the child.
+     * @returns The created child application instance.
+     */
+    createChildApp(options: VApplicationOptions): VApplication {
+        return new VApplication(options, this.#directiveParserRegistry, this.#componentRegistry);
     }
 
     /**

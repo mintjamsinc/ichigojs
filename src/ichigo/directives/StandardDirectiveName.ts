@@ -25,5 +25,7 @@ export enum StandardDirectiveName {
     /** Intersection observer directives. */
     V_INTERSECTION = "v-intersection",
     /** Performance observer directives. */
-    V_PERFORMANCE = "v-performance"
+    V_PERFORMANCE = "v-performance",
+    /** Component directive. */
+    V_COMPONENT = "v-component"
 }
