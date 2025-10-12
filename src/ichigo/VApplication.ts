@@ -163,6 +163,17 @@ export class VApplication {
     }
 
     /**
+     * Unmounts the application and cleans up resources.
+     */
+    unmount(): void {
+        if (this.#vNode) {
+            this.#vNode.destroy();
+            this.#vNode = undefined;
+        }
+        this.#logger.info('Application unmounted.');
+    }
+
+    /**
      * Creates a child application instance with the same registries.
      * @param options The application options for the child.
      * @returns The created child application instance.

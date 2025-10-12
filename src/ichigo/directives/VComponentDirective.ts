@@ -269,8 +269,7 @@ export class VComponentDirective implements VDirective {
      */
     private cleanupComponent(): void {
         if (this.#childApp) {
-            // TODO: Implement unmount when available in VApplication
-            // this.#childApp.unmount();
+            this.#childApp.unmount();
             this.#childApp = undefined;
         }
         this.#isActivated = false;
