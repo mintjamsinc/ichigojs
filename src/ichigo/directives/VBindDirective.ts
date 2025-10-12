@@ -121,15 +121,14 @@ export class VBindDirective implements VDirective {
      */
     get domUpdater(): VDOMUpdater | undefined {
         const identifiers = this.#dependentIdentifiers ?? [];
-        const render = () => this.#render();
 
         // Create an updater that handles the attribute binding
         const updater: VDOMUpdater = {
             get dependentIdentifiers(): string[] {
                 return identifiers;
             },
-            applyToDOM(): void {
-                render();
+            applyToDOM: () => {
+                this.#render();
             }
         };
         return updater;

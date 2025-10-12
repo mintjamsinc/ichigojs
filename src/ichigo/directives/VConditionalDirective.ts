@@ -95,15 +95,14 @@ export abstract class VConditionalDirective implements VDirective {
      */
     get domUpdater(): VDOMUpdater | undefined {
         const identifiers = this.#conditionalContext.allDependentIdentifiers;
-        const render = () => this.#render();
 
         // Create an updater that handles the conditional rendering
         const updater: VDOMUpdater = {
             get dependentIdentifiers(): string[] {
                 return identifiers;
             },
-            applyToDOM(): void {
-                render();
+            applyToDOM: () => {
+                this.#render();
             }
         };
         return updater;
@@ -258,13 +257,8 @@ export abstract class VConditionalDirective implements VDirective {
      */
     #cloneTemplate(): VNode {
         // Clone the original element
-        let clone;
-        if (this.vNode.directiveManager?.componentDirective) {
-            clone = this.vNode.directiveManager.componentDirective.cloneNode();
-        } else {
-            const element = this.#vNode.node as HTMLElement;
-            clone = element.cloneNode(true) as HTMLElement;
-        }
+        const element = this.#vNode.node as HTMLElement;
+        const clone = element.cloneNode(true) as HTMLElement;
 
         // Create a new VNode for the cloned element
         const vNode = new VNode({

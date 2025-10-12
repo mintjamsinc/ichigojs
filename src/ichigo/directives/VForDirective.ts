@@ -120,15 +120,14 @@ export class VForDirective implements VDirective {
      */
     get domUpdater(): VDOMUpdater | undefined {
         const identifiers = this.#dependentIdentifiers ?? [];
-        const render = () => this.#render();
 
         // Create and return the DOM updater
         const updater: VDOMUpdater = {
             get dependentIdentifiers(): string[] {
                 return identifiers;
             },
-            applyToDOM(): void {
-                render();
+            applyToDOM: () => {
+                this.#render();
             }
         };
         return updater;
@@ -403,13 +402,8 @@ export class VForDirective implements VDirective {
      */
     #cloneTemplate(context: { key: any; item: any; index: number }): VNode {
         // Clone the original element
-        let clone;
-        if (this.vNode.directiveManager?.componentDirective) {
-            clone = this.vNode.directiveManager.componentDirective.cloneNode();
-        } else {
-            const element = this.#vNode.node as HTMLElement;
-            clone = element.cloneNode(true) as HTMLElement;
-        }
+        const element = this.#vNode.node as HTMLElement;
+        const clone = element.cloneNode(true) as HTMLElement;
 
         // Prepare identifiers for the item
         const itemName = this.#itemName;
