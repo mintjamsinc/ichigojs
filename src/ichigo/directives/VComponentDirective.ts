@@ -113,7 +113,9 @@ export class VComponentDirective implements VDirective {
      * @inheritdoc
      */
     get onMount(): (() => void) | undefined {
-        return () => this.renderComponent();
+        return () => {
+            this.renderComponent();
+        };
     }
 
     /**
