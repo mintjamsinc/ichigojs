@@ -82,7 +82,7 @@ export class VForDirective implements VDirective {
             this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(parsed.sourceName, context.vNode.vApplication.functionDependencies);
             this.#evaluateSource = this.#createSourceEvaluator(parsed.sourceName);
         }
- 
+
         // Remove the directive attribute from the element
         element.removeAttribute(context.attribute.name);
     }
@@ -299,16 +299,39 @@ export class VForDirective implements VDirective {
 
             if (!vNode) {
                 // Create new item
-                vNode = this.#cloneTemplate(context);
-                newRenderedItems.set(key, vNode);
+                const clone = this.#cloneNode();
 
                 // Insert after previous node
                 if (prevNode.nextSibling) {
-                    parent.insertBefore(vNode.node, prevNode.nextSibling);
+                    parent.insertBefore(clone, prevNode.nextSibling);
                 } else {
-                    parent.appendChild(vNode.node);
+                    parent.appendChild(clone);
                 }
 
+                // Prepare identifiers for the item
+                const itemName = this.#itemName;
+                const indexName = this.#indexName;
+
+                // Create bindings for this iteration
+                const bindings = new VBindings({
+                    parent: this.#vNode.bindings
+                });
+                if (this.#itemName) {
+                    bindings.set(this.#itemName, context.item);
+                }
+                if (this.#indexName) {
+                    bindings.set(this.#indexName, context.index);
+                }
+
+                // Create a new VNode for the cloned element
+                vNode = new VNode({
+                    node: clone,
+                    vApplication: this.#vNode.vApplication,
+                    parentVNode: this.#vNode.parentVNode,
+                    bindings,
+                    dependentIdentifiers: [`${this.#sourceName}[${context.index}]`]
+                });
+                newRenderedItems.set(key, vNode);
                 vNode.forceUpdate();
             } else {
                 // Reuse existing item
@@ -398,38 +421,14 @@ export class VForDirective implements VDirective {
     }
 
     /**
-     * Clone template element for each iteration and create a new VNode
+     * Clones the original node of the directive's virtual node.
+     * This is used to create a new instance of the node for rendering.
+     * @returns The cloned HTMLElement.
      */
-    #cloneTemplate(context: { key: any; item: any; index: number }): VNode {
+    #cloneNode(): HTMLElement {
         // Clone the original element
         const element = this.#vNode.node as HTMLElement;
-        const clone = element.cloneNode(true) as HTMLElement;
-
-        // Prepare identifiers for the item
-        const itemName = this.#itemName;
-        const indexName = this.#indexName;
-
-        // Create bindings for this iteration
-        const bindings = new VBindings({
-            parent: this.#vNode.bindings
-        });
-        if (this.#itemName) {
-            bindings.set(this.#itemName, context.item);
-        }
-        if (this.#indexName) {
-            bindings.set(this.#indexName, context.index);
-        }
-
-        // Create a new VNode for the cloned element
-        const vNode = new VNode({
-            node: clone,
-            vApplication: this.#vNode.vApplication,
-            parentVNode: this.#vNode.parentVNode,
-            bindings,
-            dependentIdentifiers: [`${this.#sourceName}[${context.index}]`]
-        });
-
-        return vNode;
+        return element.cloneNode(true) as HTMLElement;
     }
 
     /**

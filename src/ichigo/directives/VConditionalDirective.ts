@@ -229,8 +229,20 @@ export abstract class VConditionalDirective implements VDirective {
             return;
         }
 
-        this.#renderedVNode = this.#cloneTemplate(); 
-        this.#vNode.anchorNode?.parentNode?.insertBefore(this.#renderedVNode.node, this.#vNode.anchorNode.nextSibling);
+        // Clone the original node and create a new VNode for it
+        const clone = this.#cloneNode();
+
+        // Insert the cloned node after the anchor node, or as a child of the parent if no anchor
+        this.#vNode.anchorNode?.parentNode?.insertBefore(clone, this.#vNode.anchorNode.nextSibling);
+        
+        // Create a new VNode for the cloned element
+        const vNode = new VNode({
+            node: clone,
+            vApplication: this.#vNode.vApplication,
+            parentVNode: this.#vNode.parentVNode
+        });
+
+        this.#renderedVNode = vNode;
         this.#renderedVNode.forceUpdate();
     }
 
@@ -253,21 +265,13 @@ export abstract class VConditionalDirective implements VDirective {
     }
 
     /**
-     * Clones the template element and creates a new VNode for the cloned element.
+     * Clones the original node of the directive's virtual node.
+     * This is used to create a new instance of the node for rendering.
+     * @returns The cloned HTMLElement.
      */
-    #cloneTemplate(): VNode {
-        // Clone the original element
+    #cloneNode(): HTMLElement {
         const element = this.#vNode.node as HTMLElement;
-        const clone = element.cloneNode(true) as HTMLElement;
-
-        // Create a new VNode for the cloned element
-        const vNode = new VNode({
-            node: clone,
-            vApplication: this.#vNode.vApplication,
-            parentVNode: this.#vNode.parentVNode
-        });
-
-        return vNode;
+        return element.cloneNode(true) as HTMLElement;
     }
 
     /**
