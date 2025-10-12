@@ -141,39 +141,6 @@ export class VComponentDirective implements VDirective {
     }
 
     /**
-     * Clones the component's template and returns the root element.
-     * @returns The cloned root HTMLElement of the component.
-     * @throws Error if the component or its template is not found.
-     */
-    cloneNode(): HTMLElement {
-        // Get component definition from the application's component registry
-        const component = this.#vNode.vApplication.componentRegistry.get(this.#componentId);
-        if (!component) {
-            throw new Error(`Component '${this.#componentId}' not found in registry`);
-        }
-
-        // Get template element
-        const finalTemplateID = component.templateID || component.id;
-        const templateElement = document.querySelector(`#${finalTemplateID}`);
-        if (!templateElement || !(templateElement instanceof HTMLTemplateElement)) {
-            throw new Error(`Template element '#${finalTemplateID}' not found`);
-        }
-
-        // Clone template content
-        const fragment = templateElement.content.cloneNode(true) as DocumentFragment;
-        const childNodes = Array.from(fragment.childNodes);
-
-        // Find the first element node
-        for (const node of childNodes) {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-                return node as HTMLElement;
-            }
-        }
-
-        throw new Error(`No element found in template '#${finalTemplateID}'`);
-    }
-
-    /**
      * @inheritdoc
      */
     destroy(): void {
@@ -201,6 +168,10 @@ export class VComponentDirective implements VDirective {
             // Already rendered, no action needed
             return;
         }
+
+        // Clone the component's template and replace the original node
+        const clone = this.#cloneNode();
+        this.#vNode.anchorNode?.parentNode?.insertBefore(clone, this.#vNode.anchorNode.nextSibling);
 
         // Get properties from :options or :options.component directive
         let properties: any = {};
@@ -230,6 +201,39 @@ export class VComponentDirective implements VDirective {
 
         // Create and mount child application using the parent application's registries
         this.#componentApp = this.#vNode.vApplication.createChildApp(instance);
-        this.#componentApp.mount(this.#vNode.node as HTMLElement);
+        this.#componentApp.mount(clone);
+    }
+
+    /**
+     * Clones the component's template and returns the root element.
+     * @returns The cloned root HTMLElement of the component.
+     * @throws Error if the component or its template is not found.
+     */
+    #cloneNode(): HTMLElement {
+        // Get component definition from the application's component registry
+        const component = this.#vNode.vApplication.componentRegistry.get(this.#componentId);
+        if (!component) {
+            throw new Error(`Component '${this.#componentId}' not found in registry`);
+        }
+
+        // Get template element
+        const finalTemplateID = component.templateID || component.id;
+        const templateElement = document.querySelector(`#${finalTemplateID}`);
+        if (!templateElement || !(templateElement instanceof HTMLTemplateElement)) {
+            throw new Error(`Template element '#${finalTemplateID}' not found`);
+        }
+
+        // Clone template content
+        const fragment = templateElement.content.cloneNode(true) as DocumentFragment;
+        const childNodes = Array.from(fragment.childNodes);
+
+        // Find the first element node
+        for (const node of childNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                return node as HTMLElement;
+            }
+        }
+
+        throw new Error(`No element found in template '#${finalTemplateID}'`);
     }
 }
