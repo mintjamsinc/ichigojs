@@ -221,7 +221,11 @@ export class VDirectiveManager {
 
                 // If this is an options binding directive, cache it
                 if (directive.name === StandardDirectiveName.V_BIND && (directive as unknown as VBindDirective).isOptions) {
-                    this.#optionsDirectives[directive.name] = directive as unknown as VBindDirective;
+                    const bindDirective = directive as unknown as VBindDirective;
+                    const attrName = bindDirective.attributeName;
+                    if (attrName) {
+                        this.#optionsDirectives[attrName] = bindDirective;
+                    }
                 }
             }
         }
