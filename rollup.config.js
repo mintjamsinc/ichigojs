@@ -38,13 +38,13 @@ export default [
       {
         file: 'dist/ichigo.esm.min.js',
         format: 'esm',
-        sourcemap: true,
+        sourcemap: false,
       },
       {
         file: 'dist/ichigo.umd.min.js',
         format: 'umd',
         name: 'ichigo',
-        sourcemap: true,
+        sourcemap: false,
       }
     ],
     plugins: [
