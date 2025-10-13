@@ -41,6 +41,11 @@ export class VBindings {
 	#lengthCache: Map<string, number> = new Map();
 
 	/**
+	 * Flag to suppress onChange callbacks temporarily.
+	 */
+	#suppressOnChange: boolean = false;
+
+	/**
 	 * Creates a new instance of VBindings.
 	 * @param parent The parent bindings, if any.
 	 */
@@ -80,7 +85,9 @@ export class VBindings {
 							this.#logger?.debug(`Binding changed: ${path}`);
 							this.#changes.add(path);
 						}
-						this.#onChange?.(changedPath as string);
+						if (!this.#suppressOnChange) {
+							this.#onChange?.(changedPath as string);
+						}
 					}, key as string);
 				}
 
@@ -109,7 +116,9 @@ export class VBindings {
 						this.#logger.debug(`Binding set on ${target === obj ? 'local' : 'parent'}: ${key as string}: ${oldValuePreview} -> ${newValuePreview}`);
 					}
 					this.#changes.add(key as string);
-					this.#onChange?.(key as string);
+					if (!this.#suppressOnChange) {
+						this.#onChange?.(key as string);
+					}
 				}
 				return result;
 			},
@@ -206,5 +215,20 @@ export class VBindings {
 	 */
 	remove(key: string): void {
 		delete this.#local[key];
+	}
+
+	/**
+	 * Sets a binding value without triggering onChange callback.
+	 * This is useful for internal updates that shouldn't trigger reactivity.
+	 * @param key The binding name.
+	 * @param value The binding value.
+	 */
+	setSilent(key: string, value: any): void {
+		this.#suppressOnChange = true;
+		try {
+			this.#local[key] = value;
+		} finally {
+			this.#suppressOnChange = false;
+		}
 	}
 }
