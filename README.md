@@ -90,6 +90,51 @@ VDOM.createApp({
 }).mount('#app');
 ```
 
+### Marking Objects as Non-Reactive
+
+Use `$markRaw()` to prevent objects from being wrapped in a reactive proxy. This is useful when storing third-party library instances or large data structures that don't need reactivity.
+
+```javascript
+VDOM.createApp({
+  data() {
+    return {
+      // Regular reactive data
+      count: 0,
+
+      // Mark as non-reactive
+      chart: null,
+      bigData: null
+    };
+  },
+  methods: {
+    initChart($ctx) {
+      // Create Chart.js instance and mark as non-reactive
+      const chartInstance = new Chart(canvas, { /* ... */ });
+      this.chart = this.$markRaw(chartInstance);
+
+      // Large dataset that doesn't need reactivity
+      const data = fetchLargeDataset();
+      this.bigData = this.$markRaw(data);
+    }
+  }
+}).mount('#app');
+```
+
+**When to use `$markRaw()`:**
+
+- Third-party library instances (Chart.js, Three.js, etc.)
+- Large arrays or objects that don't need change detection
+- Objects with complex internal state that shouldn't be proxied
+- DOM elements or other built-in objects with internal slots
+
+**Note:** Objects marked with `$markRaw()` won't trigger updates when modified. Use reactive properties to trigger updates when needed:
+
+```javascript
+// Update reactive trigger after modifying non-reactive data
+this.bigData.push(newItem);  // Won't trigger update
+this.count++;                // Triggers update
+```
+
 ### Computed Properties
 
 Computed properties automatically track their dependencies and re-evaluate when dependencies change.
