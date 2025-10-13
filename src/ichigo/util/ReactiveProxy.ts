@@ -98,7 +98,7 @@ export class ReactiveProxy {
 
                     if (arrayMutationMethods.includes(key as string)) {
                         return function (this: any, ...args: any[]) {
-                            const result = (value as Function).apply(this, args);
+                            const result = (value as Function).apply(obj, args);
                             onChange(path || undefined);
                             return result;
                         };
