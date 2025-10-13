@@ -25,6 +25,12 @@ export class ReactiveProxy {
             return target;
         }
 
+        // Don't wrap built-in objects that have internal slots
+        // These objects require their methods to be called with the correct 'this' context
+        if (target instanceof Date || target instanceof RegExp || target instanceof Error) {
+            return target;
+        }
+
         // Check if we already have a proxy for this target with this path
         let pathMap = this.proxyCache.get(target);
         if (pathMap) {
@@ -44,6 +50,11 @@ export class ReactiveProxy {
 
                 // If the value is an object or array, make it reactive too
                 if (typeof value === 'object' && value !== null) {
+                    // Don't wrap built-in objects that have internal slots
+                    if (value instanceof Date || value instanceof RegExp || value instanceof Error) {
+                        return value;
+                    }
+
                     // Build the nested path
                     const keyStr = String(key);
                     const nestedPath = path ? (Array.isArray(obj) ? `${path}[${keyStr}]` : `${path}.${keyStr}`) : keyStr;
