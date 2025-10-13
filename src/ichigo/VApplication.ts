@@ -6,7 +6,7 @@ import { VLogManager } from "./util/VLogManager";
 import { VApplicationOptions } from "./VApplicationOptions";
 import { VBindings } from "./VBindings";
 import { VNode } from "./VNode";
-import type { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
+import { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
 import { VComponentRegistry } from "./components/VComponentRegistry";
 import { ReactiveProxy } from "./util/ReactiveProxy";
 import { VApplicationInit } from "./VApplicationInit";
