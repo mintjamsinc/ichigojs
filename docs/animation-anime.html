@@ -379,9 +379,10 @@ npm install animejs</pre>
                 toggleBox1() {
                     this.showBox1 = !this.showBox1;
                 },
-                animateBoxIn(el) {
+                animateBoxIn($ctx) {
+                    console.log('[Example 1] animateBoxIn called, $ctx:', $ctx);
                     anime({
-                        targets: el,
+                        targets: $ctx.element,
                         opacity: [0, 1],
                         translateY: [-50, 0],
                         scale: [0.8, 1],
@@ -389,9 +390,9 @@ npm install animejs</pre>
                         easing: 'easeOutElastic(1, .6)'
                     });
                 },
-                animateBoxOut(el) {
+                animateBoxOut($ctx) {
                     anime({
-                        targets: el,
+                        targets: $ctx.element,
                         opacity: 0,
                         translateY: 50,
                         scale: 0.8,
@@ -422,7 +423,8 @@ npm install animejs</pre>
                         this.showParticles = true;
                     });
                 },
-                animateParticleIn(el) {
+                animateParticleIn($ctx) {
+                    const el = $ctx.element;
                     // Use dataset to track index at mount time
                     this.$nextTick(() => {
                         if (!el.parentElement) return;
@@ -444,7 +446,8 @@ npm install animejs</pre>
                         });
                     });
                 },
-                animateParticleOut(el) {
+                animateParticleOut($ctx) {
+                    const el = $ctx.element;
                     // Use stored index or default to 0
                     const index = parseInt(el.dataset.particleIndex || '0', 10);
 
@@ -465,9 +468,9 @@ npm install animejs</pre>
                 morphShape() {
                     this.morphTrigger++;
                 },
-                animateShapeIn(el) {
+                animateShapeIn($ctx) {
                     anime({
-                        targets: el,
+                        targets: $ctx.element,
                         rotate: [0, 360],
                         scale: [0, 1],
                         borderRadius: ['0%', '20px'],
@@ -475,12 +478,12 @@ npm install animejs</pre>
                         easing: 'easeOutElastic(1, .5)'
                     });
                 },
-                animateShapeMorph(el) {
+                animateShapeMorph($ctx) {
                     const shapes = ['20px', '50%', '10px 50px', '50px 10px'];
                     const randomShape = shapes[Math.floor(Math.random() * shapes.length)];
 
                     anime({
-                        targets: el,
+                        targets: $ctx.element,
                         borderRadius: randomShape,
                         rotate: '+=180',
                         duration: 800,

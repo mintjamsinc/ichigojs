@@ -616,12 +616,14 @@
                         this.tiles.pop();
                     }
                 },
-                onCardMount(el) {
+                onCardMount($ctx) {
+                    const el = $ctx.element;
                     // Set initial state BEFORE DOM insertion
                     el.classList.add('fade-slide-enter');
                     this.addLog('mount', '✨ Card mount - initial state set');
                 },
-                onCardEnter(el) {
+                onCardEnter($ctx) {
+                    const el = $ctx.element;
                     // Trigger animation AFTER DOM insertion
                     // Force reflow to ensure initial state is applied
                     el.offsetHeight;
@@ -633,19 +635,22 @@
                         this.addLog('mounted', '✨ Card animation started');
                     });
                 },
-                onCardLeave(el) {
+                onCardLeave($ctx) {
+                    const el = $ctx.element;
                     el.classList.add('fade-slide-leave');
                     el.classList.add('fade-slide-leave-active');
 
                     this.addLog('unmount', '✨ Card animating out');
                 },
-                onTileMount(el) {
+                onTileMount($ctx) {
+                    const el = $ctx.element;
                     // Set initial state BEFORE DOM insertion
                     el.style.opacity = '0';
                     el.style.transform = 'scale(0.8)';
                     this.addLog('mount', '✨ Tile mount - initial state set');
                 },
-                onTileEnter(el) {
+                onTileEnter($ctx) {
+                    const el = $ctx.element;
                     // Trigger animation AFTER DOM insertion
                     requestAnimationFrame(() => {
                         el.style.transition = 'all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
@@ -654,7 +659,8 @@
                         this.addLog('mounted', '✨ Tile animation started');
                     });
                 },
-                onTileLeave(el) {
+                onTileLeave($ctx) {
+                    const el = $ctx.element;
                     el.style.transition = 'all 0.3s ease-in';
                     el.style.opacity = '0';
                     el.style.transform = 'scale(0.8) rotate(10deg)';
