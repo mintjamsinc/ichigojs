@@ -64,6 +64,10 @@ export class VDOM {
      * @returns The created virtual application instance.
      */
     static createApp(options: any): VApplication {
-		return new VApplication(options, this.#directiveParserRegistry, this.#componentRegistry);
+        return new VApplication({
+            options,
+            directiveParserRegistry: this.#directiveParserRegistry,
+            componentRegistry: this.#componentRegistry
+        });
     }
 }

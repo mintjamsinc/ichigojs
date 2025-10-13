@@ -9,6 +9,7 @@ import { VNode } from "./VNode";
 import type { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
 import { VComponentRegistry } from "./components/VComponentRegistry";
 import { ReactiveProxy } from "./util/ReactiveProxy";
+import { VApplicationInit } from "./VApplicationInit";
 
 /**
  * Represents a virtual application instance.
@@ -18,6 +19,11 @@ export class VApplication {
      * The application options.
      */
     #options: VApplicationOptions;
+
+    /**
+     * The parent application, if any.
+     */
+    #parentApplication?: VApplication;
 
     /**
      * The global directive parser registry.
@@ -66,12 +72,13 @@ export class VApplication {
 
     /**
      * Creates an instance of the virtual application.
-     * @param options The application options.
-     * @param directiveParserRegistry The global directive parser registry.
-     * @param componentRegistry The global component registry.
+     * @param args The initialization arguments for the application.
      */
-    constructor(options: VApplicationOptions, directiveParserRegistry: VDirectiveParserRegistry, componentRegistry: VComponentRegistry) {
+    constructor(args: VApplicationInit) {
+        const { options, parentApplication: parentApplication, directiveParserRegistry, componentRegistry } = args;
+
         this.#options = options;
+        this.#parentApplication = parentApplication;
         this.#directiveParserRegistry = directiveParserRegistry;
         this.#componentRegistry = componentRegistry;
 
@@ -87,6 +94,13 @@ export class VApplication {
 
         // Initialize bindings from data, computed, and methods
         this.#initializeBindings();
+    }
+
+    /**
+     * Gets the parent application, if any.
+     */
+    get parentApplication(): VApplication | undefined {
+        return this.#parentApplication;
     }
 
     /**
@@ -180,7 +194,12 @@ export class VApplication {
      * @returns The created child application instance.
      */
     createChildApp(options: VApplicationOptions): VApplication {
-        return new VApplication(options, this.#directiveParserRegistry, this.#componentRegistry);
+        return new VApplication({
+            options,
+            parentApplication: this,
+            directiveParserRegistry: this.#directiveParserRegistry,
+            componentRegistry: this.#componentRegistry
+        });
     }
 
     /**
