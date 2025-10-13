@@ -232,6 +232,27 @@ export class VApplication {
     }
 
     /**
+     * Computes dependent identifiers for a given computed property and value.
+     * This is used to track dependencies in directives like v-for.
+     * @param computedName The name of the computed property.
+     * @param value The value to check for dependencies.
+     * @returns An array of dependent identifiers.
+     */
+    resolveDependentIdentifiers(computedName: string, value: any): string[] {
+        const identifiers: string[] = [];
+        for (const dep of this.#computedDependencies[computedName] || []) {
+            const depValue = this.#bindings?.get(dep);
+            if (Array.isArray(depValue)) {
+                const idx = depValue.indexOf(value);
+                if (idx !== -1) {
+                    identifiers.push(`${dep}[${idx}]`);
+                }
+            }
+        }
+        return identifiers;
+    }
+
+    /**
      * Initializes bindings from data, computed properties, and methods.
      * @returns The initialized bindings object.
      */
@@ -372,9 +393,17 @@ export class VApplication {
                 const oldValue = this.#bindings?.get(key);
                 const newValue = computedFn.call(this.#bindings?.raw);
 
-                // Track if the computed value actually changed
-                if (oldValue !== newValue) {
-                    this.#bindings?.set(key, newValue);
+                // Check if the value actually changed
+                let hasChanged = oldValue !== newValue;
+
+                // For arrays, always update (VBindings will detect length changes via its length cache)
+                if (!hasChanged && Array.isArray(newValue)) {
+                    hasChanged = true;
+                }
+
+                if (hasChanged) {
+                    // Use setSilent to avoid triggering onChange during computed property updates
+                    this.#bindings?.setSilent(key, newValue);
                     allChanges.add(key);
                 }
             } catch (error) {

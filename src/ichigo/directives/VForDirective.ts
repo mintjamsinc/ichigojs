@@ -329,7 +329,9 @@ export class VForDirective implements VDirective {
                     vApplication: this.#vNode.vApplication,
                     parentVNode: this.#vNode.parentVNode,
                     bindings,
-                    dependentIdentifiers: [`${this.#sourceName}[${context.index}]`]
+                    dependentIdentifiers: [
+                        `${this.#sourceName}[${context.index}]`,
+                        ...this.#vNode.vApplication.resolveDependentIdentifiers(this.#sourceName!, context.item)],
                 });
                 newRenderedItems.set(key, vNode);
                 vNode.forceUpdate();
