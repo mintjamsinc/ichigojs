@@ -8,6 +8,7 @@ import { VBindings } from "./VBindings";
 import { VNode } from "./VNode";
 import type { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
 import { VComponentRegistry } from "./components/VComponentRegistry";
+import { ReactiveProxy } from "./util/ReactiveProxy";
 
 /**
  * Represents a virtual application instance.
@@ -226,6 +227,7 @@ export class VApplication {
 
         // Inject utility methods into bindings
         this.#bindings.set('$nextTick', (callback: () => void) => this.#nextTick(callback));
+        this.#bindings.set('$markRaw', <T extends object>(obj: T) => ReactiveProxy.markRaw(obj));
 
         // Add methods
         if (this.#options.methods) {
@@ -243,7 +245,14 @@ export class VApplication {
 
         // Add data properties
         if (this.#options.data) {
-            const data = this.#options.data();
+            // Create a $ctx context object with utility functions for data()
+            // This provides the same $markRaw access as in lifecycle hooks (@mount, etc.)
+            const $ctx = {
+                $markRaw: <T extends object>(obj: T) => ReactiveProxy.markRaw(obj)
+            };
+
+            // Call data() with $ctx as 'this'
+            const data = this.#options.data.call($ctx);
             if (data && typeof data === 'object') {
                 for (const [key, value] of Object.entries(data)) {
                     this.#bindings.set(key, value);

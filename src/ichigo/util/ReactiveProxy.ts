@@ -11,6 +11,18 @@ export class ReactiveProxy {
     private static proxyCache = new WeakMap<object, Map<string, any>>();
 
     /**
+     * A WeakMap to track which objects are proxies, mapping proxy -> original target.
+     * This prevents double-wrapping of already proxied objects.
+     */
+    private static proxyToTarget = new WeakMap<object, object>();
+
+    /**
+     * A WeakSet to track objects marked as "raw" (non-reactive).
+     * These objects will not be wrapped with Proxy.
+     */
+    private static rawObjects = new WeakSet<object>();
+
+    /**
      * Creates a reactive proxy for the given object.
      * The proxy will call the onChange callback whenever a property is modified.
      *
@@ -25,9 +37,21 @@ export class ReactiveProxy {
             return target;
         }
 
+        // Don't wrap objects marked as raw (non-reactive)
+        if (this.rawObjects.has(target)) {
+            return target;
+        }
+
         // Don't wrap built-in objects that have internal slots
         // These objects require their methods to be called with the correct 'this' context
-        if (target instanceof Date || target instanceof RegExp || target instanceof Error) {
+        // Use Object.prototype.toString for more reliable type checking
+        const typeTag = Object.prototype.toString.call(target);
+        if (typeTag === '[object Date]' || typeTag === '[object RegExp]' || typeTag === '[object Error]') {
+            return target;
+        }
+
+        // Check if the target is already a proxy - if so, return it as-is to prevent double-wrapping
+        if (this.proxyToTarget.has(target)) {
             return target;
         }
 
@@ -50,8 +74,15 @@ export class ReactiveProxy {
 
                 // If the value is an object or array, make it reactive too
                 if (typeof value === 'object' && value !== null) {
+                    // Don't wrap objects marked as raw (non-reactive)
+                    if (ReactiveProxy.rawObjects.has(value)) {
+                        return value;
+                    }
+
                     // Don't wrap built-in objects that have internal slots
-                    if (value instanceof Date || value instanceof RegExp || value instanceof Error) {
+                    // Use Object.prototype.toString for more reliable type checking
+                    const valueTypeTag = Object.prototype.toString.call(value);
+                    if (valueTypeTag === '[object Date]' || valueTypeTag === '[object RegExp]' || valueTypeTag === '[object Error]') {
                         return value;
                     }
 
@@ -103,6 +134,9 @@ export class ReactiveProxy {
         // Cache the proxy for this path
         pathMap.set(path, proxy);
 
+        // Track that this proxy wraps the target to prevent double-wrapping
+        this.proxyToTarget.set(proxy, target);
+
         return proxy;
     }
 
@@ -127,5 +161,33 @@ export class ReactiveProxy {
         // This is a simplified implementation
         // In a full implementation, we'd need to store a reverse mapping
         return obj;
+    }
+
+    /**
+     * Marks an object as "raw" (non-reactive).
+     * Objects marked as raw will not be wrapped with Proxy when accessed from reactive objects.
+     * This is useful for objects that should not be reactive, such as:
+     * - Objects with private fields (class instances with # fields)
+     * - Third-party library instances
+     * - Objects used only for method calls
+     *
+     * @param obj The object to mark as raw.
+     * @returns The same object (for chaining).
+     */
+    static markRaw<T extends object>(obj: T): T {
+        if (typeof obj === 'object' && obj !== null) {
+            this.rawObjects.add(obj);
+        }
+        return obj;
+    }
+
+    /**
+     * Checks if an object is marked as raw (non-reactive).
+     *
+     * @param obj The object to check.
+     * @returns True if the object is marked as raw, false otherwise.
+     */
+    static isRaw(obj: any): boolean {
+        return typeof obj === 'object' && obj !== null && this.rawObjects.has(obj);
     }
 }
