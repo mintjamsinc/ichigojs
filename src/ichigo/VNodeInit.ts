@@ -2,7 +2,6 @@
 
 import { VApplication } from "./VApplication";
 import { VBindings } from "./VBindings";
-import { VBindingsPreparer } from "./VBindingsPreparer";
 import { VNode } from "./VNode";
 
 /**
