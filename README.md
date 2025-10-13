@@ -341,8 +341,8 @@ Lifecycle hooks allow you to run code at specific stages of an element's lifecyc
 
 **Available hooks:**
 
-- `@mount` - Called before the element is inserted into the DOM
-- `@mounted` - Called after the element is inserted into the DOM
+- `@mount` - Called before the VNode is mounted to the DOM element
+- `@mounted` - Called after the VNode is mounted to the DOM element
 - `@update` - Called before the element is updated
 - `@updated` - Called after the element is updated
 - `@unmount` - Called before VNode cleanup begins

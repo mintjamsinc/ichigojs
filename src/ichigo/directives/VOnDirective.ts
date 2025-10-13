@@ -20,8 +20,8 @@ import { VDOMUpdater } from "../VDOMUpdater";
  * For example, `v-on:click.stop="handleClick"` will stop the event from propagating up the DOM tree.
  *
  * Additionally, this directive supports lifecycle hooks:
- *     @mount="onMount"       - Called before the element is inserted into the DOM
- *     @mounted="onMounted"   - Called after the element is inserted into the DOM
+ *     @mount="onMount"       - Called before the VNode is mounted to the DOM element
+ *     @mounted="onMounted"   - Called after the VNode is mounted to the DOM element
  *     @update="onUpdate"     - Called before the element is updated
  *     @updated="onUpdated"   - Called after the element is updated
  *     @unmount="onUnmount"   - Called before VNode cleanup begins
