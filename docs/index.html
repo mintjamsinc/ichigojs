@@ -367,11 +367,28 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* Animation Canvas */
+    #animation-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
+    }
   </style>
 </head>
 <body>
   <!-- Hero Section -->
   <section class="hero">
+    <canvas id="animation-canvas"></canvas>
     <div class="hero-content">
       <div class="logo">🍓</div>
       <h1>ichigo.js</h1>
@@ -702,6 +719,348 @@
       </div>
     </div>
   </section>
+
+  <script>
+    // Hero Animation Script
+    (function() {
+      const canvas = document.getElementById('animation-canvas');
+      const ctx = canvas.getContext('2d');
+
+      // Bird object (declare first)
+      let bird;
+
+      // Animation frame counter for walking animation
+      let walkFrame = 0;
+
+      // Canvas setup
+      function resizeCanvas() {
+        const hero = document.querySelector('.hero');
+        canvas.width = hero.offsetWidth;
+        canvas.height = hero.offsetHeight;
+
+        // Adjust bird position on resize (only if bird exists)
+        if (bird) {
+          const groundLevel = canvas.height - 60;
+          const maxHeight = canvas.height * 0.3;
+          bird.y = Math.min(bird.y, groundLevel);
+          bird.targetY = Math.min(bird.targetY, groundLevel);
+          bird.targetY = Math.max(bird.targetY, maxHeight);
+        }
+      }
+
+      // Initial canvas size setup
+      resizeCanvas();
+
+      // Initialize bird object with safe initial position
+      const initialY = canvas.height > 0 ? canvas.height - 60 : 300;
+      bird = {
+        x: 100,
+        y: initialY,
+        size: 40,
+        velocityX: 0,
+        velocityY: 0,
+        targetX: 100,
+        targetY: initialY,
+        direction: 1, // 1: right, -1: left
+        isEating: false,
+        eatingTime: 0
+      };
+
+      // Add resize listener after bird is initialized
+      window.addEventListener('resize', resizeCanvas);
+
+      // Strawberries array
+      const strawberries = [];
+
+      // Particles array
+      const particles = [];
+
+      // Score
+      let score = 0;
+
+      // Timing
+      let lastStrawberryTime = Date.now();
+      let nextStrawberryDelay = getRandomDelay();
+
+      function getRandomDelay() {
+        // Less frequent on mobile devices
+        const isMobile = window.innerWidth < 768;
+        const baseDelay = isMobile ? 3000 : 2000;
+        const randomRange = isMobile ? 3000 : 2000;
+        return baseDelay + Math.random() * randomRange;
+      }
+
+      // Adjust parameters based on screen size
+      function getScaleFactor() {
+        return window.innerWidth < 768 ? 0.8 : 1;
+      }
+
+      // Draw bird
+      function drawBird() {
+        const scale = getScaleFactor();
+        ctx.save();
+
+        // Walking animation: add subtle bounce and wobble
+        const walkSpeed = Math.sqrt(bird.velocityX * bird.velocityX + bird.velocityY * bird.velocityY);
+        const isWalking = walkSpeed > 0.5 && !bird.isEating;
+
+        let bounceY = 0;
+        let wobbleX = 0;
+
+        if (isWalking) {
+          walkFrame += 0.25;
+          // Vertical bounce (up and down motion) - subtle
+          bounceY = Math.sin(walkFrame) * 1.5;
+          // Horizontal wobble (side to side motion) - very subtle
+          wobbleX = Math.sin(walkFrame * 2) * 0.8;
+        }
+
+        ctx.translate(bird.x + wobbleX, bird.y + bounceY);
+
+        // Flip horizontally if moving left (direction -1 means moving left)
+        if (bird.direction === -1) {
+          ctx.scale(-1, 1);
+        }
+
+        // Bird emoji
+        ctx.font = `${bird.size * scale}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        if (bird.isEating) {
+          ctx.fillText('🐤✨', 0, 0);
+        } else {
+          ctx.fillText('🐤', 0, 0);
+        }
+
+        ctx.restore();
+      }
+
+      // Find nearest strawberry within detection range
+      function findNearestStrawberry() {
+        let nearest = null;
+        let minDistance = Infinity;
+
+        for (const strawberry of strawberries) {
+          const dx = strawberry.x - bird.x;
+          const dy = strawberry.y - bird.y;
+
+          // Prioritize strawberries based on horizontal distance
+          // This makes the bird start chasing when strawberry is above but nearby horizontally
+          const horizontalDistance = Math.abs(dx);
+          const verticalDistance = Math.abs(dy);
+
+          // Only chase if horizontally within range (500px)
+          // and strawberry is above or at similar height
+          if (horizontalDistance < 500 && dy < 300) {
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < minDistance) {
+              minDistance = distance;
+              nearest = strawberry;
+            }
+          }
+        }
+
+        return nearest;
+      }
+
+      // Update bird position
+      function updateBird() {
+        if (bird.isEating) {
+          bird.eatingTime--;
+          if (bird.eatingTime <= 0) {
+            bird.isEating = false;
+            pickNewTarget();
+          }
+          return;
+        }
+
+        // Check if there's a nearby strawberry to chase
+        const nearestStrawberry = findNearestStrawberry();
+        let targetX, targetY;
+
+        if (nearestStrawberry) {
+          // Chase the strawberry
+          targetX = nearestStrawberry.x;
+          targetY = nearestStrawberry.y;
+        } else {
+          // Use normal target
+          targetX = bird.targetX;
+          targetY = bird.targetY;
+
+          const dx = targetX - bird.x;
+          const dy = targetY - bird.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance < 5) {
+            pickNewTarget();
+            return;
+          }
+        }
+
+        const dx = targetX - bird.x;
+        const dy = targetY - bird.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < 1) {
+          return;
+        }
+
+        // Faster speed when chasing strawberry
+        const speed = nearestStrawberry ? 3.0 : 1.5;
+        bird.velocityX = (dx / distance) * speed;
+        bird.velocityY = (dy / distance) * speed;
+
+        // Update direction based on target (not velocity)
+        if (Math.abs(dx) > 5) {
+          bird.direction = dx > 0 ? -1 : 1; // -1 for right (no flip), 1 for left (flip)
+        }
+
+        bird.x += bird.velocityX;
+        bird.y += bird.velocityY;
+
+        // Keep bird in bounds
+        const margin = 50;
+        bird.x = Math.max(margin, Math.min(canvas.width - margin, bird.x));
+        bird.y = Math.max(margin, Math.min(canvas.height - margin, bird.y));
+      }
+
+      function pickNewTarget() {
+        const margin = 100;
+        const groundLevel = canvas.height - 60;
+        const maxHeight = canvas.height * 0.3;
+
+        bird.targetX = margin + Math.random() * (canvas.width - margin * 2);
+        bird.targetY = maxHeight + Math.random() * (groundLevel - maxHeight);
+      }
+
+      // Create strawberry
+      function createStrawberry() {
+        strawberries.push({
+          x: Math.random() * (canvas.width - 100) + 50,
+          y: -30,
+          size: 30,
+          velocityY: 0,
+          gravity: 0.15, // Reduced from 0.3 to 0.15 for slower fall
+          rotation: Math.random() * Math.PI * 2,
+          rotationSpeed: (Math.random() - 0.5) * 0.08 // Slightly slower rotation too
+        });
+      }
+
+      // Draw strawberry
+      function drawStrawberry(strawberry) {
+        const scale = getScaleFactor();
+        ctx.save();
+        ctx.translate(strawberry.x, strawberry.y);
+        ctx.rotate(strawberry.rotation);
+        ctx.font = `${strawberry.size * scale}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🍓', 0, 0);
+        ctx.restore();
+      }
+
+      // Update strawberries
+      function updateStrawberries() {
+        for (let i = strawberries.length - 1; i >= 0; i--) {
+          const s = strawberries[i];
+          s.velocityY += s.gravity;
+          s.y += s.velocityY;
+          s.rotation += s.rotationSpeed;
+
+          // Check collision with bird
+          const dx = s.x - bird.x;
+          const dy = s.y - bird.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance < (bird.size + s.size) / 2) {
+            // Caught!
+            createParticles(s.x, s.y);
+            strawberries.splice(i, 1);
+            bird.isEating = true;
+            bird.eatingTime = 30; // frames
+            score++;
+            continue;
+          }
+
+          // Remove if off screen
+          if (s.y > canvas.height + 50) {
+            strawberries.splice(i, 1);
+          }
+        }
+
+        // Spawn new strawberries
+        const now = Date.now();
+        if (now - lastStrawberryTime > nextStrawberryDelay) {
+          createStrawberry();
+          lastStrawberryTime = now;
+          nextStrawberryDelay = getRandomDelay();
+        }
+      }
+
+      // Create particles
+      function createParticles(x, y) {
+        for (let i = 0; i < 12; i++) {
+          const angle = (Math.PI * 2 * i) / 12;
+          const speed = 2 + Math.random() * 3;
+          particles.push({
+            x: x,
+            y: y,
+            velocityX: Math.cos(angle) * speed,
+            velocityY: Math.sin(angle) * speed,
+            life: 30,
+            maxLife: 30,
+            size: 3 + Math.random() * 3,
+            color: ['#FFD700', '#FFA500', '#FF69B4', '#FF1493'][Math.floor(Math.random() * 4)]
+          });
+        }
+      }
+
+      // Update and draw particles
+      function updateParticles() {
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.x += p.velocityX;
+          p.y += p.velocityY;
+          p.velocityY += 0.2; // gravity
+          p.life--;
+
+          if (p.life <= 0) {
+            particles.splice(i, 1);
+            continue;
+          }
+
+          ctx.save();
+          ctx.globalAlpha = p.life / p.maxLife;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // Animation loop
+      function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        updateBird();
+        updateStrawberries();
+
+        // Draw everything
+        strawberries.forEach(drawStrawberry);
+        drawBird();
+        updateParticles();
+
+        requestAnimationFrame(animate);
+      }
+
+      // Start animation
+      animate();
+      pickNewTarget();
+    })();
+  </script>
 
   <!-- Footer -->
   <footer class="footer">
