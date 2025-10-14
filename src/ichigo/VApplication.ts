@@ -104,6 +104,13 @@ export class VApplication {
     }
 
     /**
+     * Indicates whether this application is the root application.
+     */
+    get isRoot(): boolean {
+        return !this.#parentApplication;
+    }
+
+    /**
      * Gets the global directive parser registry.
      */
     get directiveParserRegistry(): VDirectiveParserRegistry {
