@@ -1265,7 +1265,7 @@
           ctx.restore();
         }
 
-        // Draw rain splashes (more visible)
+        // Draw rain splashes (more visible, elliptical shape)
         for (let i = rainSplashes.length - 1; i >= 0; i--) {
           const splash = rainSplashes[i];
           splash.life--;
@@ -1278,24 +1278,28 @@
           const progress = splash.life / splash.maxLife;
           const currentSize = splash.size * (1 - progress) * 3;
 
-          // Draw outer ring
+          // Draw outer ring (elliptical - flattened vertically)
           ctx.save();
+          ctx.translate(splash.x, splash.y);
+          ctx.scale(1, 0.5); // Flatten to 50% height for elliptical shape
           ctx.globalAlpha = progress * 0.7;
           ctx.strokeStyle = '#7ab8ff';
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(splash.x, splash.y, currentSize, 0, Math.PI * 2);
+          ctx.arc(0, 0, currentSize, 0, Math.PI * 2);
           ctx.stroke();
           ctx.restore();
 
-          // Draw inner ring for more visibility
+          // Draw inner ring for more visibility (also elliptical)
           if (progress > 0.5) {
             ctx.save();
+            ctx.translate(splash.x, splash.y);
+            ctx.scale(1, 0.5); // Flatten to 50% height for elliptical shape
             ctx.globalAlpha = (progress - 0.5) * 2 * 0.4;
             ctx.strokeStyle = '#a0c4ff';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.arc(splash.x, splash.y, currentSize * 0.6, 0, Math.PI * 2);
+            ctx.arc(0, 0, currentSize * 0.6, 0, Math.PI * 2);
             ctx.stroke();
             ctx.restore();
           }
