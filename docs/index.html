@@ -881,9 +881,12 @@
         let targetX, targetY;
 
         if (nearestStrawberry) {
-          // Chase the strawberry
+          // Chase the strawberry - primarily horizontally
+          // Move to the strawberry's X position, but stay mostly at current Y level
           targetX = nearestStrawberry.x;
-          targetY = nearestStrawberry.y;
+          // Only adjust Y slightly to meet the strawberry
+          const verticalOffset = (nearestStrawberry.y - bird.y) * 0.15; // Only 15% of vertical distance
+          targetY = bird.y + verticalOffset;
         } else {
           // Use normal target
           targetX = bird.targetX;
