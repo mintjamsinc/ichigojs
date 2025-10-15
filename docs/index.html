@@ -51,14 +51,16 @@
       font-size: 80px;
       margin-bottom: 20px;
       animation: float 3s ease-in-out infinite;
+      transform: rotate(20deg);
+      display: inline-block;
     }
 
     @keyframes float {
       0%, 100% {
-        transform: translateY(0);
+        transform: rotate(20deg) translateY(0);
       }
       50% {
-        transform: translateY(-20px);
+        transform: rotate(20deg) translateY(-20px);
       }
     }
 
