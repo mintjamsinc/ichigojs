@@ -787,6 +787,14 @@
       // Leaves array
       const leaves = [];
 
+      // Weather system
+      let currentWeather = 'sunny'; // sunny, rainy, snowy
+      let nextWeatherChange = Date.now() + getRandomWeatherDuration();
+      const raindrops = [];
+      const rainSplashes = [];
+      const snowflakes = [];
+      const sunRays = [];
+
       // Score
       let score = 0;
 
@@ -808,6 +816,40 @@
       // Adjust parameters based on screen size
       function getScaleFactor() {
         return window.innerWidth < 768 ? 0.8 : 1;
+      }
+
+      // Get random weather duration (30-60 seconds)
+      function getRandomWeatherDuration() {
+        return 30000 + Math.random() * 30000;
+      }
+
+      // Change weather randomly (weighted towards sunny)
+      function updateWeather() {
+        const now = Date.now();
+        if (now >= nextWeatherChange) {
+          // Weighted random: 70% sunny, 20% rainy, 10% snowy
+          const rand = Math.random();
+          let newWeather;
+
+          if (rand < 0.7) {
+            newWeather = 'sunny';
+          } else if (rand < 0.9) {
+            newWeather = 'rainy';
+          } else {
+            newWeather = 'snowy';
+          }
+
+          // Only change if different from current
+          if (newWeather !== currentWeather) {
+            currentWeather = newWeather;
+            // Clear weather-specific particles when changing
+            raindrops.length = 0;
+            snowflakes.length = 0;
+            rainSplashes.length = 0;
+          }
+
+          nextWeatherChange = now + getRandomWeatherDuration();
+        }
       }
 
       // Initialize clouds
@@ -856,6 +898,58 @@
           size: 15 + Math.random() * 10,
           twinklePhase: Math.random() * Math.PI * 2
         });
+      }
+
+      // Initialize sun rays
+      function initSunRays() {
+        const rayCount = 5;
+        for (let i = 0; i < rayCount; i++) {
+          sunRays.push({
+            x: (canvas.width / (rayCount + 1)) * (i + 1),
+            baseX: (canvas.width / (rayCount + 1)) * (i + 1),
+            width: 40 + Math.random() * 60,
+            opacity: 0.03 + Math.random() * 0.02,
+            pulsePhase: Math.random() * Math.PI * 2,
+            pulseSpeed: 0.01 + Math.random() * 0.01,
+            swayPhase: Math.random() * Math.PI * 2,
+            swaySpeed: 0.005 + Math.random() * 0.005,
+            swayAmount: 10 + Math.random() * 20
+          });
+        }
+      }
+
+      // Draw sun rays (with gentle swaying motion)
+      function drawSunRays() {
+        for (const ray of sunRays) {
+          // Update pulse for opacity
+          ray.pulsePhase += ray.pulseSpeed;
+          const pulse = Math.sin(ray.pulsePhase);
+          const currentOpacity = ray.opacity + pulse * 0.01;
+
+          // Update sway for gentle movement
+          ray.swayPhase += ray.swaySpeed;
+          const sway = Math.sin(ray.swayPhase) * ray.swayAmount;
+          ray.x = ray.baseX + sway;
+
+          ctx.save();
+          ctx.globalAlpha = currentOpacity;
+
+          // Create gradient for ray
+          const gradient = ctx.createLinearGradient(ray.x, 0, ray.x, canvas.height);
+          gradient.addColorStop(0, 'rgba(255, 255, 200, 1)');
+          gradient.addColorStop(0.5, 'rgba(255, 255, 200, 0.5)');
+          gradient.addColorStop(1, 'rgba(255, 255, 200, 0)');
+
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.moveTo(ray.x - ray.width / 2, 0);
+          ctx.lineTo(ray.x + ray.width / 2, 0);
+          ctx.lineTo(ray.x + ray.width * 1.5, canvas.height);
+          ctx.lineTo(ray.x - ray.width * 1.5, canvas.height);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
       }
 
       // Draw sparkles
@@ -962,6 +1056,163 @@
           size: 15 + Math.random() * 10,
           opacity: 0.5 + Math.random() * 0.4
         });
+      }
+
+      // Create raindrop
+      function createRaindrop() {
+        // Random ground level for depth effect (bird's area is around 50% - 100% of canvas height)
+        const minGroundLevel = canvas.height * 0.5; // Bird's movement area starts
+        const maxGroundLevel = canvas.height - 10;
+        const groundLevel = minGroundLevel + Math.random() * (maxGroundLevel - minGroundLevel);
+
+        raindrops.push({
+          x: Math.random() * canvas.width,
+          y: -10,
+          length: 10 + Math.random() * 10,
+          speed: 8 + Math.random() * 4,
+          opacity: 0.3 + Math.random() * 0.4,
+          groundLevel: groundLevel // Each raindrop has its own ground level
+        });
+      }
+
+      // Draw rain
+      function drawRain() {
+        // Create new raindrops
+        if (Math.random() < 0.3) { // 30% chance each frame
+          createRaindrop();
+        }
+
+        for (let i = raindrops.length - 1; i >= 0; i--) {
+          const rain = raindrops[i];
+          rain.y += rain.speed;
+
+          // Check if hit its designated ground level (create splash)
+          if (rain.y >= rain.groundLevel) {
+            // Create splash effect at the ground level
+            rainSplashes.push({
+              x: rain.x,
+              y: rain.groundLevel,
+              life: 20,
+              maxLife: 20,
+              size: 8,
+              depth: rain.groundLevel // Store depth for rendering order
+            });
+            raindrops.splice(i, 1);
+            continue;
+          }
+
+          // Remove if off screen
+          if (rain.y > canvas.height) {
+            raindrops.splice(i, 1);
+            continue;
+          }
+
+          // Draw raindrop as a line
+          ctx.save();
+          ctx.globalAlpha = rain.opacity;
+          ctx.strokeStyle = '#a0c4ff';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(rain.x, rain.y);
+          ctx.lineTo(rain.x - 3, rain.y + rain.length);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Draw rain splashes (more visible)
+        for (let i = rainSplashes.length - 1; i >= 0; i--) {
+          const splash = rainSplashes[i];
+          splash.life--;
+
+          if (splash.life <= 0) {
+            rainSplashes.splice(i, 1);
+            continue;
+          }
+
+          const progress = splash.life / splash.maxLife;
+          const currentSize = splash.size * (1 - progress) * 3;
+
+          // Draw outer ring
+          ctx.save();
+          ctx.globalAlpha = progress * 0.7;
+          ctx.strokeStyle = '#7ab8ff';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(splash.x, splash.y, currentSize, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+
+          // Draw inner ring for more visibility
+          if (progress > 0.5) {
+            ctx.save();
+            ctx.globalAlpha = (progress - 0.5) * 2 * 0.4;
+            ctx.strokeStyle = '#a0c4ff';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(splash.x, splash.y, currentSize * 0.6, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+      }
+
+      // Create snowflake
+      function createSnowflake() {
+        // Random ground level for depth effect (bird's area is around 50% - 100% of canvas height)
+        const minGroundLevel = canvas.height * 0.5; // Bird's movement area starts
+        const maxGroundLevel = canvas.height - 10;
+        const groundLevel = minGroundLevel + Math.random() * (maxGroundLevel - minGroundLevel);
+
+        // Adjust size and speed based on depth (farther = smaller and slower)
+        const depthRatio = (groundLevel - minGroundLevel) / (maxGroundLevel - minGroundLevel);
+        const sizeMultiplier = 0.6 + depthRatio * 0.4; // 0.6x to 1.0x
+        const speedMultiplier = 0.7 + depthRatio * 0.3; // 0.7x to 1.0x
+
+        snowflakes.push({
+          x: Math.random() * canvas.width,
+          y: -10,
+          size: (3 + Math.random() * 4) * sizeMultiplier,
+          speed: (0.5 + Math.random() * 1) * speedMultiplier,
+          swayPhase: Math.random() * Math.PI * 2,
+          swaySpeed: 0.02 + Math.random() * 0.02,
+          swayAmount: 20 + Math.random() * 20,
+          opacity: (0.6 + Math.random() * 0.4) * (0.7 + depthRatio * 0.3), // Farther = slightly more transparent
+          groundLevel: groundLevel
+        });
+      }
+
+      // Draw snow
+      function drawSnow() {
+        // Create new snowflakes (reduced frequency)
+        if (Math.random() < 0.05) { // 5% chance each frame (half of before)
+          createSnowflake();
+        }
+
+        for (let i = snowflakes.length - 1; i >= 0; i--) {
+          const snow = snowflakes[i];
+
+          // Update position with swaying
+          snow.swayPhase += snow.swaySpeed;
+          const sway = Math.sin(snow.swayPhase) * snow.swayAmount;
+
+          snow.x += sway * 0.01;
+          snow.y += snow.speed;
+
+          // Remove if reached its ground level or off screen
+          if (snow.y > snow.groundLevel || snow.x < -50 || snow.x > canvas.width + 50) {
+            snowflakes.splice(i, 1);
+            continue;
+          }
+
+          // Draw snowflake
+          ctx.save();
+          ctx.globalAlpha = snow.opacity;
+          ctx.fillStyle = 'white';
+          ctx.beginPath();
+          ctx.arc(snow.x, snow.y, snow.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
       }
 
       // Draw leaves
@@ -1437,11 +1688,31 @@
       function animate() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        // Update weather system
+        updateWeather();
+
         // Draw background elements first (behind everything)
+
+        // Draw sun rays only in sunny weather (behind clouds)
+        if (currentWeather === 'sunny') {
+          drawSunRays();
+        }
+
         drawClouds();
         drawSparkles();
-        drawLeaves(); // Leaves blown by wind
-        drawCherryBlossoms(); // Cherry blossoms falling
+
+        // Draw weather effects based on current weather
+        if (currentWeather === 'rainy') {
+          drawRain();
+        } else if (currentWeather === 'snowy') {
+          drawSnow();
+        }
+
+        // Draw seasonal elements (only in sunny weather for better visibility)
+        if (currentWeather === 'sunny') {
+          drawLeaves(); // Leaves blown by wind
+          drawCherryBlossoms(); // Cherry blossoms falling
+        }
 
         updateBird();
         updateStrawberries();
@@ -1456,6 +1727,7 @@
 
       // Start animation
       initClouds();
+      initSunRays();
       animate();
       pickNewTarget();
     })();
