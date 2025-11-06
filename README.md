@@ -27,6 +27,46 @@ A simple and intuitive reactive framework. Lightweight, fast, and user-friendly 
 npm install @mintjamsinc/ichigojs
 ```
 
+### Bundle Formats
+
+ichigo.js provides multiple bundle formats to suit different use cases:
+
+#### ESM (ES Modules)
+Use with modern bundlers or native ES modules:
+```javascript
+import { VDOM } from '@mintjamsinc/ichigojs';
+```
+
+**Files:**
+- `dist/ichigo.esm.js` - Development build with source maps
+- `dist/ichigo.esm.min.js` - Production build (minified)
+
+#### CommonJS
+Use with Node.js or older bundlers:
+```javascript
+const { VDOM } = require('@mintjamsinc/ichigojs');
+```
+
+**Files:**
+- `dist/ichigo.cjs` - Development build with source maps
+- `dist/ichigo.min.cjs` - Production build (minified)
+
+#### UMD (Universal Module Definition)
+Use via `<script>` tag in browser:
+```html
+<script src="node_modules/@mintjamsinc/ichigojs/dist/ichigo.umd.js"></script>
+<script>
+  const { VDOM } = window.ichigo;
+  // Use VDOM here
+</script>
+```
+
+**Files:**
+- `dist/ichigo.umd.js` - Development build with source maps
+- `dist/ichigo.umd.min.js` - Production build (minified)
+
+**Note:** The UMD build exposes `window.ichigo` with all exports (`VDOM`, `ReactiveProxy`, `VComponent`, `VComponentRegistry`).
+
 ## Quick Start
 
 ```html

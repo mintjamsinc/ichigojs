@@ -2,7 +2,7 @@
   "name": "@mintjamsinc/ichigojs",
   "version": "0.1.23",
   "description": "ichigo.js - Simple and intuitive reactive framework. Lightweight, fast, and user-friendly virtual DOM library",
-  "main": "./dist/ichigo.umd.js",
+  "main": "./dist/ichigo.cjs",
   "module": "./dist/ichigo.esm.js",
   "types": "./dist/types/index.d.ts",
   "type": "module",
@@ -52,7 +52,7 @@
   "exports": {
     ".": {
       "import": "./dist/ichigo.esm.js",
-      "require": "./dist/ichigo.umd.js",
+      "require": "./dist/ichigo.cjs",
       "types": "./dist/types/index.d.ts"
     },
     "./package.json": "./package.json"

@@ -15,10 +15,18 @@ export default [
         sourcemap: true,
       },
       {
+        file: 'dist/ichigo.cjs',
+        format: 'umd',
+        name: 'ichigo',
+        sourcemap: true,
+        exports: 'named',
+      },
+      {
         file: 'dist/ichigo.umd.js',
         format: 'umd',
         name: 'ichigo',
         sourcemap: true,
+        exports: 'named',
       }
     ],
     plugins: [
@@ -41,10 +49,18 @@ export default [
         sourcemap: false,
       },
       {
+        file: 'dist/ichigo.min.cjs',
+        format: 'umd',
+        name: 'ichigo',
+        sourcemap: false,
+        exports: 'named',
+      },
+      {
         file: 'dist/ichigo.umd.min.js',
         format: 'umd',
         name: 'ichigo',
         sourcemap: false,
+        exports: 'named',
       }
     ],
     plugins: [
