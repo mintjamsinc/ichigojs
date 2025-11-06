@@ -77,7 +77,7 @@ export class VShowDirective implements VDirective {
      * @inheritdoc
      */
     get needsAnchor(): boolean {
-        return true;
+        return false;
     }
 
     /**
@@ -133,7 +133,7 @@ export class VShowDirective implements VDirective {
      */
     visibleNode(): void {
         const element = this.#vNode.node as HTMLElement;
-        if (element.style.display === "none") {
+        if (element.style.display !== "none") {
             // Already visible, no action needed
             return;
         }
