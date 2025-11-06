@@ -17,8 +17,9 @@ export class ExpressionUtils {
         const identifiers = new Set<string>();
         const ast = acorn.parse(`(${expression})`, { ecmaVersion: "latest" });
 
-        walk.simple(ast, {
-            Identifier(node: any) {
+        // Use walk.full instead of walk.simple to visit ALL nodes including assignment LHS
+        walk.full(ast, (node: any) => {
+            if (node.type === 'Identifier') {
                 identifiers.add(node.name);
 
                 // Check if the identifier is a function name

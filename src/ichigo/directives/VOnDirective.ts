@@ -1,5 +1,7 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
+import * as acorn from "acorn";
+import * as walk from "acorn-walk";
 import { ExpressionUtils } from "../util/ExpressionUtils";
 import { VNode } from "../VNode";
 import { StandardDirectiveName } from "./StandardDirectiveName";
@@ -333,13 +335,12 @@ export class VOnDirective implements VDirective {
                 return originalMethod($ctx);
             }
 
-            // For inline expressions, evaluate normally with $ctx parameter
-            // Note: $ctx is a reserved variable name for lifecycle context
-            const values = identifiers.map(id => vNode.bindings?.get(id));
-            const args = [...identifiers, '$ctx'].join(", ");
-            const funcBody = `return (${expression});`;
-            const func = new Function(args, funcBody) as (...args: any[]) => any;
-            return func.call(bindings?.raw, ...values, $ctx);
+            // For inline expressions, rewrite to use 'this' context
+            // This allows assignments like "currentTab = 'shop'" to work correctly
+            const rewrittenExpr = this.#rewriteExpression(expression, identifiers);
+            const funcBody = `return (${rewrittenExpr});`;
+            const func = new Function('$ctx', funcBody) as (...args: any[]) => any;
+            return func.call(bindings?.raw, $ctx);
         };
     }
 
@@ -372,13 +373,107 @@ export class VOnDirective implements VDirective {
                 return originalMethod(event, $ctx);
             }
 
-            // For inline expressions, evaluate normally
-            // Note: inline expressions receive event and $ctx as parameters
-            const values = identifiers.map(id => vNode.bindings?.get(id));
-            const args = [...identifiers, 'event', '$ctx'].join(", ");
-            const funcBody = `return (${expression});`;
-            const func = new Function(args, funcBody) as (...args: any[]) => any;
-            return func.call(bindings?.raw, ...values, event, $ctx);
+            // For inline expressions, rewrite to use 'this' context
+            // This allows assignments like "currentTab = 'shop'" to work correctly
+            const rewrittenExpr = this.#rewriteExpression(expression, identifiers);
+            const funcBody = `return (${rewrittenExpr});`;
+            const func = new Function('event', '$ctx', funcBody) as (...args: any[]) => any;
+            return func.call(bindings?.raw, event, $ctx);
         };
+    }
+
+    /**
+     * Rewrites an expression to replace identifiers with 'this.identifier'.
+     * This allows direct property access and assignment without using 'with' statement.
+     * Uses AST parsing to accurately identify which identifiers to replace.
+     * @param expression The original expression string.
+     * @param identifiers The list of identifiers that are available in bindings.
+     * @returns The rewritten expression.
+     */
+    #rewriteExpression(expression: string, identifiers: string[]): string {
+        // Reserved words and built-in objects that should not be prefixed with 'this.'
+        const reserved = new Set([
+            'event', '$ctx',
+            'true', 'false', 'null', 'undefined', 'NaN', 'Infinity',
+            'Math', 'Date', 'String', 'Number', 'Boolean', 'Array', 'Object',
+            'JSON', 'console', 'window', 'document', 'navigator',
+            'parseInt', 'parseFloat', 'isNaN', 'isFinite',
+            'encodeURI', 'decodeURI', 'encodeURIComponent', 'decodeURIComponent'
+        ]);
+
+        // Extract ALL identifiers from the expression (including assignment left-hand side)
+        // This is necessary because the passed 'identifiers' parameter only includes
+        // identifiers that are used (right-hand side), not assigned to (left-hand side)
+        let allIdentifiersInExpression: string[];
+        try {
+            allIdentifiersInExpression = ExpressionUtils.extractIdentifiers(expression, {});
+        } catch (error) {
+            console.warn('[ichigo.js] Failed to extract identifiers from expression:', expression, error);
+            return expression;
+        }
+
+        // Create a Set of identifiers available in bindings (from data, computed, methods)
+        // We need to know which identifiers are valid binding properties
+        const bindingIdentifiers = new Set(identifiers.filter(id => !reserved.has(id)));
+
+        // For assignment expressions, we also need to include the left-hand side identifier
+        // even if it's not in the tracking identifiers (because it's being assigned, not read)
+        for (const id of allIdentifiersInExpression) {
+            if (!reserved.has(id)) {
+                bindingIdentifiers.add(id);
+            }
+        }
+
+        if (bindingIdentifiers.size === 0) {
+            return expression;
+        }
+
+        try {
+            // Build a map of positions to replace: { start: number, end: number, name: string }[]
+            const replacements: { start: number, end: number, name: string }[] = [];
+
+            const parsedAst = acorn.parse(`(${expression})`, { ecmaVersion: 'latest' });
+
+            // Collect all identifier nodes that should be replaced
+            // Use walk.full to ensure we visit ALL nodes including assignment LHS
+            walk.full(parsedAst, (node: any) => {
+                if (node.type !== 'Identifier') {
+                    return;
+                }
+
+                // Skip if not in our identifier set
+                if (!bindingIdentifiers.has(node.name)) {
+                    return;
+                }
+
+                // Note: We cannot easily determine parent context with walk.full
+                // So we'll include all identifiers and rely on position-based replacement
+                // This is simpler and works correctly for inline expressions
+
+                // Add to replacements list (adjust for the wrapping parentheses)
+                replacements.push({
+                    start: node.start - 1,
+                    end: node.end - 1,
+                    name: node.name
+                });
+            });
+
+            // Sort replacements by start position (descending) to replace from end to start
+            replacements.sort((a, b) => b.start - a.start);
+
+            // Apply replacements
+            let result = expression;
+            for (const replacement of replacements) {
+                result = result.substring(0, replacement.start) +
+                         `this.${replacement.name}` +
+                         result.substring(replacement.end);
+            }
+
+            return result;
+        } catch (error) {
+            // If AST parsing fails, fall back to the original expression
+            console.warn('Failed to rewrite expression:', expression, error);
+            return expression;
+        }
     }
 }
