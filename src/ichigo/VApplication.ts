@@ -307,8 +307,8 @@ export class VApplication {
             }
         }
 
-        // Add computed properties
-        this.#recomputeProperties();
+        // Add computed properties (initialization mode)
+        this.#recomputeProperties(true);
     }
 
     /**
@@ -343,8 +343,9 @@ export class VApplication {
 
     /**
      * Recursively recomputes computed properties based on changed identifiers.
+     * @param isInitialization - If true, computes all computed properties regardless of dependencies
      */
-    #recomputeProperties(): void {
+    #recomputeProperties(isInitialization: boolean = false): void {
         if (!this.#options.computed) {
             return;
         }
@@ -381,8 +382,8 @@ export class VApplication {
             // Get the dependencies for this computed property
             const deps = this.#computedDependencies[key] || [];
 
-            // If none of the dependencies have changed, skip recomputation
-            if (!deps.some(dep => allChanges.has(dep))) {
+            // If none of the dependencies have changed, skip recomputation (unless it's initialization)
+            if (!isInitialization && !deps.some(dep => allChanges.has(dep))) {
                 computed.add(key);
                 return;
             }
@@ -423,8 +424,9 @@ export class VApplication {
 
         // Find all computed properties that need to be recomputed
         for (const [key, deps] of Object.entries(this.#computedDependencies)) {
-            // Check if any dependency has changed
-            if (deps.some(dep => allChanges.has(dep))) {
+            // During initialization, compute all properties
+            // Otherwise, check if any dependency has changed
+            if (isInitialization || deps.some(dep => allChanges.has(dep))) {
                 compute(key);
             }
         }
