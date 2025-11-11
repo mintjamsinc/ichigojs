@@ -542,30 +542,22 @@ export class VForDirective implements VDirective {
 
     /**
      * Creates a function to evaluate the :key expression for each item.
-     * This uses a manual approach because it needs to evaluate with item-specific bindings.
+     * Uses ExpressionEvaluator to support globals and proper error handling.
      */
     #createKeyEvaluator(expression: string): (itemBindings: VBindings) => any {
-        // Create a temporary evaluator just to extract identifiers and compile the expression
-        // We can't use ExpressionEvaluator directly here because we need to evaluate
-        // with different bindings (itemBindings) for each iteration
+        // Create an evaluator that will be reused with different bindings for each iteration
         if (!this.#vNode.bindings) {
             throw new Error('VForDirective requires bindings');
         }
 
-        const tempEvaluator = ExpressionEvaluator.create(
-            expression,
-            this.#vNode.bindings,
-            this.#vNode.vApplication.functionDependencies
-        );
-        const identifiers = tempEvaluator.dependentIdentifiers;
-        const args = identifiers.join(", ");
-        const funcBody = `return (${expression});`;
-
-        const func = new Function(args, funcBody) as (...args: any[]) => any;
-
         return (itemBindings: VBindings) => {
-            const values = identifiers.map(id => itemBindings.get(id));
-            return func(...values);
+            // Create a new evaluator with the item-specific bindings
+            const evaluator = ExpressionEvaluator.create(
+                expression,
+                itemBindings,
+                this.#vNode.vApplication.functionDependencies
+            );
+            return evaluator.evaluate();
         };
     }
 
@@ -623,7 +615,7 @@ export class VForDirective implements VDirective {
                 item: value,
                 index,
                 key,
-                objectKey: String(key)  // Map keys can be any type, convert to string for binding
+                objectKey: key  // Preserve the actual Map key (can be any type)
             }));
         }
 

@@ -182,8 +182,11 @@ export class ExpressionEvaluator {
         identifiers: string[],
         options?: ExpressionEvaluatorOptions
     ): Function {
-        // Build parameter list
-        const params: string[] = [...identifiers];
+        // Build parameter list: globals first, then identifiers, then additional context
+        const params: string[] = [
+            ...Object.keys(ExpressionEvaluator.GLOBAL_WHITELIST),
+            ...identifiers
+        ];
 
         // Add additional context parameters if provided
         if (options?.additionalContext) {
@@ -208,8 +211,13 @@ export class ExpressionEvaluator {
      */
     evaluate(): any {
         try {
-            // Gather the current values of the identifiers from the bindings
-            const values = this.identifiers.map(id => this.bindings.get(id));
+            // Build arguments: globals first, then identifiers, then additional context
+            const values: any[] = [
+                // Global whitelist values
+                ...Object.values(ExpressionEvaluator.GLOBAL_WHITELIST),
+                // Identifier values from bindings
+                ...this.identifiers.map(id => this.bindings.get(id))
+            ];
 
             // Add additional context values if provided
             if (this.additionalContext) {
