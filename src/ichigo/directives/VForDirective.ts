@@ -45,6 +45,7 @@ export class VForDirective implements VDirective {
      * Parsed v-for expression parts
      */
     #itemName?: string;
+    #itemDestructure?: string[];  // For nested destructuring like [k, v]
     #indexName?: string;
     #thirdName?: string;  // For (value, key, index) triplets
     #sourceName?: string;
@@ -72,6 +73,7 @@ export class VForDirective implements VDirective {
         if (expression) {
             const parsed = this.#parseForExpression(expression);
             this.#itemName = parsed.itemName;
+            this.#itemDestructure = parsed.itemDestructure;
             this.#indexName = parsed.indexName;
             this.#thirdName = parsed.thirdName;
             this.#sourceName = parsed.sourceName;
@@ -237,21 +239,15 @@ export class VForDirective implements VDirective {
         }
 
         // If we have a custom key evaluator, update the keys
-        if (this.#evaluateKey && this.#itemName) {
+        if (this.#evaluateKey && (this.#itemName || this.#itemDestructure)) {
             iterations = iterations.map((iter): { key: any; item: any; index: number; objectKey?: string } => {
                 // Create bindings for this iteration
                 const itemBindings = new VBindings({
                     parent: this.#vNode.bindings
                 });
-                itemBindings.set(this.#itemName!, iter.item);
-                if (this.#indexName) {
-                    // For objects, use objectKey if available; otherwise use numeric index
-                    itemBindings.set(this.#indexName, iter.objectKey ?? iter.index);
-                }
-                if (this.#thirdName) {
-                    // Third argument is always the numeric index
-                    itemBindings.set(this.#thirdName, iter.index);
-                }
+
+                // Set item bindings (handles nested destructuring)
+                this.#setItemBindings(itemBindings, iter);
 
                 // Evaluate the key with item bindings
                 const customKey = this.#evaluateKey!(itemBindings);
@@ -325,25 +321,13 @@ export class VForDirective implements VDirective {
                     parent.appendChild(clone);
                 }
 
-                // Prepare identifiers for the item
-                const itemName = this.#itemName;
-                const indexName = this.#indexName;
-
                 // Create bindings for this iteration
                 const bindings = new VBindings({
                     parent: this.#vNode.bindings
                 });
-                if (this.#itemName) {
-                    bindings.set(this.#itemName, context.item);
-                }
-                if (this.#indexName) {
-                    // For objects, use objectKey if available; otherwise use numeric index
-                    bindings.set(this.#indexName, context.objectKey ?? context.index);
-                }
-                if (this.#thirdName) {
-                    // Third argument is always the numeric index
-                    bindings.set(this.#thirdName, context.index);
-                }
+
+                // Set item bindings (handles nested destructuring)
+                this.#setItemBindings(bindings, context);
 
                 // Create a new VNode for the cloned element
                 vNode = new VNode({
@@ -382,6 +366,69 @@ export class VForDirective implements VDirective {
     }
 
     /**
+     * Sets item bindings for a VNode, handling nested destructuring if needed.
+     */
+    #setItemBindings(bindings: VBindings, context: { key: any; item: any; index: number; objectKey?: string }): void {
+        if (this.#itemDestructure && Array.isArray(context.item)) {
+            // Nested destructuring: spread array items to individual bindings
+            // e.g., item = ['alice', 1] with itemDestructure = ['k', 'v']
+            // bindings.set('k', 'alice')
+            // bindings.set('v', 1)
+            this.#itemDestructure.forEach((name, i) => {
+                bindings.set(name, context.item[i]);
+            });
+        } else if (this.#itemName) {
+            // Simple item binding
+            bindings.set(this.#itemName, context.item);
+        }
+
+        if (this.#indexName) {
+            // For objects, use objectKey if available; otherwise use numeric index
+            bindings.set(this.#indexName, context.objectKey ?? context.index);
+        }
+
+        if (this.#thirdName) {
+            // Third argument is always the numeric index
+            bindings.set(this.#thirdName, context.index);
+        }
+    }
+
+    /**
+     * Parses a destructuring pattern, splitting by commas while respecting nested brackets.
+     * For example: "[k, v], idx" -> ["[k, v]", "idx"]
+     */
+    #parseDestructuringPattern(pattern: string): string[] {
+        const result: string[] = [];
+        let current = '';
+        let depth = 0;
+
+        for (let i = 0; i < pattern.length; i++) {
+            const char = pattern[i];
+
+            if (char === '[' || char === '(' || char === '{') {
+                depth++;
+                current += char;
+            } else if (char === ']' || char === ')' || char === '}') {
+                depth--;
+                current += char;
+            } else if (char === ',' && depth === 0) {
+                // Top-level comma, split here
+                result.push(current.trim());
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+
+        // Add the last segment
+        if (current.trim()) {
+            result.push(current.trim());
+        }
+
+        return result;
+    }
+
+    /**
      * Parses v-for expression.
      * Supports:
      * - item in items
@@ -389,9 +436,11 @@ export class VForDirective implements VDirective {
      * - (item, index) in items
      * - (value, key) in object
      * - (value, key, index) in object
+     * - ([k, v], index) in entries (nested destructuring)
      */
     #parseForExpression(expression: string): {
         itemName: string;
+        itemDestructure?: string[];
         indexName?: string;
         thirdName?: string;
         sourceName: string;
@@ -421,13 +470,51 @@ export class VForDirective implements VDirective {
 
         // Check if destructuring: (item, index), (value, key), or (value, key, index)
         if (left.startsWith('(') && left.endsWith(')')) {
-            const destructured = left.slice(1, -1).split(',').map(s => s.trim());
+            // Parse the destructuring pattern carefully to handle nested arrays like ([k, v], idx)
+            const destructured = this.#parseDestructuringPattern(left.slice(1, -1));
 
-            if (destructured.length === 2) {
-                // (item, index) or (value, key)
+            if (destructured.length === 1) {
+                const firstArg = destructured[0];
+
+                // Check if it's array destructuring: ([k, v])
+                if (firstArg.startsWith('[') && firstArg.endsWith(']')) {
+                    // Nested array destructuring without index: ([k, v])
+                    const arrayItems = firstArg.slice(1, -1).split(',').map((s: string) => s.trim());
+                    return {
+                        itemName: '__item__',  // Temporary name for the array item
+                        itemDestructure: arrayItems,
+                        sourceName: sourceName.trim(),
+                        useOfSyntax
+                    };
+                }
+
+                // Single argument in parentheses: (item)
                 return {
-                    itemName: destructured[0],
-                    indexName: destructured[1],
+                    itemName: firstArg,
+                    sourceName: sourceName.trim(),
+                    useOfSyntax
+                };
+            } else if (destructured.length === 2) {
+                const firstArg = destructured[0];
+                const secondArg = destructured[1];
+
+                // Check if first argument is array destructuring: [k, v]
+                if (firstArg.startsWith('[') && firstArg.endsWith(']')) {
+                    // Nested array destructuring: ([k, v], idx)
+                    const arrayItems = firstArg.slice(1, -1).split(',').map((s: string) => s.trim());
+                    return {
+                        itemName: '__item__',  // Temporary name for the array item
+                        itemDestructure: arrayItems,
+                        indexName: secondArg,
+                        sourceName: sourceName.trim(),
+                        useOfSyntax
+                    };
+                }
+
+                // Simple 2-argument form: (item, index) or (value, key)
+                return {
+                    itemName: firstArg,
+                    indexName: secondArg,
                     sourceName: sourceName.trim(),
                     useOfSyntax
                 };
@@ -498,16 +585,8 @@ export class VForDirective implements VDirective {
      */
     #updateItemBindings(vNode: VNode, context: { key: any; item: any; index: number; objectKey?: string }): void {
         // Trigger reactivity update by calling update with the new bindings
-        if (this.#itemName) {
-            vNode.bindings?.set(this.#itemName, context.item);
-        }
-        if (this.#indexName) {
-            // For objects, use objectKey if available; otherwise use numeric index
-            vNode.bindings?.set(this.#indexName, context.objectKey ?? context.index);
-        }
-        if (this.#thirdName) {
-            // Third argument is always the numeric index
-            vNode.bindings?.set(this.#thirdName, context.index);
+        if (vNode.bindings) {
+            this.#setItemBindings(vNode.bindings, context);
         }
 
         vNode.update();
