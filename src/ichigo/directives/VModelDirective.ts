@@ -1,12 +1,12 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
-import { ExpressionUtils } from "../util/ExpressionUtils";
 import { VNode } from "../VNode";
 import { StandardDirectiveName } from "./StandardDirectiveName";
 import { VBindingsPreparer } from "../VBindingsPreparer";
 import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
+import { ExpressionEvaluator } from "../ExpressionEvaluator";
 
 /**
  * Directive for two-way data binding on form input elements.
@@ -26,15 +26,9 @@ export class VModelDirective implements VDirective {
     #vNode: VNode;
 
     /**
-     * A list of variable and function names used in the directive's expression.
+     * The expression evaluator for this directive.
      */
-    #dependentIdentifiers?: string[];
-
-    /**
-     * A function that evaluates the directive's expression.
-     * It returns the evaluated value of the expression.
-     */
-    #evaluate?: () => any;
+    #evaluator?: ExpressionEvaluator;
 
     /**
      * The expression string (e.g., "message" or "user.name")
@@ -65,12 +59,17 @@ export class VModelDirective implements VDirective {
             parts.slice(1).forEach(mod => this.#modifiers.add(mod));
         }
 
-        // Parse the expression to extract identifiers and create the evaluator
+        // Parse the expression and create the evaluator
         const expression = context.attribute.value;
         if (expression) {
             this.#expression = expression;
-            this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
-            this.#evaluate = this.#createEvaluator(expression);
+            if (context.vNode.bindings) {
+                this.#evaluator = ExpressionEvaluator.create(
+                    expression,
+                    context.vNode.bindings,
+                    context.vNode.vApplication.functionDependencies
+                );
+            }
 
             // Attach event listener for two-way binding
             this.#attachEventListener();
@@ -112,7 +111,7 @@ export class VModelDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#dependentIdentifiers ?? [];
+        const identifiers = this.#evaluator?.dependentIdentifiers ?? [];
 
         // Create and return the DOM updater
         const updater: VDOMUpdater = {
@@ -137,7 +136,7 @@ export class VModelDirective implements VDirective {
      * @inheritdoc
      */
     get dependentIdentifiers(): string[] {
-        return this.#dependentIdentifiers ?? [];
+        return this.#evaluator?.dependentIdentifiers ?? [];
     }
 
     /**
@@ -202,12 +201,12 @@ export class VModelDirective implements VDirective {
         const element = this.#vNode.node as HTMLElement;
 
         // If there's no evaluator, do nothing
-        if (!this.#evaluate) {
+        if (!this.#evaluator) {
             return;
         }
 
         // Evaluate the expression to get the value
-        const value = this.#evaluate();
+        const value = this.#evaluator.evaluate();
 
         // Update the element based on its type
         if (element instanceof HTMLInputElement) {
@@ -333,26 +332,4 @@ export class VModelDirective implements VDirective {
         func.call(this.#vNode.bindings?.raw, ...values);
     }
 
-    /**
-     * Creates a function to evaluate the directive's condition.
-     * @param expression The expression string to evaluate.
-     * @returns A function that evaluates the directive's condition.
-     */
-    #createEvaluator(expression: string): () => any {
-        const identifiers = this.#dependentIdentifiers ?? [];
-        const args = identifiers.join(", ");
-        const funcBody = `return (${expression});`;
-
-        // Create a dynamic function with the identifiers as parameters
-        const func = new Function(args, funcBody) as (...args: any[]) => any;
-
-        // Return a function that calls the dynamic function with the current values from bindings
-        return () => {
-            // Gather the current values of the identifiers from the bindings
-            const values = identifiers.map(id => this.#vNode.bindings?.get(id));
-
-            // Call the dynamic function with the gathered values
-            return func(...values);
-        };
-    }
 }

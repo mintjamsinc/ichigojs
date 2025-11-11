@@ -1,6 +1,5 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
-import { ExpressionUtils } from "../util/ExpressionUtils";
 import { VNode } from "../VNode";
 import { VBindingsPreparer } from "../VBindingsPreparer";
 import { VConditionalDirectiveContext } from "./VConditionalDirectiveContext";
@@ -8,6 +7,7 @@ import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { StandardDirectiveName } from "./StandardDirectiveName";
+import { ExpressionEvaluator } from "../ExpressionEvaluator";
 
 /**
  * Base class for conditional directives such as v-if, v-else-if, and v-else.
@@ -21,17 +21,10 @@ export abstract class VConditionalDirective implements VDirective {
     #vNode: VNode;
 
     /**
-     * A list of variable and function names used in the directive's expression.
+     * The expression evaluator for this directive.
      * This may be undefined if the directive does not have an expression (e.g., v-else).
      */
-    #dependentIdentifiers?: string[];
-
-    /*
-     * A function that evaluates the directive's condition.
-     * It returns true if the condition is met, otherwise false.
-     * This may be undefined if the directive does not have an expression (e.g., v-else).
-     */
-    #evaluate?: () => boolean;
+    #evaluator?: ExpressionEvaluator;
 
     /**
      * The context for managing related conditional directives (v-if, v-else-if, v-else).
@@ -49,11 +42,14 @@ export abstract class VConditionalDirective implements VDirective {
     constructor(context: VDirectiveParseContext) {
         this.#vNode = context.vNode;
 
-        // Parse the expression to extract identifiers and create the evaluator
+        // Parse the expression and create the evaluator
         const expression = context.attribute.value;
-        if (expression) {
-            this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
-            this.#evaluate = this.#createEvaluator(expression);
+        if (expression && context.vNode.bindings) {
+            this.#evaluator = ExpressionEvaluator.create(
+                expression,
+                context.vNode.bindings,
+                context.vNode.vApplication.functionDependencies
+            );
         }
 
         // Remove the directive attribute from the element
@@ -119,7 +115,7 @@ export abstract class VConditionalDirective implements VDirective {
      * @inheritdoc
      */
     get dependentIdentifiers(): string[] {
-        return this.#dependentIdentifiers ?? [];
+        return this.#evaluator?.dependentIdentifiers ?? [];
     }
 
     /**
@@ -135,11 +131,11 @@ export abstract class VConditionalDirective implements VDirective {
      * For v-else, this is always true.
      */
     get conditionIsMet(): boolean {
-        if (!this.#evaluate) {
+        if (!this.#evaluator) {
             // No expression means always true (e.g., v-else)
             return true;
         }
-        return this.#evaluate();
+        return this.#evaluator.evaluateAsBoolean();
     }
 
     /**
@@ -203,14 +199,14 @@ export abstract class VConditionalDirective implements VDirective {
             return;
         }
 
-        if (!this.#evaluate) {
+        if (!this.#evaluator) {
             // No expression means always true (e.g., v-else)
             this.#insertNode();
             return;
         }
 
         // Evaluate the condition and insert or remove the node accordingly
-        const shouldRender = this.#evaluate();
+        const shouldRender = this.#evaluator.evaluateAsBoolean();
         if (shouldRender) {
             this.#insertNode();
         } else {
@@ -272,29 +268,6 @@ export abstract class VConditionalDirective implements VDirective {
     #cloneNode(): HTMLElement {
         const element = this.#vNode.node as HTMLElement;
         return element.cloneNode(true) as HTMLElement;
-    }
-
-    /**
-     * Creates a function to evaluate the directive's condition.
-     * @param expression The expression string to evaluate.
-     * @returns A function that evaluates the directive's condition.
-     */
-    #createEvaluator(expression: string): () => boolean {
-        const identifiers = this.#dependentIdentifiers ?? [];
-        const args = identifiers.join(", ");
-        const funcBody = `return (${expression});`;
-
-        // Create a dynamic function with the identifiers as parameters
-        const func = new Function(args, funcBody) as (...args: any[]) => any;
-
-        // Return a function that calls the dynamic function with the current values from the virtual node's bindings
-        return () => {
-            // Gather the current values of the identifiers from the bindings
-            const values = identifiers.map(id => this.#vNode.bindings?.get(id));
-
-            // Call the dynamic function with the gathered values and return the result as a boolean
-            return Boolean(func(...values));
-        };
     }
 
     /**

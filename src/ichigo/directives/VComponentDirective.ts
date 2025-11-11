@@ -7,6 +7,7 @@ import { StandardDirectiveName } from './StandardDirectiveName';
 import { VDirectiveParseContext } from './VDirectiveParseContext';
 import { VBindingsPreparer } from '../VBindingsPreparer';
 import { VDOMUpdater } from '../VDOMUpdater';
+import { ExpressionEvaluator } from '../ExpressionEvaluator';
 
 /**
  * Directive for rendering components.
@@ -179,14 +180,14 @@ export class VComponentDirective implements VDirective {
         // Get properties from :options or :options.component directive
         let properties: any = {};
         const optionsDirective = this.#vNode.directiveManager?.optionsDirective('component');
-        if (optionsDirective && optionsDirective.expression) {
-            // Evaluate the options expression
-            const identifiers = optionsDirective.dependentIdentifiers;
-            const values = identifiers.map(id => this.#vNode.bindings?.get(id));
-            const args = identifiers.join(", ");
-            const funcBody = `return (${optionsDirective.expression});`;
-            const func = new Function(args, funcBody) as (...args: any[]) => any;
-            const result = func(...values);
+        if (optionsDirective && optionsDirective.expression && this.#vNode.bindings) {
+            // Evaluate the options expression using ExpressionEvaluator
+            const evaluator = ExpressionEvaluator.create(
+                optionsDirective.expression,
+                this.#vNode.bindings,
+                this.#vNode.vApplication.functionDependencies
+            );
+            const result = evaluator.evaluate();
 
             if (typeof result === 'object' && result !== null) {
                 properties = result;

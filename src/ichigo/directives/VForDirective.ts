@@ -1,6 +1,5 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
-import { ExpressionUtils } from "../util/ExpressionUtils";
 import { VNode } from "../VNode";
 import { VBindings } from "../VBindings";
 import { StandardDirectiveName } from "./StandardDirectiveName";
@@ -8,6 +7,7 @@ import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { VBindingsPreparer } from "../VBindingsPreparer";
+import { ExpressionEvaluator } from "../ExpressionEvaluator";
 
 /**
  * Directive for rendering a list of items using a loop.
@@ -31,18 +31,13 @@ export class VForDirective implements VDirective {
     #vNode: VNode;
 
     /**
-     * A list of variable and function names used in the directive's expression.
+     * The expression evaluator for the source data (e.g., "items" in "item in items").
      */
-    #dependentIdentifiers?: string[];
-
-    /**
-     * A function that evaluates the directive's expression to get the source data.
-     * It returns the collection to iterate over.
-     */
-    #evaluateSource?: () => any;
+    #sourceEvaluator?: ExpressionEvaluator;
 
     /**
      * A function that evaluates the :key expression for an item.
+     * This is created later when the key directive is available.
      */
     #evaluateKey?: (itemBindings: VBindings) => any;
 
@@ -51,7 +46,9 @@ export class VForDirective implements VDirective {
      */
     #itemName?: string;
     #indexName?: string;
+    #thirdName?: string;  // For (value, key, index) triplets
     #sourceName?: string;
+    #useOfSyntax: boolean = false;  // Track if 'of' syntax was used
 
     /**
      * Map to track rendered items by their keys
@@ -61,7 +58,7 @@ export class VForDirective implements VDirective {
     /**
      * Previous iterations to detect changes
      */
-    #previousIterations: Array<{ key: any; item: any; index: number }> = [];
+    #previousIterations: Array<{ key: any; item: any; index: number; objectKey?: string }> = [];
 
     /**
      * @param context The context for parsing the directive.
@@ -76,11 +73,18 @@ export class VForDirective implements VDirective {
             const parsed = this.#parseForExpression(expression);
             this.#itemName = parsed.itemName;
             this.#indexName = parsed.indexName;
+            this.#thirdName = parsed.thirdName;
             this.#sourceName = parsed.sourceName;
+            this.#useOfSyntax = parsed.useOfSyntax;
 
-            // Extract identifiers from the source expression
-            this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(parsed.sourceName, context.vNode.vApplication.functionDependencies);
-            this.#evaluateSource = this.#createSourceEvaluator(parsed.sourceName);
+            // Create evaluator for the source expression
+            if (context.vNode.bindings) {
+                this.#sourceEvaluator = ExpressionEvaluator.create(
+                    parsed.sourceName,
+                    context.vNode.bindings,
+                    context.vNode.vApplication.functionDependencies
+                );
+            }
         }
 
         // Remove the directive attribute from the element
@@ -119,7 +123,7 @@ export class VForDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#dependentIdentifiers ?? [];
+        const identifiers = this.#sourceEvaluator?.dependentIdentifiers ?? [];
 
         // Create and return the DOM updater
         const updater: VDOMUpdater = {
@@ -144,7 +148,7 @@ export class VForDirective implements VDirective {
      * @inheritdoc
      */
     get dependentIdentifiers(): string[] {
-        return this.#dependentIdentifiers ?? [];
+        return this.#sourceEvaluator?.dependentIdentifiers ?? [];
     }
 
     /**
@@ -216,12 +220,12 @@ export class VForDirective implements VDirective {
      */
     #render(): void {
         // If there's no evaluator, do nothing
-        if (!this.#evaluateSource) {
+        if (!this.#sourceEvaluator) {
             return;
         }
 
         // Evaluate the source expression to get the data
-        const sourceData = this.#evaluateSource();
+        const sourceData = this.#sourceEvaluator.evaluate();
 
         // Get iterations from the source data
         let iterations = this.#getIterations(sourceData);
@@ -234,14 +238,19 @@ export class VForDirective implements VDirective {
 
         // If we have a custom key evaluator, update the keys
         if (this.#evaluateKey && this.#itemName) {
-            iterations = iterations.map(iter => {
+            iterations = iterations.map((iter): { key: any; item: any; index: number; objectKey?: string } => {
                 // Create bindings for this iteration
                 const itemBindings = new VBindings({
                     parent: this.#vNode.bindings
                 });
                 itemBindings.set(this.#itemName!, iter.item);
                 if (this.#indexName) {
-                    itemBindings.set(this.#indexName, iter.index);
+                    // For objects, use objectKey if available; otherwise use numeric index
+                    itemBindings.set(this.#indexName, iter.objectKey ?? iter.index);
+                }
+                if (this.#thirdName) {
+                    // Third argument is always the numeric index
+                    itemBindings.set(this.#thirdName, iter.index);
                 }
 
                 // Evaluate the key with item bindings
@@ -260,7 +269,7 @@ export class VForDirective implements VDirective {
     /**
      * Key-based diffing for efficient DOM updates
      */
-    #updateList(newIterations: Array<{ key: any; item: any; index: number }>): void {
+    #updateList(newIterations: Array<{ key: any; item: any; index: number; objectKey?: string }>): void {
         const parent = this.#vNode.anchorNode?.parentNode;
         const anchor = this.#vNode.anchorNode;
 
@@ -270,8 +279,16 @@ export class VForDirective implements VDirective {
 
         const newRenderedItems = new Map<any, VNode>();
 
-        // Track which keys are still needed
-        const neededKeys = new Set(newIterations.map(ctx => ctx.key));
+        // Track which keys are still needed and detect duplicates
+        const neededKeys = new Set<any>();
+        const seenKeys = new Set<any>();
+        for (const ctx of newIterations) {
+            if (seenKeys.has(ctx.key)) {
+                console.warn(`[ichigo.js] Duplicate key detected in v-for: "${ctx.key}". This may cause unexpected behavior. Keys should be unique.`);
+            }
+            seenKeys.add(ctx.key);
+            neededKeys.add(ctx.key);
+        }
 
         // Remove items that are no longer needed
         // First destroy VNodes (calls @unmount hooks while DOM is still accessible)
@@ -320,7 +337,12 @@ export class VForDirective implements VDirective {
                     bindings.set(this.#itemName, context.item);
                 }
                 if (this.#indexName) {
-                    bindings.set(this.#indexName, context.index);
+                    // For objects, use objectKey if available; otherwise use numeric index
+                    bindings.set(this.#indexName, context.objectKey ?? context.index);
+                }
+                if (this.#thirdName) {
+                    // Third argument is always the numeric index
+                    bindings.set(this.#thirdName, context.index);
                 }
 
                 // Create a new VNode for the cloned element
@@ -361,11 +383,35 @@ export class VForDirective implements VDirective {
 
     /**
      * Parses v-for expression.
-     * Supports: item in items, (item, index) in items, value in object, (value, key) in object
+     * Supports:
+     * - item in items
+     * - item of items
+     * - (item, index) in items
+     * - (value, key) in object
+     * - (value, key, index) in object
      */
-    #parseForExpression(expression: string): { itemName: string; indexName?: string; sourceName: string } {
-        // Remove extra spaces and split by 'in'
-        const parts = expression.replace(/\s+/g, ' ').trim().split(' in ');
+    #parseForExpression(expression: string): {
+        itemName: string;
+        indexName?: string;
+        thirdName?: string;
+        sourceName: string;
+        useOfSyntax: boolean;
+    } {
+        // Remove extra spaces
+        const normalized = expression.replace(/\s+/g, ' ').trim();
+
+        // Try to split by ' of ' first, then by ' in '
+        let parts: string[];
+        let useOfSyntax = false;
+
+        if (normalized.includes(' of ')) {
+            parts = normalized.split(' of ');
+            useOfSyntax = true;
+        } else if (normalized.includes(' in ')) {
+            parts = normalized.split(' in ');
+        } else {
+            throw new Error(`Invalid v-for expression: ${expression}. Must use 'in' or 'of'.`);
+        }
 
         if (parts.length !== 2) {
             throw new Error(`Invalid v-for expression: ${expression}`);
@@ -373,44 +419,58 @@ export class VForDirective implements VDirective {
 
         const [left, sourceName] = parts;
 
-        // Check if destructuring: (item, index) or (value, key)
+        // Check if destructuring: (item, index), (value, key), or (value, key, index)
         if (left.startsWith('(') && left.endsWith(')')) {
             const destructured = left.slice(1, -1).split(',').map(s => s.trim());
-            return {
-                itemName: destructured[0],
-                indexName: destructured[1],
-                sourceName: sourceName.trim()
-            };
+
+            if (destructured.length === 2) {
+                // (item, index) or (value, key)
+                return {
+                    itemName: destructured[0],
+                    indexName: destructured[1],
+                    sourceName: sourceName.trim(),
+                    useOfSyntax
+                };
+            } else if (destructured.length === 3) {
+                // (value, key, index)
+                return {
+                    itemName: destructured[0],
+                    indexName: destructured[1],
+                    thirdName: destructured[2],
+                    sourceName: sourceName.trim(),
+                    useOfSyntax
+                };
+            } else {
+                throw new Error(`Invalid v-for destructuring: ${expression}. Expected 2 or 3 arguments.`);
+            }
         }
 
+        // Simple form: item in items
         return {
             itemName: left.trim(),
-            sourceName: sourceName.trim()
-        };
-    }
-
-    /**
-     * Creates a function to evaluate the source data expression.
-     */
-    #createSourceEvaluator(expression: string): () => any {
-        const identifiers = this.#dependentIdentifiers ?? [];
-        const args = identifiers.join(", ");
-        const funcBody = `return (${expression});`;
-
-        const func = new Function(args, funcBody) as (...args: any[]) => any;
-
-        return () => {
-            const values = identifiers.map(id => this.#vNode.bindings?.get(id));
-            return func(...values);
+            sourceName: sourceName.trim(),
+            useOfSyntax
         };
     }
 
     /**
      * Creates a function to evaluate the :key expression for each item.
+     * This uses a manual approach because it needs to evaluate with item-specific bindings.
      */
     #createKeyEvaluator(expression: string): (itemBindings: VBindings) => any {
-        // Parse to find all identifiers
-        const identifiers = ExpressionUtils.extractIdentifiers(expression, this.#vNode.vApplication.functionDependencies);
+        // Create a temporary evaluator just to extract identifiers and compile the expression
+        // We can't use ExpressionEvaluator directly here because we need to evaluate
+        // with different bindings (itemBindings) for each iteration
+        if (!this.#vNode.bindings) {
+            throw new Error('VForDirective requires bindings');
+        }
+
+        const tempEvaluator = ExpressionEvaluator.create(
+            expression,
+            this.#vNode.bindings,
+            this.#vNode.vApplication.functionDependencies
+        );
+        const identifiers = tempEvaluator.dependentIdentifiers;
         const args = identifiers.join(", ");
         const funcBody = `return (${expression});`;
 
@@ -436,14 +496,18 @@ export class VForDirective implements VDirective {
     /**
      * Update bindings for an existing item
      */
-    #updateItemBindings(vNode: VNode, context: { key: any; item: any; index: number }): void {
+    #updateItemBindings(vNode: VNode, context: { key: any; item: any; index: number; objectKey?: string }): void {
         // Trigger reactivity update by calling update with the new bindings
-        const changedIdentifiers: string[] = [];
         if (this.#itemName) {
             vNode.bindings?.set(this.#itemName, context.item);
         }
         if (this.#indexName) {
-            vNode.bindings?.set(this.#indexName, context.index);
+            // For objects, use objectKey if available; otherwise use numeric index
+            vNode.bindings?.set(this.#indexName, context.objectKey ?? context.index);
+        }
+        if (this.#thirdName) {
+            // Third argument is always the numeric index
+            vNode.bindings?.set(this.#thirdName, context.index);
         }
 
         vNode.update();
@@ -451,8 +515,9 @@ export class VForDirective implements VDirective {
 
     /**
      * Get iterations from various data types
+     * Supports: Arrays, Objects, Sets, Maps, Iterables, Numbers, Strings
      */
-    #getIterations(data: any): Array<{ key: any; item: any; index: number }> {
+    #getIterations(data: any): Array<{ key: any; item: any; index: number; objectKey?: string }> {
         if (!data) return [];
 
         // Array
@@ -464,12 +529,42 @@ export class VForDirective implements VDirective {
             }));
         }
 
-        // Object
-        if (typeof data === 'object') {
+        // Set
+        if (data instanceof Set) {
+            return Array.from(data).map((item, index) => ({
+                item,
+                index,
+                key: index
+            }));
+        }
+
+        // Map
+        if (data instanceof Map) {
+            return Array.from(data.entries()).map(([key, value], index) => ({
+                item: value,
+                index,
+                key,
+                objectKey: String(key)  // Map keys can be any type, convert to string for binding
+            }));
+        }
+
+        // Check if it's an iterable (but not string, which is also iterable)
+        if (typeof data === 'object' && typeof data[Symbol.iterator] === 'function') {
+            // It's an iterable (Generator, custom iterator, etc.)
+            return Array.from(data).map((item, index) => ({
+                item,
+                index,
+                key: index
+            }));
+        }
+
+        // Plain Object
+        if (typeof data === 'object' && data.constructor === Object) {
             return Object.entries(data).map(([key, value], index) => ({
                 item: value,
                 index,
-                key
+                key,
+                objectKey: key  // Add objectKey to expose the actual property name
             }));
         }
 
