@@ -1407,7 +1407,6 @@
       // Draw bird
       function drawBird() {
         const scale = getScaleFactor();
-        ctx.save();
 
         // Walking animation: add subtle bounce and wobble
         const walkSpeed = Math.sqrt(bird.velocityX * bird.velocityX + bird.velocityY * bird.velocityY);
@@ -1417,13 +1416,38 @@
         let wobbleX = 0;
 
         if (isWalking) {
-          walkFrame += 0.35; // 0.35 for slower walk cycle
-          // Vertical bounce (up and down motion) - subtle
-          bounceY = Math.sin(walkFrame) * 0.9; // 0.9px bounce
+          walkFrame += 0.15; // 0.15 for slower, more deliberate hop cycle
+          // Vertical bounce (up and down motion) - hopping like a parrot
+          bounceY = Math.sin(walkFrame * Math.PI) * 1.5; // 1.5px bounce for hopping effect
           // Horizontal wobble (side to side motion) - very subtle
           wobbleX = Math.sin(walkFrame * 2) * 0; // 0px wobble
         }
 
+        // Draw shadow (before bird, so it appears behind)
+        ctx.save();
+        // Shadow gets smaller when bird bounces higher
+        const shadowScale = 1 - Math.abs(bounceY) * 0.05; // Shadow shrinks slightly when bouncing
+        const shadowOpacity = 0.15 * shadowScale; // Subtle shadow
+        const shadowWidth = bird.size * scale * 0.6 * shadowScale;
+        const shadowHeight = bird.size * scale * 0.2 * shadowScale;
+
+        ctx.globalAlpha = shadowOpacity;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.beginPath();
+        ctx.ellipse(
+          bird.x + wobbleX,
+          bird.y + bird.size * scale * 0.4, // Position shadow at bird's feet
+          shadowWidth,
+          shadowHeight,
+          0,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+        ctx.restore();
+
+        // Draw bird
+        ctx.save();
         ctx.translate(bird.x + wobbleX, bird.y + bounceY);
 
         // Flip horizontally if moving left (direction -1 means moving left)
