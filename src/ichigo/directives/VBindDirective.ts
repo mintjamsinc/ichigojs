@@ -268,7 +268,10 @@ export class VBindDirective implements VDirective {
         if (typeof value === 'string') {
             newClasses = value.split(/\s+/).filter(Boolean);
         } else if (Array.isArray(value)) {
-            newClasses = value.filter(Boolean);
+            // Flatten array elements that may contain space-separated class names
+            newClasses = value
+                .filter(Boolean)
+                .flatMap(cls => typeof cls === 'string' ? cls.split(/\s+/).filter(Boolean) : []);
         } else if (typeof value === 'object' && value !== null) {
             newClasses = Object.keys(value).filter(key => value[key]);
         }
