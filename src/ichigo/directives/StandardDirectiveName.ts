@@ -27,5 +27,9 @@ export enum StandardDirectiveName {
     /** Performance observer directives. */
     V_PERFORMANCE = "v-performance",
     /** Component directive. */
-    V_COMPONENT = "v-component"
+    V_COMPONENT = "v-component",
+    /** Raw HTML content directive. */
+    V_HTML = "v-html",
+    /** Text content directive. */
+    V_TEXT = "v-text"
 }

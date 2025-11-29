@@ -9,6 +9,7 @@ import { VDirectiveParser } from "./VDirectiveParser";
 import { VElseDirective } from "./VElseDirective";
 import { VElseIfDirective } from "./VElseIfDirective";
 import { VForDirective } from "./VForDirective";
+import { VHtmlDirective } from "./VHtmlDirective";
 import { VIfDirective } from "./VIfDirective";
 import { VIntersectionDirective } from "./VIntersectionDirective";
 import { VModelDirective } from "./VModelDirective";
@@ -16,6 +17,7 @@ import { VOnDirective } from "./VOnDirective";
 import { VPerformanceDirective } from "./VPerformanceDirective";
 import { VResizeDirective } from "./VResizeDirective";
 import { VShowDirective } from "./VShowDirective";
+import { VTextDirective } from "./VTextDirective";
 
 /**
  * The directive parser for standard directives.
@@ -54,7 +56,11 @@ export class VStandardDirectiveParser implements VDirectiveParser {
             context.attribute.name === StandardDirectiveName.V_PERFORMANCE ||
             // v-component, v-component.<modifier>
             context.attribute.name === StandardDirectiveName.V_COMPONENT ||
-            context.attribute.name.startsWith(StandardDirectiveName.V_COMPONENT + ".")) {
+            context.attribute.name.startsWith(StandardDirectiveName.V_COMPONENT + ".") ||
+            // v-html
+            context.attribute.name === StandardDirectiveName.V_HTML ||
+            // v-text
+            context.attribute.name === StandardDirectiveName.V_TEXT) {
             return true;
         }
 
@@ -122,6 +128,16 @@ export class VStandardDirectiveParser implements VDirectiveParser {
         if (context.attribute.name === StandardDirectiveName.V_COMPONENT ||
             context.attribute.name.startsWith(StandardDirectiveName.V_COMPONENT + ".")) {
             return new VComponentDirective(context);
+        }
+
+        // v-html
+        if (context.attribute.name === StandardDirectiveName.V_HTML) {
+            return new VHtmlDirective(context);
+        }
+
+        // v-text
+        if (context.attribute.name === StandardDirectiveName.V_TEXT) {
+            return new VTextDirective(context);
         }
 
         throw new Error(`The attribute "${context.attribute.name}" cannot be parsed by ${this.name}.`);
