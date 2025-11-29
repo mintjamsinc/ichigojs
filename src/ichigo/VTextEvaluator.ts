@@ -4,6 +4,60 @@ import { ExpressionUtils } from "./util/ExpressionUtils";
 import { VBindings } from "./VBindings";
 
 /**
+ * List of standard JavaScript global objects that should be available in expressions.
+ * These are used as fallbacks when the identifier is not found in the bindings.
+ */
+const GLOBAL_OBJECTS: Record<string, any> = {
+    // Math and numbers
+    Math,
+    Number,
+    BigInt,
+    Infinity,
+    NaN,
+    // String and text
+    String,
+    // Boolean
+    Boolean,
+    // Objects and arrays
+    Object,
+    Array,
+    // Date and time
+    Date,
+    // JSON
+    JSON,
+    // Regular expressions
+    RegExp,
+    // Errors
+    Error,
+    TypeError,
+    RangeError,
+    SyntaxError,
+    ReferenceError,
+    // Other utilities
+    parseInt,
+    parseFloat,
+    isNaN,
+    isFinite,
+    encodeURI,
+    encodeURIComponent,
+    decodeURI,
+    decodeURIComponent,
+    // Collections
+    Map,
+    Set,
+    WeakMap,
+    WeakSet,
+    // Promises
+    Promise,
+    // Symbols
+    Symbol,
+    // Console (for debugging)
+    console,
+    // undefined is a special case
+    undefined,
+};
+
+/**
  * A class to evaluate text with embedded expressions in the form of {{...}}.
  * It extracts identifiers from the expressions and evaluates them using provided bindings.
  */
@@ -56,7 +110,18 @@ export class VTextEvaluator {
             let result = text;
             evaluators.forEach((evaluator, i) => {
                 // Gather the current values of the identifiers from the bindings
-                const values = evaluator.ids.map(id => bindings.get(id));
+                // Fall back to global objects if not found in bindings
+                const values = evaluator.ids.map(id => {
+                    const value = bindings.get(id);
+                    if (value !== undefined) {
+                        return value;
+                    }
+                    // Check if it's a global object
+                    if (id in GLOBAL_OBJECTS) {
+                        return GLOBAL_OBJECTS[id];
+                    }
+                    return undefined;
+                });
 
                 // Evaluate the expression and replace {{...}} in the text
                 result = result.replace(matches[i][0], String(evaluator.func(...values)));
