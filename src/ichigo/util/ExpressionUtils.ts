@@ -59,7 +59,11 @@ export class ExpressionUtils {
                         if (cur.object.type === 'Identifier') {
                             parts.unshift(cur.object.name);
                             break;
-                        } else if (cur.object.type === 'ThisExpression') {\r\n                            break;\r\n                        } else if (cur.object.type === 'MemberExpression') {
+                        } else if (cur.object.type === 'ThisExpression') {
+                            // For `this.x` or `this.a.b` we don't want to include 'this' itself.
+                            // Stop unwrapping here; we'll drop a leading 'this' later.
+                            break;
+                        } else if (cur.object.type === 'MemberExpression') {
                             // continue unwrapping
                             cur = cur.object;
                         } else {

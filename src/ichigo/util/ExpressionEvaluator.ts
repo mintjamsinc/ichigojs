@@ -64,6 +64,8 @@ export class ExpressionEvaluator {
      * The identifiers extracted from the expression.
      */
     private readonly identifiers: string[];
+    // The original extracted identifiers (may include member chains like 'a.b')
+    private readonly originalIdentifiers: string[];
 
     /**
      * The bindings to use for evaluating the expression.
@@ -87,12 +89,14 @@ export class ExpressionEvaluator {
         expression: string,
         bindings: VBindings,
         identifiers: string[],
+        originalIdentifiers: string[],
         evaluatorFunc: Function,
         additionalContext?: Record<string, any>
     ) {
         this.expression = expression;
         this.bindings = bindings;
         this.identifiers = identifiers;
+        this.originalIdentifiers = originalIdentifiers;
         this.evaluatorFunc = evaluatorFunc;
         this.additionalContext = additionalContext;
     }
@@ -112,13 +116,24 @@ export class ExpressionEvaluator {
         functionDependencies: Record<string, string[]>,
         options?: ExpressionEvaluatorOptions
     ): ExpressionEvaluator {
-        // Extract identifiers from the expression
-        const identifiers = ExpressionUtils.extractIdentifiers(expression, functionDependencies);
+        // Extract identifiers from the expression (may include member chains like 'a.b')
+        const extractedIdentifiers = ExpressionUtils.extractIdentifiers(expression, functionDependencies);
+
+        // For compilation we must only pass simple identifier names (no dots).
+        // Use the base (left-most) segment of member chains and preserve order.
+        const baseIdentifiers: string[] = [];
+        for (const id of extractedIdentifiers) {
+            const base = id.split('.')[0];
+            if (!baseIdentifiers.includes(base)) {
+                baseIdentifiers.push(base);
+            }
+        }
 
         // Apply custom rewrite if provided (used by VOnDirective)
         let processedExpression = expression;
         if (options?.rewriteExpression) {
-            processedExpression = options.rewriteExpression(expression, identifiers);
+            // Pass the original extracted identifiers (may include member chains)
+            processedExpression = options.rewriteExpression(expression, extractedIdentifiers);
         }
 
         // Build cache key including options that affect compilation
@@ -131,8 +146,8 @@ export class ExpressionEvaluator {
         let evaluatorFunc = this.cache.get(cacheKey);
 
         if (!evaluatorFunc) {
-            // Compile the expression
-            evaluatorFunc = this.compileExpression(processedExpression, identifiers, options);
+            // Compile the expression using base identifiers (no dots)
+            evaluatorFunc = this.compileExpression(processedExpression, baseIdentifiers, options);
 
             // Cache the compiled function
             this.cache.set(cacheKey, evaluatorFunc);
@@ -141,7 +156,8 @@ export class ExpressionEvaluator {
         return new ExpressionEvaluator(
             expression,
             bindings,
-            identifiers,
+            baseIdentifiers,
+            extractedIdentifiers,
             evaluatorFunc,
             options?.additionalContext
         );
@@ -160,7 +176,7 @@ export class ExpressionEvaluator {
         identifiers: string[],
         options?: ExpressionEvaluatorOptions
     ): Function {
-        // Build parameter list: globals first, then identifiers, then additional context
+        // Build parameter list: globals first, then identifiers (base names), then additional context
         const params: string[] = [
             ...Object.keys(ExpressionEvaluator.GLOBAL_WHITELIST),
             ...identifiers
@@ -223,7 +239,8 @@ export class ExpressionEvaluator {
      * Gets the list of identifiers extracted from the expression.
      */
     get dependentIdentifiers(): string[] {
-        return this.identifiers;
+        // Return the original extracted identifiers (may include member chains like 'a.b')
+        return this.originalIdentifiers;
     }
 
     /**

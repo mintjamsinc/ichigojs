@@ -4,3 +4,6 @@ export { VDOM } from './ichigo/VDOM';
 export { VComponent } from './ichigo/components/VComponent';
 export { VComponentRegistry } from './ichigo/components/VComponentRegistry';
 export { ReactiveProxy } from './ichigo/util/ReactiveProxy';
+
+export { ExpressionUtils } from './ichigo/util/ExpressionUtils';
+
