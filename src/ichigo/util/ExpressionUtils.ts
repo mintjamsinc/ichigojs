@@ -59,10 +59,7 @@ export class ExpressionUtils {
                         if (cur.object.type === 'Identifier') {
                             parts.unshift(cur.object.name);
                             break;
-                        } else if (cur.object.type === 'ThisExpression') {
-                            parts.unshift('this');
-                            break;
-                        } else if (cur.object.type === 'MemberExpression') {
+                        } else if (cur.object.type === 'ThisExpression') {\r\n                            break;\r\n                        } else if (cur.object.type === 'MemberExpression') {
                             // continue unwrapping
                             cur = cur.object;
                         } else {
@@ -256,3 +253,4 @@ export class ExpressionUtils {
         return resolvedDependencies;
     }
 }
+
