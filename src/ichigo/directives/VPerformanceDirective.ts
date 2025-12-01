@@ -146,10 +146,15 @@ export class VPerformanceDirective implements VDirective {
             // Evaluate the options expression
             let options: PerformanceObserverInit | undefined;
             if (optionsDirective && optionsDirective.expression) {
-                // Evaluate the options expression
+                // Evaluate the options expression using base identifiers (no dots)
                 const identifiers = optionsDirective.dependentIdentifiers;
-                const values = identifiers.map(id => this.#vNode.bindings?.get(id));
-                const args = identifiers.join(", ");
+                const baseArgs: string[] = [];
+                for (const id of identifiers) {
+                    const base = id.split('.')[0];
+                    if (!baseArgs.includes(base)) baseArgs.push(base);
+                }
+                const values = baseArgs.map(name => this.#vNode.bindings?.get(name));
+                const args = baseArgs.join(", ");
                 const funcBody = `return (${optionsDirective.expression});`;
                 const func = new Function(args, funcBody) as (...args: any[]) => any;
                 options = func(...values);
@@ -243,8 +248,13 @@ export class VPerformanceDirective implements VDirective {
 
             // For inline expressions, evaluate normally
             // Note: inline expressions receive entries, observer, options, and $ctx as parameters
-            const values = identifiers.map(id => vNode.bindings?.get(id));
-            const args = [...identifiers, 'entries', 'observer', 'options', '$ctx'].join(", ");
+            const baseArgs: string[] = [];
+            for (const id of identifiers) {
+                const base = id.split('.')[0];
+                if (!baseArgs.includes(base)) baseArgs.push(base);
+            }
+            const values = baseArgs.map(name => vNode.bindings?.get(name));
+            const args = [...baseArgs, 'entries', 'observer', 'options', '$ctx'].join(", ");
             const funcBody = `return (${expression});`;
             const func = new Function(args, funcBody) as (...args: any[]) => any;
             return func.call(bindings?.raw, ...values, entries, observer, options, $ctx);

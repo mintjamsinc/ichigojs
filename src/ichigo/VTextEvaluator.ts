@@ -95,12 +95,23 @@ export class VTextEvaluator {
         const evaluators = matches.map(match => {
             const expression = match[1].trim();
             const ids = ExpressionUtils.extractIdentifiers(expression, functionDependencies);
-            // Gather identifiers
+            // Keep chain-style identifiers (a, a.b, a.b.c) for metadata
             this.#identifiers.push(...ids.filter(id => !this.#identifiers.includes(id)));
-            const args = ids.join(", ");
+
+            // Build base parameter names (no dots), preserving order of first appearance
+            const baseArgs: string[] = [];
+            for (const id of ids) {
+                const base = id.split('.')[0];
+                if (!baseArgs.includes(base)) {
+                    baseArgs.push(base);
+                }
+            }
+
+            const args = baseArgs.join(", ");
             const funcBody = `return (${expression});`;
             return {
                 ids,
+                baseArgs,
                 func: new Function(args, funcBody) as (...args: any[]) => any
             };
         });
@@ -109,17 +120,11 @@ export class VTextEvaluator {
         this.#evaluate = (bindings: VBindings) => {
             let result = text;
             evaluators.forEach((evaluator, i) => {
-                // Gather the current values of the identifiers from the bindings
-                // Fall back to global objects if not found in bindings
-                const values = evaluator.ids.map(id => {
-                    const value = bindings.get(id);
-                    if (value !== undefined) {
-                        return value;
-                    }
-                    // Check if it's a global object
-                    if (id in GLOBAL_OBJECTS) {
-                        return GLOBAL_OBJECTS[id];
-                    }
+                // Build values for baseArgs (no dots) in the same order as function parameters
+                const values = evaluator.baseArgs.map((name: string) => {
+                    const value = bindings.get(name);
+                    if (value !== undefined) return value;
+                    if (name in GLOBAL_OBJECTS) return GLOBAL_OBJECTS[name];
                     return undefined;
                 });
 
