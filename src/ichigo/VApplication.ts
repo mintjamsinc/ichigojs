@@ -411,7 +411,9 @@ export class VApplication {
 
                 if (hasChanged) {
                     // Use setSilent to avoid triggering onChange during computed property updates
+                    // Then mark the computed property as changed so UI depending on it will update
                     this.#bindings?.setSilent(key, newValue);
+                    this.#bindings?.markChanged(key);
                     allChanges.add(key);
                 }
             } catch (error) {

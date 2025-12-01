@@ -231,4 +231,14 @@ export class VBindings {
 			this.#suppressOnChange = false;
 		}
 	}
+
+	/**
+	 * Manually adds an identifier to the set of changed identifiers.
+	 * This is useful for computed properties that need to mark themselves as changed
+	 * without triggering a new update cycle.
+	 * @param key The identifier to mark as changed.
+	 */
+	markChanged(key: string): void {
+		this.#changes.add(key);
+	}
 }
