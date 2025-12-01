@@ -6,7 +6,7 @@ import { VBindingsPreparer } from "../VBindingsPreparer";
 import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
-import { ExpressionEvaluator } from "../ExpressionEvaluator";
+import { ExpressionEvaluator } from "../util/ExpressionEvaluator";
 
 /**
  * Directive for setting raw HTML content of an element.

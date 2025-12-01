@@ -7,7 +7,7 @@ import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { VBindingsPreparer } from "../VBindingsPreparer";
-import { ExpressionEvaluator } from "../ExpressionEvaluator";
+import { ExpressionEvaluator } from "../util/ExpressionEvaluator";
 
 /**
  * Directive for rendering a list of items using a loop.

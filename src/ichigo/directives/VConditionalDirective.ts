@@ -7,7 +7,7 @@ import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { StandardDirectiveName } from "./StandardDirectiveName";
-import { ExpressionEvaluator } from "../ExpressionEvaluator";
+import { ExpressionEvaluator } from "../util/ExpressionEvaluator";
 
 /**
  * Base class for conditional directives such as v-if, v-else-if, and v-else.

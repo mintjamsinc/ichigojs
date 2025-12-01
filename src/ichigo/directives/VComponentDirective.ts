@@ -7,7 +7,7 @@ import { StandardDirectiveName } from './StandardDirectiveName';
 import { VDirectiveParseContext } from './VDirectiveParseContext';
 import { VBindingsPreparer } from '../VBindingsPreparer';
 import { VDOMUpdater } from '../VDOMUpdater';
-import { ExpressionEvaluator } from '../ExpressionEvaluator';
+import { ExpressionEvaluator } from '../util/ExpressionEvaluator';
 
 /**
  * Directive for rendering components.

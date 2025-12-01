@@ -29,6 +29,66 @@ export class ExpressionUtils {
                         identifiers.add(dependency);
                     }
                 }
+            } else if (node.type === 'MemberExpression') {
+                // Reconstruct chain parts from a MemberExpression (e.g. a.b.c)
+                const parts: string[] = [];
+
+                let cur: any = node;
+                let stop = false;
+
+                while (cur && !stop) {
+                    // property part (right side)
+                    if (cur.property) {
+                        if (!cur.computed && cur.property.type === 'Identifier') {
+                            parts.unshift(cur.property.name);
+                        } else if (cur.computed && cur.property.type === 'Literal') {
+                            parts.unshift(String(cur.property.value));
+                        } else if (cur.computed && cur.property.type === 'Identifier') {
+                            // e.g. obj[prop] -> include the prop identifier (it will also be added separately)
+                            parts.unshift(cur.property.name);
+                        } else {
+                            // unknown property shape (e.g. expression) — stop adding chain here
+                            // inner expressions will be visited separately by walk.full
+                            stop = true;
+                            break;
+                        }
+                    }
+
+                    // object part (left side)
+                    if (cur.object) {
+                        if (cur.object.type === 'Identifier') {
+                            parts.unshift(cur.object.name);
+                            break;
+                        } else if (cur.object.type === 'ThisExpression') {
+                            parts.unshift('this');
+                            break;
+                        } else if (cur.object.type === 'MemberExpression') {
+                            // continue unwrapping
+                            cur = cur.object;
+                        } else {
+                            // other object types (CallExpression, etc.) — stop here
+                            stop = true;
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                if (parts.length > 0) {
+                    // Add progressive chains: 'a', 'a.b', 'a.b.c'
+                    for (let i = 0; i < parts.length; i++) {
+                        const chain = parts.slice(0, i + 1).join('.');
+                        identifiers.add(chain);
+
+                        // Also apply functionDependencies lookup for the chain key
+                        if (functionDependencies[chain]) {
+                            for (const dependency of functionDependencies[chain]) {
+                                identifiers.add(dependency);
+                            }
+                        }
+                    }
+                }
             }
         });
 
