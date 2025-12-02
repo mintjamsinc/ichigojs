@@ -435,27 +435,33 @@ export class VOnDirective implements VDirective {
             const parsedAst = acorn.parse(`(${expression})`, { ecmaVersion: 'latest' });
 
             // Collect all identifier nodes that should be replaced
-            // Use walk.full to ensure we visit ALL nodes including assignment LHS
-            walk.full(parsedAst, (node: any) => {
-                if (node.type !== 'Identifier') {
-                    return;
+            // Use walk.ancestor to check parent context and skip MemberExpression properties
+            walk.ancestor(parsedAst, {
+                Identifier(node: any, _state: any, ancestors: any[]) {
+                    // Skip if not in our identifier set
+                    if (!bindingIdentifiers.has(node.name)) {
+                        return;
+                    }
+
+                    // Check if this identifier is a property of a MemberExpression
+                    // (e.g., in 'obj.prop', we should skip 'prop')
+                    if (ancestors.length >= 2) {
+                        const parent = ancestors[ancestors.length - 2];
+                        if (parent.type === 'MemberExpression') {
+                            // Skip if this identifier is the property (not the object) of a non-computed member access
+                            if (!parent.computed && parent.property === node) {
+                                return;
+                            }
+                        }
+                    }
+
+                    // Add to replacements list (adjust for the wrapping parentheses)
+                    replacements.push({
+                        start: node.start - 1,
+                        end: node.end - 1,
+                        name: node.name
+                    });
                 }
-
-                // Skip if not in our identifier set
-                if (!bindingIdentifiers.has(node.name)) {
-                    return;
-                }
-
-                // Note: We cannot easily determine parent context with walk.full
-                // So we'll include all identifiers and rely on position-based replacement
-                // This is simpler and works correctly for inline expressions
-
-                // Add to replacements list (adjust for the wrapping parentheses)
-                replacements.push({
-                    start: node.start - 1,
-                    end: node.end - 1,
-                    name: node.name
-                });
             });
 
             // Sort replacements by start position (descending) to replace from end to start
