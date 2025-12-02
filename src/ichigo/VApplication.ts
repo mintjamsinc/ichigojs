@@ -66,6 +66,13 @@ export class VApplication {
     #computedDependencies: Record<string, string[]>;
 
     /**
+     * A map tracking source paths for computed property values.
+     * Maps source path (e.g., "model.elements[0]") to computed property name (e.g., "selectedElement").
+     * This allows changes to source paths to be mapped to computed property changes.
+     */
+    #computedSourcePaths: Map<string, string> = new Map();
+
+    /**
      * Flag to indicate if an update is already scheduled.
      */
     #updateScheduled: boolean = false;
@@ -334,11 +341,49 @@ export class VApplication {
         // Re-evaluate computed properties that depend on changed values
         this.#recomputeProperties();
 
+        // Apply computed source path mappings to changes
+        // This converts paths like "model.elements[0].executionListeners"
+        // to "selectedElement.executionListeners" when selectedElement points to model.elements[0]
+        this.#applyComputedPathMappings();
+
         // Update the DOM
         this.#vNode?.update();
 
         // Clear the set of changed identifiers after the update
         this.#bindings?.clearChanges();
+    }
+
+    /**
+     * Applies computed source path mappings to the current changes.
+     * For each changed path, if it starts with a source path that maps to a computed property,
+     * adds the corresponding computed property path to the changes.
+     */
+    #applyComputedPathMappings(): void {
+        if (this.#computedSourcePaths.size === 0 || !this.#bindings) {
+            return;
+        }
+
+        const changes = this.#bindings.changes;
+        const mappedPaths: string[] = [];
+
+        for (const changedPath of changes) {
+            for (const [sourcePath, computedName] of this.#computedSourcePaths) {
+                // Check if the changed path starts with or equals the source path
+                if (changedPath === sourcePath) {
+                    // Exact match: mark the computed property itself as changed
+                    mappedPaths.push(computedName);
+                } else if (changedPath.startsWith(sourcePath + '.') || changedPath.startsWith(sourcePath + '[')) {
+                    // Subpath match: convert "model.elements[0].x" to "selectedElement.x"
+                    const suffix = changedPath.slice(sourcePath.length);
+                    mappedPaths.push(computedName + suffix);
+                }
+            }
+        }
+
+        // Add all mapped paths to the changes
+        for (const path of mappedPaths) {
+            this.#bindings.markChanged(path);
+        }
     }
 
     /**
@@ -415,6 +460,23 @@ export class VApplication {
                     this.#bindings?.setSilent(key, newValue);
                     this.#bindings?.markChanged(key);
                     allChanges.add(key);
+
+                    // Track source path mapping for computed property values
+                    // This allows changes like "model.elements[0].x" to be mapped to "selectedElement.x"
+                    if (typeof newValue === 'object' && newValue !== null) {
+                        const sourcePath = ReactiveProxy.getPath(newValue);
+                        if (sourcePath) {
+                            // Remove old mapping for this computed property
+                            for (const [path, name] of this.#computedSourcePaths) {
+                                if (name === key) {
+                                    this.#computedSourcePaths.delete(path);
+                                    break;
+                                }
+                            }
+                            // Add new mapping
+                            this.#computedSourcePaths.set(sourcePath, key);
+                        }
+                    }
                 }
             } catch (error) {
                 this.#logger.error(`Error evaluating computed property '${key}': ${error}`);

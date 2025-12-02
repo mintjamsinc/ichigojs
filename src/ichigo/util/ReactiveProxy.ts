@@ -23,6 +23,12 @@ export class ReactiveProxy {
     private static rawObjects = new WeakSet<object>();
 
     /**
+     * A WeakMap to store the path for each proxy object.
+     * This allows retrieving the source path of an object for computed property mapping.
+     */
+    private static proxyPaths = new WeakMap<object, string>();
+
+    /**
      * Creates a reactive proxy for the given object.
      * The proxy will call the onChange callback whenever a property is modified.
      *
@@ -137,6 +143,11 @@ export class ReactiveProxy {
         // Track that this proxy wraps the target to prevent double-wrapping
         this.proxyToTarget.set(proxy, target);
 
+        // Store the path for this proxy (for computed property mapping)
+        if (path) {
+            this.proxyPaths.set(proxy, path);
+        }
+
         return proxy;
     }
 
@@ -189,5 +200,21 @@ export class ReactiveProxy {
      */
     static isRaw(obj: any): boolean {
         return typeof obj === 'object' && obj !== null && this.rawObjects.has(obj);
+    }
+
+    /**
+     * Gets the source path for a proxy object.
+     * This is used to map computed property values back to their source paths.
+     * For example, if a computed property returns `model.elements[0]`,
+     * this method returns "model.elements[0]" for that object.
+     *
+     * @param obj The proxy object to get the path for.
+     * @returns The source path, or undefined if not found.
+     */
+    static getPath(obj: any): string | undefined {
+        if (typeof obj !== 'object' || obj === null) {
+            return undefined;
+        }
+        return this.proxyPaths.get(obj);
     }
 }
