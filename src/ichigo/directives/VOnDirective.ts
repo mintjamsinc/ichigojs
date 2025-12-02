@@ -224,9 +224,13 @@ export class VOnDirective implements VDirective {
 
     /**
      * Attaches the event listener to the DOM element.
+     * Event listener is attached if there's a handler or if there are modifiers
+     * that need to be applied (e.g., .stop, .prevent).
      */
     #attachEventListener(): void {
-        if (!this.#eventName || !this.#handlerWrapper) {
+        // Attach listener if there's a handler or if there are modifiers to apply
+        const hasModifiersToApply = this.#modifiers.has('stop') || this.#modifiers.has('prevent');
+        if (!this.#eventName || (!this.#handlerWrapper && !hasModifiersToApply)) {
             return;
         }
 
@@ -281,8 +285,10 @@ export class VOnDirective implements VDirective {
                 return;
             }
 
-            // Call the pre-generated handler wrapper
-            this.#handlerWrapper!(event);
+            // Call the pre-generated handler wrapper (if exists)
+            if (this.#handlerWrapper) {
+                this.#handlerWrapper(event);
+            }
 
             // Note: DOM update is automatically scheduled by ReactiveProxy when bindings change
             // No need to manually call scheduleUpdate() here

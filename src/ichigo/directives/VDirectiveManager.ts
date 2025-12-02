@@ -170,8 +170,12 @@ export class VDirectiveManager {
         const element = this.#vNode.node as HTMLElement;
 
         // Collect relevant attributes
+        // For v-for, v-if, v-else-if, v-else: process only the structural directive on the template element.
+        // Other directives (@click, :class, etc.) will be processed on the cloned/rendered elements.
         const attributes: Attr[] = [];
         if (element.hasAttribute(StandardDirectiveName.V_FOR)) {
+            // For v-for template element: only process v-for and :key
+            // Other attributes will be processed when child VNodes are created for cloned elements
             attributes.push(element.getAttributeNode(StandardDirectiveName.V_FOR)!);
 
             for (const attr of Array.from(element.attributes)) {
