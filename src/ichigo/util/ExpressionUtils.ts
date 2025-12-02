@@ -256,5 +256,108 @@ export class ExpressionUtils {
 
         return resolvedDependencies;
     }
+
+    /**
+     * Rewrites an expression to replace identifiers with 'this.identifier'.
+     * This allows direct property access and assignment without using 'with' statement.
+     * Uses AST parsing to accurately identify which identifiers to replace.
+     * @param expression The original expression string.
+     * @param identifiers The list of identifiers that are available in bindings.
+     * @returns The rewritten expression.
+     */
+    static rewriteExpression(expression: string, identifiers: string[]): string {
+        // Reserved words and built-in objects that should not be prefixed with 'this.'
+        const reserved = new Set([
+            'event', '$ctx', '$newValue',
+            'true', 'false', 'null', 'undefined', 'NaN', 'Infinity',
+            'Math', 'Date', 'String', 'Number', 'Boolean', 'Array', 'Object',
+            'JSON', 'console', 'window', 'document', 'navigator',
+            'parseInt', 'parseFloat', 'isNaN', 'isFinite',
+            'encodeURI', 'decodeURI', 'encodeURIComponent', 'decodeURIComponent'
+        ]);
+
+        // Extract ALL identifiers from the expression (including assignment left-hand side)
+        // This is necessary because the passed 'identifiers' parameter only includes
+        // identifiers that are used (right-hand side), not assigned to (left-hand side)
+        let allIdentifiersInExpression: string[];
+        try {
+            allIdentifiersInExpression = ExpressionUtils.extractIdentifiers(expression, {});
+        } catch (error) {
+            console.warn('[ichigo.js] Failed to extract identifiers from expression:', expression, error);
+            return expression;
+        }
+
+        // Create a Set of identifiers available in bindings (from data, computed, methods)
+        // We need to know which identifiers are valid binding properties
+        const bindingIdentifiers = new Set(identifiers.filter(id => !reserved.has(id)));
+
+        // For assignment expressions, we also need to include the left-hand side identifier
+        // even if it's not in the tracking identifiers (because it's being assigned, not read)
+        for (const id of allIdentifiersInExpression) {
+            if (!reserved.has(id)) {
+                bindingIdentifiers.add(id);
+            }
+        }
+
+        if (bindingIdentifiers.size === 0) {
+            return expression;
+        }
+
+        try {
+            // Build a map of positions to replace: { start: number, end: number, name: string }[]
+            const replacements: { start: number, end: number, name: string }[] = [];
+
+            const parsedAst = acorn.parse(`(${expression})`, { ecmaVersion: 'latest' });
+
+            // Collect all identifier nodes that should be replaced
+            // Use walk.fullAncestor to visit ALL nodes (including assignment LHS) while tracking ancestors
+            walk.fullAncestor(parsedAst, (node: any, _state: any, ancestors: any[]) => {
+                if (node.type !== 'Identifier') {
+                    return;
+                }
+
+                // Skip if not in our identifier set
+                if (!bindingIdentifiers.has(node.name)) {
+                    return;
+                }
+
+                // Check if this identifier is a property of a MemberExpression
+                // (e.g., in 'obj.prop', we should skip 'prop')
+                if (ancestors.length >= 1) {
+                    const parent = ancestors[ancestors.length - 1];
+                    if (parent.type === 'MemberExpression') {
+                        // Skip if this identifier is the property (not the object) of a non-computed member access
+                        if (!parent.computed && parent.property === node) {
+                            return;
+                        }
+                    }
+                }
+
+                // Add to replacements list (adjust for the wrapping parentheses)
+                replacements.push({
+                    start: node.start - 1,
+                    end: node.end - 1,
+                    name: node.name
+                });
+            });
+
+            // Sort replacements by start position (descending) to replace from end to start
+            replacements.sort((a, b) => b.start - a.start);
+
+            // Apply replacements
+            let result = expression;
+            for (const replacement of replacements) {
+                result = result.substring(0, replacement.start) +
+                         `this.${replacement.name}` +
+                         result.substring(replacement.end);
+            }
+
+            return result;
+        } catch (error) {
+            // If AST parsing fails, fall back to the original expression
+            console.warn('Failed to rewrite expression:', expression, error);
+            return expression;
+        }
+    }
 }
 

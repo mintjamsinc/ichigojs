@@ -7,6 +7,7 @@ import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { ExpressionEvaluator } from "../util/ExpressionEvaluator";
+import { ExpressionUtils } from "../util/ExpressionUtils";
 
 /**
  * Directive for two-way data binding on form input elements.
@@ -324,10 +325,14 @@ export class VModelDirective implements VDirective {
         }
 
         const expression = this.#expression.trim();
+        const identifiers = this.#evaluator?.dependentIdentifiers ?? [];
+
+        // Rewrite expression to prefix identifiers with 'this.'
+        const rewrittenExpr = ExpressionUtils.rewriteExpression(expression, identifiers);
 
         const values = [newValue];
         const args = ['$newValue'].join(", ");
-        const funcBody = `(this.${expression} = $newValue);`;
+        const funcBody = `(${rewrittenExpr} = $newValue);`;
         const func = new Function(args, funcBody) as (...args: any[]) => any;
         func.call(this.#vNode.bindings?.raw, ...values);
     }
