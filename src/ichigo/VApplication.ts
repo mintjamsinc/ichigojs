@@ -398,14 +398,29 @@ export class VApplication {
         const computed = new Set<string>();
         const processing = new Set<string>();
 
-        // Gather all changed identifiers, including parent properties for array items
+        // Gather all changed identifiers, including all parent paths
+        // e.g., for "model.elements[0].messageRef", also add:
+        // "model.elements[0]", "model.elements", "model"
         const allChanges = new Set<string>();
         this.#bindings?.changes.forEach(id => {
             allChanges.add(id);
 
-            const idx = id.indexOf('[');
-            if (idx !== -1) {
-                allChanges.add(id.substring(0, idx));
+            // Add all parent paths by progressively stripping from the end
+            let path = id;
+            while (path.length > 0) {
+                // Find last separator (either '[' or '.')
+                const bracketIdx = path.lastIndexOf('[');
+                const dotIdx = path.lastIndexOf('.');
+                const lastSep = Math.max(bracketIdx, dotIdx);
+
+                if (lastSep === -1) {
+                    break;
+                }
+
+                path = path.substring(0, lastSep);
+                if (path.length > 0) {
+                    allChanges.add(path);
+                }
             }
         });
 
