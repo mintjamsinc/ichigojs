@@ -184,7 +184,8 @@ export abstract class VConditionalDirective implements VDirective {
      * @inheritdoc
      */
     destroy(): void {
-        // Default implementation does nothing. Override in subclasses if needed.
+        // Clean up the rendered VNode if it exists
+        this.#removedNode();
     }
 
     /**
@@ -236,7 +237,7 @@ export abstract class VConditionalDirective implements VDirective {
         const vNode = new VNode({
             node: clone,
             vApplication: this.#vNode.vApplication,
-            parentVNode: this.#vNode.parentVNode,
+            parentVNode: this.#vNode,
             bindings: this.#vNode.bindings
         });
 
