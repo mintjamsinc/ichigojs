@@ -232,10 +232,12 @@ export abstract class VConditionalDirective implements VDirective {
         this.#vNode.anchorNode?.parentNode?.insertBefore(clone, this.#vNode.anchorNode.nextSibling);
         
         // Create a new VNode for the cloned element
+        // Pass the current bindings to ensure loop variables from v-for are available
         const vNode = new VNode({
             node: clone,
             vApplication: this.#vNode.vApplication,
-            parentVNode: this.#vNode.parentVNode
+            parentVNode: this.#vNode.parentVNode,
+            bindings: this.#vNode.bindings
         });
 
         this.#renderedVNode = vNode;
