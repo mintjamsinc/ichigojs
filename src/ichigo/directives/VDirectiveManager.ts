@@ -164,6 +164,11 @@ export class VDirectiveManager {
                 }
             }
         }
+
+        // Remove anchor node from DOM if it exists
+        if (this.#anchorNode?.parentNode) {
+            this.#anchorNode.parentNode.removeChild(this.#anchorNode);
+        }
     }
 
     #parseDirectives(): VDirective[] | undefined {
