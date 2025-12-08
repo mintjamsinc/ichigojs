@@ -314,13 +314,6 @@ export class VForDirective implements VDirective {
                 // Create new item
                 const clone = this.#cloneNode();
 
-                // Insert after previous node
-                if (prevNode.nextSibling) {
-                    parent.insertBefore(clone, prevNode.nextSibling);
-                } else {
-                    parent.appendChild(clone);
-                }
-
                 // Create bindings for this iteration
                 const bindings = new VBindings({
                     parent: this.#vNode.bindings
@@ -330,15 +323,32 @@ export class VForDirective implements VDirective {
                 this.#setItemBindings(bindings, context);
 
                 // Create a new VNode for the cloned element
+                // Note: VNode creation must happen BEFORE DOM insertion because
+                // directives like v-if may modify the DOM structure (create anchors, remove template elements)
+                let depIds = [
+                        `${this.#sourceName}[${context.index}]`,
+                        ...this.#vNode.vApplication.resolveDependentIdentifiers(this.#sourceName!, context.item)];
+                if (this.#itemName) {
+                    depIds.push(this.#itemName);
+                }
                 vNode = new VNode({
                     node: clone,
                     vApplication: this.#vNode.vApplication,
-                    parentVNode: this.#vNode.parentVNode,
+                    parentVNode: this.#vNode,
                     bindings,
-                    dependentIdentifiers: [
-                        `${this.#sourceName}[${context.index}]`,
-                        ...this.#vNode.vApplication.resolveDependentIdentifiers(this.#sourceName!, context.item)],
+                    dependentIdentifiers: depIds,
                 });
+
+                // Determine what to insert: anchor node (if exists) or the clone itself
+                const nodeToInsert = vNode.anchorNode || clone;
+
+                // Insert after previous node
+                if (prevNode.nextSibling) {
+                    parent.insertBefore(nodeToInsert, prevNode.nextSibling);
+                } else {
+                    parent.appendChild(nodeToInsert);
+                }
+
                 newRenderedItems.set(key, vNode);
                 vNode.forceUpdate();
             } else {
@@ -348,17 +358,21 @@ export class VForDirective implements VDirective {
                 // Update bindings
                 this.#updateItemBindings(vNode, context);
 
+                // Determine the actual node in DOM: anchor node (if exists) or vNode.node
+                const actualNode = vNode.anchorNode || vNode.node;
+
                 // Move to correct position if needed
-                if (prevNode.nextSibling !== vNode.node) {
+                if (prevNode.nextSibling !== actualNode) {
                     if (prevNode.nextSibling) {
-                        parent.insertBefore(vNode.node, prevNode.nextSibling);
+                        parent.insertBefore(actualNode, prevNode.nextSibling);
                     } else {
-                        parent.appendChild(vNode.node);
+                        parent.appendChild(actualNode);
                     }
                 }
             }
 
-            prevNode = vNode.node;
+            // Use anchor node as prevNode if it exists, otherwise use vNode.node
+            prevNode = vNode.anchorNode || vNode.node;
         }
 
         // Update rendered items map
