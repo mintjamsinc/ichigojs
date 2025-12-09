@@ -188,6 +188,14 @@ export class VApplication {
         // Initial rendering
         this.#vNode.update();
 
+        // Remove v-cloak attributes after mounting
+        // v-cloak is used to hide un-compiled template until the app is ready
+        // Usage: Add CSS rule "[v-cloak] { display: none; }" to hide elements with v-cloak
+        (element as HTMLElement).querySelectorAll('[v-cloak]').forEach(el => {
+            el.removeAttribute('v-cloak');
+        });
+        (element as HTMLElement).removeAttribute('v-cloak');
+
         this.#logger.info('Application mounted.');
     }
 
