@@ -86,6 +86,22 @@ export class VBindings {
 						// Keep the existing proxy as-is to preserve reactivity chain
 						newValue = value;
 					} else {
+						// Before wrapping, check if any properties are existing ReactiveProxies
+						// and register path aliases for them
+						if (!Array.isArray(value)) {
+							for (const propKey of Object.keys(value)) {
+								const propValue = value[propKey];
+								if (typeof propValue === 'object' && propValue !== null) {
+									const propPath = ReactiveProxy.getPath(propValue);
+									if (propPath) {
+										// Register alias: key.propKey -> propPath
+										ReactiveProxy.registerPathAlias(`${key as string}.${propKey}`, propPath);
+										this.#logger?.debug(`Property path alias registered: ${key as string}.${propKey} -> ${propPath}`);
+									}
+								}
+							}
+						}
+
 						// Wrap objects/arrays with reactive proxy, tracking the root key
 						newValue = ReactiveProxy.create(value, (changedPath) => {
 							let path = '';

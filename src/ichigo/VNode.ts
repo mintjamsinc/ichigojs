@@ -414,8 +414,10 @@ export class VNode {
         if (this.#nodeType === Node.TEXT_NODE && this.#textEvaluator) {
             // If this is a text node with a text evaluator, update its content if needed
 
-            // Check if any of the identifiers are in the changed identifiers
-            const changed = this.#textEvaluator.identifiers.some(id => changes.includes(id));
+            // Check if any of the identifiers are in the changed identifiers (considering path aliases)
+            const changed = this.#textEvaluator.identifiers.some(id =>
+                changes.some(change => ReactiveProxy.doesChangeMatchIdentifier(change, id))
+            );
 
             // If the text node has changed, update its content
             if (changed) {
