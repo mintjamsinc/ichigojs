@@ -6,6 +6,7 @@ import { VCloser } from "./VCloser";
 import { VDirectiveManager } from "./directives/VDirectiveManager";
 import { VNodeInit } from "./VNodeInit";
 import { VTextEvaluator } from "./VTextEvaluator";
+import { ReactiveProxy } from "./util/ReactiveProxy";
 
 /**
  * Represents a virtual node in the virtual DOM.
@@ -440,7 +441,9 @@ export class VNode {
 
                 // Prepare bindings for each preparer if relevant identifiers have changed
                 for (const preparer of this.#directiveManager.bindingsPreparers) {
-                    const changed = preparer.dependentIdentifiers.some(id => changes.includes(id));
+                    const changed = preparer.dependentIdentifiers.some(id =>
+                        changes.some(change => ReactiveProxy.doesChangeMatchIdentifier(change, id))
+                    );
                     if (changed) {
                         preparer.prepareBindings();
                     }
@@ -450,7 +453,9 @@ export class VNode {
             // Apply DOM updaters from directives, if any
             if (this.#directiveManager?.domUpdaters) {
                 for (const updater of this.#directiveManager.domUpdaters) {
-                    const changed = updater.dependentIdentifiers.some(id => changes.includes(id));
+                    const changed = updater.dependentIdentifiers.some(id =>
+                        changes.some(change => ReactiveProxy.doesChangeMatchIdentifier(change, id))
+                    );
                     if (changed) {
                         updater.applyToDOM();
                     }
@@ -459,7 +464,9 @@ export class VNode {
 
             // Recursively update dependent virtual nodes
             this.#dependents?.forEach(dependentNode => {
-                const changed = dependentNode.dependentIdentifiers.some(id => changes.includes(id));
+                const changed = dependentNode.dependentIdentifiers.some(id =>
+                    changes.some(change => ReactiveProxy.doesChangeMatchIdentifier(change, id))
+                );
                 if (changed) {
                     dependentNode.update();
                 }

@@ -77,18 +77,31 @@ export class VBindings {
 
 				let newValue = value;
 				if (typeof value === 'object' && value !== null) {
-					// Wrap objects/arrays with reactive proxy, tracking the root key
-					newValue = ReactiveProxy.create(value, (changedPath) => {
-						let path = '';
-						for (const part of changedPath?.split('.') || []) {
-							path = path ? `${path}.${part}` : part;
-							this.#logger?.debug(`Binding changed: ${path}`);
-							this.#changes.add(path);
-						}
-						if (!this.#suppressOnChange) {
-							this.#onChange?.(changedPath as string);
-						}
-					}, key as string);
+					// Check if the value already has a path (it's an existing reactive proxy reference)
+					const existingPath = ReactiveProxy.getPath(value);
+					if (existingPath) {
+						// Register a path alias so changes to the source path will match this identifier
+						ReactiveProxy.registerPathAlias(key as string, existingPath);
+						this.#logger?.debug(`Path alias registered: ${key as string} -> ${existingPath}`);
+						// Keep the existing proxy as-is to preserve reactivity chain
+						newValue = value;
+					} else {
+						// Wrap objects/arrays with reactive proxy, tracking the root key
+						newValue = ReactiveProxy.create(value, (changedPath) => {
+							let path = '';
+							for (const part of changedPath?.split('.') || []) {
+								path = path ? `${path}.${part}` : part;
+								this.#logger?.debug(`Binding changed: ${path}`);
+								this.#changes.add(path);
+							}
+							if (!this.#suppressOnChange) {
+								this.#onChange?.(changedPath as string);
+							}
+						}, key as string);
+					}
+				} else if (value === null || value === undefined) {
+					// When setting to null/undefined, unregister any path alias
+					ReactiveProxy.unregisterPathAlias(key as string);
 				}
 
 				const oldValue = Reflect.get(target, key);

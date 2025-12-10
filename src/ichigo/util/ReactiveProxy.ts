@@ -29,6 +29,14 @@ export class ReactiveProxy {
     private static proxyPaths = new WeakMap<object, string>();
 
     /**
+     * A Map to store path aliases.
+     * Key: alias path (e.g., "editingNestedStep.steps")
+     * Value: source path (e.g., "routes[0].steps[0].steps")
+     * This allows mapping variable names to their actual source paths for dependency tracking.
+     */
+    private static pathAliases = new Map<string, string>();
+
+    /**
      * Creates a reactive proxy for the given object.
      * The proxy will call the onChange callback whenever a property is modified.
      *
@@ -216,5 +224,92 @@ export class ReactiveProxy {
             return undefined;
         }
         return this.proxyPaths.get(obj);
+    }
+
+    /**
+     * Registers a path alias.
+     * This is used when a variable is assigned to reference an existing reactive object.
+     * For example, when `editingNestedStep = routes[0].steps[0]`, this creates an alias
+     * so that changes to "routes[0].steps[0].steps" also match "editingNestedStep.steps".
+     *
+     * @param aliasPath The alias path (e.g., "editingNestedStep")
+     * @param sourcePath The source path (e.g., "routes[0].steps[0]")
+     */
+    static registerPathAlias(aliasPath: string, sourcePath: string): void {
+        if (aliasPath && sourcePath && aliasPath !== sourcePath) {
+            this.pathAliases.set(aliasPath, sourcePath);
+        }
+    }
+
+    /**
+     * Unregisters a path alias.
+     *
+     * @param aliasPath The alias path to remove
+     */
+    static unregisterPathAlias(aliasPath: string): void {
+        // Remove all aliases that start with the given path
+        for (const key of this.pathAliases.keys()) {
+            if (key === aliasPath || key.startsWith(aliasPath + '.') || key.startsWith(aliasPath + '[')) {
+                this.pathAliases.delete(key);
+            }
+        }
+    }
+
+    /**
+     * Resolves an alias path to its source path.
+     * Also handles nested paths (e.g., "editingNestedStep.steps" -> "routes[0].steps[0].steps").
+     *
+     * @param aliasPath The alias path to resolve
+     * @returns The source path, or undefined if no alias exists
+     */
+    static resolvePathAlias(aliasPath: string): string | undefined {
+        // Direct match
+        if (this.pathAliases.has(aliasPath)) {
+            return this.pathAliases.get(aliasPath);
+        }
+
+        // Check if this is a nested path of an aliased variable
+        // e.g., "editingNestedStep.steps" when "editingNestedStep" is aliased
+        for (const [alias, source] of this.pathAliases.entries()) {
+            if (aliasPath.startsWith(alias + '.') || aliasPath.startsWith(alias + '[')) {
+                const suffix = aliasPath.substring(alias.length);
+                return source + suffix;
+            }
+        }
+
+        return undefined;
+    }
+
+    /**
+     * Checks if a change path matches an identifier, considering path aliases.
+     * For example, if "editingNestedStep" is aliased to "routes[0].steps[0]",
+     * then a change to "routes[0].steps[0].steps" should match "editingNestedStep.steps".
+     *
+     * @param changePath The path that was changed (e.g., "routes[0].steps[0].steps")
+     * @param identifier The identifier to check (e.g., "editingNestedStep.steps")
+     * @returns True if the change path matches the identifier
+     */
+    static doesChangeMatchIdentifier(changePath: string, identifier: string): boolean {
+        // Direct match
+        if (changePath === identifier) {
+            return true;
+        }
+
+        // Check if the identifier has an alias that matches
+        const resolvedIdentifier = this.resolvePathAlias(identifier);
+        if (resolvedIdentifier && changePath === resolvedIdentifier) {
+            return true;
+        }
+
+        // Check if change path starts with the resolved identifier
+        // (handles cases like array item changes)
+        if (resolvedIdentifier) {
+            if (changePath.startsWith(resolvedIdentifier + '.') ||
+                changePath.startsWith(resolvedIdentifier + '[')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
