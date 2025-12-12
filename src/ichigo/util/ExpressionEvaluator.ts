@@ -177,9 +177,13 @@ export class ExpressionEvaluator {
         options?: ExpressionEvaluatorOptions
     ): Function {
         // Build parameter list: globals first, then identifiers (base names), then additional context
+        // Filter out identifiers that are already in the global whitelist to avoid duplicate parameters
+        const globalKeys = new Set(Object.keys(ExpressionEvaluator.GLOBAL_WHITELIST));
+        const filteredIdentifiers = identifiers.filter(id => !globalKeys.has(id));
+
         const params: string[] = [
             ...Object.keys(ExpressionEvaluator.GLOBAL_WHITELIST),
-            ...identifiers
+            ...filteredIdentifiers
         ];
 
         // Add additional context parameters if provided
@@ -206,11 +210,15 @@ export class ExpressionEvaluator {
     evaluate(): any {
         try {
             // Build arguments: globals first, then identifiers, then additional context
+            // Filter out identifiers that are already in the global whitelist to match compileExpression
+            const globalKeys = new Set(Object.keys(ExpressionEvaluator.GLOBAL_WHITELIST));
+            const filteredIdentifiers = this.identifiers.filter(id => !globalKeys.has(id));
+
             const values: any[] = [
                 // Global whitelist values
                 ...Object.values(ExpressionEvaluator.GLOBAL_WHITELIST),
-                // Identifier values from bindings
-                ...this.identifiers.map(id => this.bindings.get(id))
+                // Identifier values from bindings (excluding globals)
+                ...filteredIdentifiers.map(id => this.bindings.get(id))
             ];
 
             // Add additional context values if provided
