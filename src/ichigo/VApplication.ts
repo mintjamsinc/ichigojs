@@ -10,6 +10,7 @@ import { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry"
 import { VComponentRegistry } from "./components/VComponentRegistry";
 import { ReactiveProxy } from "./util/ReactiveProxy";
 import { VApplicationInit } from "./VApplicationInit";
+import { VWatcher } from "./VWatcher";
 
 /**
  * Represents a virtual application instance.
@@ -73,6 +74,11 @@ export class VApplication {
     #computedSourcePaths: Map<string, string> = new Map();
 
     /**
+     * The watcher manager for this application.
+     */
+    #watcher: VWatcher;
+
+    /**
      * Flag to indicate if an update is already scheduled.
      */
     #updateScheduled: boolean = false;
@@ -99,8 +105,14 @@ export class VApplication {
         // Analyze computed dependencies
         this.#computedDependencies = ExpressionUtils.analyzeFunctionDependencies(options.computed || {});
 
+        // Initialize watcher manager
+        this.#watcher = new VWatcher(this.#logger);
+
         // Initialize bindings from data, computed, and methods
         this.#initializeBindings();
+
+        // Initialize watchers
+        this.#initializeWatchers();
     }
 
     /**
@@ -327,6 +339,47 @@ export class VApplication {
     }
 
     /**
+     * Initializes watchers from the watch option.
+     */
+    #initializeWatchers(): void {
+        if (!this.#options.watch || !this.#bindings) {
+            return;
+        }
+
+        for (const [path, definition] of Object.entries(this.#options.watch)) {
+            this.#watcher.register(
+                path,
+                definition,
+                (p) => this.#getValueByPath(p)
+            );
+        }
+    }
+
+    /**
+     * Gets a value from bindings by a dot-notation path.
+     * @param path The property path (e.g., "user.name", "items[0]").
+     * @returns The value at the path, or undefined if not found.
+     */
+    #getValueByPath(path: string): any {
+        if (!this.#bindings) {
+            return undefined;
+        }
+
+        // Split path into segments, handling both dot notation and bracket notation
+        const segments = path.replace(/\[(\d+)\]/g, '.$1').split('.');
+        let value: any = this.#bindings.raw;
+
+        for (const segment of segments) {
+            if (value === null || value === undefined) {
+                return undefined;
+            }
+            value = value[segment];
+        }
+
+        return value;
+    }
+
+    /**
      * Schedules a DOM update in the next microtask.
      * Multiple calls within the same event loop will be batched into a single update.
      */
@@ -353,6 +406,15 @@ export class VApplication {
         // This converts paths like "model.elements[0].executionListeners"
         // to "selectedElement.executionListeners" when selectedElement points to model.elements[0]
         this.#applyComputedPathMappings();
+
+        // Notify watchers before DOM update
+        if (this.#bindings) {
+            this.#watcher.notify(
+                this.#bindings.changes,
+                (p) => this.#getValueByPath(p),
+                this.#bindings.raw
+            );
+        }
 
         // Update the DOM
         this.#vNode?.update();

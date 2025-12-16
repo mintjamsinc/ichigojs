@@ -1,6 +1,7 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
 import { LogLevel } from "./util/LogLevel";
+import { WatcherDictionary } from "./VWatcherOptions";
 
 export interface VApplicationOptions {
     /**
@@ -24,6 +25,13 @@ export interface VApplicationOptions {
     methods?: {
         [key: string]: (...args: unknown[]) => unknown;
     };
+
+    /**
+     * A dictionary of watchers for the application.
+     * Each key is a property path to watch (e.g., "count", "user.name"),
+     * and the value is either a callback function or an options object with handler, deep, and immediate properties.
+     */
+    watch?: WatcherDictionary;
 
     /**
      * The log level for the application.

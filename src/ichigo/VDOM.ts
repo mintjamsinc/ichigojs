@@ -5,6 +5,10 @@ import { VDirectiveParserRegistry } from './directives/VDirectiveParserRegistry'
 import { VStandardDirectiveParser } from './directives/VStandardDirectiveParser';
 import { VApplication } from './VApplication';
 
+// Re-export types for external use
+export { VWatcher } from './VWatcher';
+export type { WatchCallback, WatcherOptions, WatcherDefinition, WatcherDictionary } from './VWatcherOptions';
+
 /**
  * The main entry point for the virtual DOM library.
  */
