@@ -357,9 +357,15 @@ export class VBindDirective implements VDirective {
 
     /**
      * Updates a DOM property.
+     * For value-like properties (value, textContent, innerHTML), null/undefined is converted to empty string
+     * to match Vue.js behavior and prevent "undefined" from being displayed.
      */
     #updateProperty(element: HTMLElement, name: string, value: any): void {
-        (element as any)[name] = value;
+        if (value == null && (name === 'value' || name === 'textContent' || name === 'innerHTML')) {
+            (element as any)[name] = '';
+        } else {
+            (element as any)[name] = value;
+        }
     }
 
     /**
