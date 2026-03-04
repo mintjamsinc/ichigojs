@@ -293,7 +293,7 @@ export class VApplication {
     #initializeBindings(): void {
         // Create bindings with change tracking
         this.#bindings = new VBindings({
-            onChange: (identifier) => {
+            onChange: () => {
                 this.#scheduleUpdate();
             },
             vApplication: this
@@ -512,17 +512,20 @@ export class VApplication {
             // Get the dependencies for this computed property
             const deps = this.#computedDependencies[key] || [];
 
-            // If none of the dependencies have changed, skip recomputation (unless it's initialization)
-            if (!isInitialization && !deps.some(dep => allChanges.has(dep))) {
-                computed.add(key);
-                return;
-            }
-
-            // First, recursively compute any dependent computed properties
+            // First, recursively compute any dependent computed properties.
+            // This must happen before the change check so that computed→computed
+            // dependency chains are resolved and allChanges is up-to-date.
             for (const dep of deps) {
                 if (this.#options.computed![dep]) {
                     compute(dep);
                 }
+            }
+
+            // If none of the dependencies have changed, skip recomputation (unless it's initialization).
+            // Checked after recursive computation to detect transitive changes through computed properties.
+            if (!isInitialization && !deps.some(dep => allChanges.has(dep))) {
+                computed.add(key);
+                return;
             }
 
             // Now compute this property
@@ -571,13 +574,10 @@ export class VApplication {
             processing.delete(key);
         };
 
-        // Find all computed properties that need to be recomputed
-        for (const [key, deps] of Object.entries(this.#computedDependencies)) {
-            // During initialization, compute all properties
-            // Otherwise, check if any dependency has changed
-            if (isInitialization || deps.some(dep => allChanges.has(dep))) {
-                compute(key);
-            }
+        // Compute all properties; the recursive logic inside compute() handles
+        // dependency ordering and skips properties whose dependencies did not change.
+        for (const key of Object.keys(this.#computedDependencies)) {
+            compute(key);
         }
     }
 
