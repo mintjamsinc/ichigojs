@@ -276,12 +276,14 @@ export class VBindDirective implements VDirective {
                         return cls.split(/\s+/).filter(Boolean);
                     } else if (typeof cls === 'object' && cls !== null) {
                         // Handle object format within array: { className: condition }
-                        return Object.keys(cls).filter(key => cls[key]);
+                        // Keys may contain space-separated class names
+                        return Object.keys(cls).filter(key => cls[key]).flatMap(key => key.split(/\s+/).filter(Boolean));
                     }
                     return [];
                 });
         } else if (typeof value === 'object' && value !== null) {
-            newClasses = Object.keys(value).filter(key => value[key]);
+            // Keys may contain space-separated class names
+            newClasses = Object.keys(value).filter(key => value[key]).flatMap(key => key.split(/\s+/).filter(Boolean));
         }
 
         // Remove previously managed classes
