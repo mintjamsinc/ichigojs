@@ -78,8 +78,10 @@ export class VTextEvaluator {
      * @param functionDependencies A dictionary mapping function names to their dependencies.
      */
     constructor(text: string, functionDependencies: Record<string, string[]>) {
-        // Extract expressions in {{...}} using regex
-        const regex = /\{\{([^}]+)\}\}/g;
+        // Extract expressions in {{...}} using regex.
+        // Allow `}` inside the expression as long as it is not followed by another `}`,
+        // so that object literals like `{ short: true }` are captured correctly.
+        const regex = /\{\{((?:[^}]|\}(?!\}))+)\}\}/g;
         const matches = Array.from(text.matchAll(regex));
 
         // Gather identifiers from the extracted expressions
@@ -141,7 +143,7 @@ export class VTextEvaluator {
      * @returns True if the text contains expressions, false otherwise.
      */
     static containsExpression(text: string): boolean {
-        const regex = /\{\{([^}]+)\}\}/g;
+        const regex = /\{\{((?:[^}]|\}(?!\}))+)\}\}/g;
         return regex.test(text);
     }
 
