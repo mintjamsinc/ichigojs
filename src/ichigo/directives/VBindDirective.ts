@@ -365,8 +365,16 @@ export class VBindDirective implements VDirective {
     #updateProperty(element: HTMLElement, name: string, value: any): void {
         if (value == null && (name === 'value' || name === 'textContent' || name === 'innerHTML')) {
             (element as any)[name] = '';
+            if (name === 'value') {
+                (element as any)._value = null;
+            }
         } else {
             (element as any)[name] = value;
+            if (name === 'value') {
+                // Store the original typed value so that v-model on radio buttons
+                // can preserve the type (e.g., boolean false instead of string "false").
+                (element as any)._value = value;
+            }
         }
     }
 

@@ -230,7 +230,12 @@ export class VModelDirective implements VDirective {
             if (element.type === 'checkbox') {
                 element.checked = !!value;
             } else if (element.type === 'radio') {
-                element.checked = element.value === String(value);
+                // Prefer the original typed value stored by VBindDirective (:value binding)
+                // to avoid type coercion issues (e.g., boolean false vs string "false").
+                const radioValue = (element as any)._value !== undefined
+                    ? (element as any)._value
+                    : element.value;
+                element.checked = radioValue === value;
             } else {
                 element.value = value ?? '';
             }
@@ -257,7 +262,11 @@ export class VModelDirective implements VDirective {
                 if (target.type === 'checkbox') {
                     newValue = target.checked;
                 } else if (target.type === 'radio') {
-                    newValue = target.value;
+                    // Prefer the original typed value stored by VBindDirective (:value binding)
+                    // to preserve the type on write-back (e.g., boolean false, number 0).
+                    newValue = (target as any)._value !== undefined
+                        ? (target as any)._value
+                        : target.value;
                 } else {
                     newValue = target.value;
                 }
