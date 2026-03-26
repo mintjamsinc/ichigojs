@@ -46,6 +46,13 @@ export class VBindings {
 	#suppressOnChange: boolean = false;
 
 	/**
+	 * Per-instance path aliases. Maps local variable names to their reactive source paths.
+	 * Scoped here instead of the global ReactiveProxy map so that v-for items each maintain
+	 * their own alias (e.g. "file" -> "files[0]") without overwriting each other.
+	 */
+	#localAliases: Map<string, string> = new Map();
+
+	/**
 	 * Creates a new instance of VBindings.
 	 * @param parent The parent bindings, if any.
 	 */
@@ -81,7 +88,7 @@ export class VBindings {
 					const existingPath = ReactiveProxy.getPath(value);
 					if (existingPath) {
 						// Register a path alias so changes to the source path will match this identifier
-						ReactiveProxy.registerPathAlias(key as string, existingPath);
+						this.#localAliases.set(key as string, existingPath);
 						this.#logger?.debug(`Path alias registered: ${key as string} -> ${existingPath}`);
 						// Keep the existing proxy as-is to preserve reactivity chain
 						newValue = value;
@@ -95,7 +102,7 @@ export class VBindings {
 									const propPath = ReactiveProxy.getPath(propValue);
 									if (propPath) {
 										// Register alias: key.propKey -> propPath
-										ReactiveProxy.registerPathAlias(`${key as string}.${propKey}`, propPath);
+										this.#localAliases.set(`${key as string}.${propKey}`, propPath);
 										this.#logger?.debug(`Property path alias registered: ${key as string}.${propKey} -> ${propPath}`);
 									}
 								}
@@ -116,8 +123,14 @@ export class VBindings {
 						}, key as string);
 					}
 				} else if (value === null || value === undefined) {
-					// When setting to null/undefined, unregister any path alias
-					ReactiveProxy.unregisterPathAlias(key as string);
+					// When setting to null/undefined, remove local aliases for this key and nested paths
+					for (const aliasKey of [...this.#localAliases.keys()]) {
+						if (aliasKey === (key as string) ||
+							aliasKey.startsWith((key as string) + ".") ||
+							aliasKey.startsWith((key as string) + "[")) {
+							this.#localAliases.delete(aliasKey);
+						}
+					}
 				}
 
 				const oldValue = Reflect.get(target, key);
@@ -269,5 +282,55 @@ export class VBindings {
 	 */
 	markChanged(key: string): void {
 		this.#changes.add(key);
+	}
+
+	/**
+	 * Resolves a local path alias for the given identifier by walking up the bindings chain.
+	 * Returns the resolved source path, or undefined if no alias is found.
+	 */
+	resolveAlias(identifier: string): string | undefined {
+		// Direct match in local aliases
+		if (this.#localAliases.has(identifier)) {
+			return this.#localAliases.get(identifier);
+		}
+		// Check if this is a nested path of a locally aliased variable (e.g. "file.isModified")
+		for (const [alias, source] of this.#localAliases.entries()) {
+			if (identifier.startsWith(alias + '.') || identifier.startsWith(alias + '[')) {
+				return source + identifier.substring(alias.length);
+			}
+		}
+		// Walk up the parent chain
+		return this.#parent?.resolveAlias(identifier);
+	}
+
+	/**
+	 * Checks whether a reactive change path matches a given identifier, taking local path
+	 * aliases into account. Falls back to ReactiveProxy.doesChangeMatchIdentifier for
+	 * global aliases (computed properties etc.).
+	 */
+	doesChangeMatchIdentifier(changePath: string, identifier: string): boolean {
+		// Direct match
+		if (changePath === identifier) {
+			return true;
+		}
+		// Resolve via local (scoped) alias chain
+		const resolved = this.resolveAlias(identifier);
+		if (resolved) {
+			if (changePath === resolved) {
+				return true;
+			}
+			// changePath is a descendant of resolved (e.g. "files[0].isModified" for resolved "files[0]")
+			if (changePath.startsWith(resolved + '.') || changePath.startsWith(resolved + '[')) {
+				return true;
+			}
+			// changePath is an ancestor of resolved (e.g. "files" for resolved "files[0].isModified")
+			// This handles raw objects: when the parent collection is replaced/spliced, all item
+			// properties are considered changed.
+			if (resolved.startsWith(changePath + '.') || resolved.startsWith(changePath + '[')) {
+				return true;
+			}
+		}
+		// Fall back to global alias resolution (computed properties, etc.)
+		return ReactiveProxy.doesChangeMatchIdentifier(changePath, identifier);
 	}
 }

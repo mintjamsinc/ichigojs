@@ -416,7 +416,7 @@ export class VNode {
 
             // Check if any of the identifiers are in the changed identifiers (considering path aliases)
             const changed = this.#textEvaluator.identifiers.some(id =>
-                changes.some(change => ReactiveProxy.doesChangeMatchIdentifier(change, id))
+                changes.some(change => this.bindings.doesChangeMatchIdentifier(change, id))
             );
 
             // If the text node has changed, update its content
@@ -444,7 +444,7 @@ export class VNode {
                 // Prepare bindings for each preparer if relevant identifiers have changed
                 for (const preparer of this.#directiveManager.bindingsPreparers) {
                     const changed = preparer.dependentIdentifiers.some(id =>
-                        changes.some(change => ReactiveProxy.doesChangeMatchIdentifier(change, id))
+                        changes.some(change => this.bindings.doesChangeMatchIdentifier(change, id))
                     );
                     if (changed) {
                         preparer.prepareBindings();
@@ -456,7 +456,7 @@ export class VNode {
             if (this.#directiveManager?.domUpdaters) {
                 for (const updater of this.#directiveManager.domUpdaters) {
                     const changed = updater.dependentIdentifiers.some(id =>
-                        changes.some(change => ReactiveProxy.doesChangeMatchIdentifier(change, id))
+                        changes.some(change => this.bindings.doesChangeMatchIdentifier(change, id))
                     );
                     if (changed) {
                         updater.applyToDOM();
@@ -467,7 +467,7 @@ export class VNode {
             // Recursively update dependent virtual nodes
             this.#dependents?.forEach(dependentNode => {
                 const changed = dependentNode.dependentIdentifiers.some(id =>
-                    changes.some(change => ReactiveProxy.doesChangeMatchIdentifier(change, id))
+                    changes.some(change => dependentNode.bindings.doesChangeMatchIdentifier(change, id))
                 );
                 if (changed) {
                     dependentNode.update();
