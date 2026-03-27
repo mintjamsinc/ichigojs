@@ -234,6 +234,7 @@ export class ExpressionUtils {
             const directDependencies = functionDependencies[funcName] || [];
 
             for (const dep of directDependencies) {
+                if (dep === funcName) continue; // Skip self-references
                 if (functions[dep]) {
                     // It's a function, recursively resolve its dependencies
                     const subDependencies = resolveDependencies(dep);
