@@ -106,17 +106,27 @@ export class ReactiveProxy {
                     return ReactiveProxy.create(value, onChange, nestedPath);
                 }
 
-                // For arrays and Maps, intercept mutation methods
+                // If the value is a function, we need to wrap it to ensure that any mutations it performs also trigger onChange
                 if (typeof value === 'function') {
-                    let mutationMethods = [];
+                    // For arrays, we only want to wrap mutation methods, not read methods like 'slice', 'concat', etc.
                     if (Array.isArray(obj)) {
-                        mutationMethods.push('push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse');
-                    } else if (obj.constructor.name === 'Map') {
-                        mutationMethods.push('set', 'delete', 'clear');
+                        const arrayMutationMethods = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'];
+                        if (!arrayMutationMethods.includes(key as string)) {
+                            return value;
+                        }
+
+                        return function (this: any, ...args: any[]) {
+                            const result = (value as Function).apply(this === receiver ? obj : this, args);
+                            onChange(path || undefined);
+                            return result;
+                        };
                     }
+
+                    // For Map, we only want to wrap mutation methods, not read methods like 'get' or 'has'
+                    const mapMutationMethods = ['set', 'delete', 'clear'];
                     return function (this: any, ...args: any[]) {
                         const result = (value as Function).apply(this === receiver ? obj : this, args);
-                        if (mutationMethods.includes(key as string)) {
+                        if (mapMutationMethods.includes(key as string)) {
                             onChange(path || undefined);
                         }
                         return result;
