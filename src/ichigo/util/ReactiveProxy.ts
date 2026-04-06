@@ -83,7 +83,7 @@ export class ReactiveProxy {
 
         // Create the proxy with path captured in closure
         const proxy = new Proxy(target, {
-            get(obj, key) {
+            get(obj, key, receiver) {
                 const value = Reflect.get(obj, key);
 
                 // If the value is an object or array, make it reactive too
@@ -106,17 +106,21 @@ export class ReactiveProxy {
                     return ReactiveProxy.create(value, onChange, nestedPath);
                 }
 
-                // For arrays, intercept mutation methods
-                if (Array.isArray(obj) && typeof value === 'function') {
-                    const arrayMutationMethods = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'];
-
-                    if (arrayMutationMethods.includes(key as string)) {
-                        return function (this: any, ...args: any[]) {
-                            const result = (value as Function).apply(obj, args);
-                            onChange(path || undefined);
-                            return result;
-                        };
+                // For arrays and Maps, intercept mutation methods
+                if (typeof value === 'function') {
+                    let mutationMethods = [];
+                    if (Array.isArray(obj)) {
+                        mutationMethods.push('push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse');
+                    } else if (obj.constructor.name === 'Map') {
+                        mutationMethods.push('set', 'delete', 'clear');
                     }
+                    return function (this: any, ...args: any[]) {
+                        const result = (value as Function).apply(this === receiver ? obj : this, args);
+                        if (mutationMethods.includes(key as string)) {
+                            onChange(path || undefined);
+                        }
+                        return result;
+                    };
                 }
 
                 return value;
