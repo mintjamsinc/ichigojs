@@ -123,14 +123,28 @@ export class ReactiveProxy {
                     }
 
                     // For Map, we only want to wrap mutation methods, not read methods like 'get' or 'has'
-                    const mapMutationMethods = ['set', 'delete', 'clear'];
-                    return function (this: any, ...args: any[]) {
-                        const result = (value as Function).apply(this === receiver ? obj : this, args);
-                        if (mapMutationMethods.includes(key as string)) {
-                            onChange(path || undefined);
-                        }
-                        return result;
-                    };
+                    if (obj.constructor.name === 'Map') {
+                        const mapMutationMethods = ['set', 'delete', 'clear'];
+                        return function (this: any, ...args: any[]) {
+                            const result = (value as Function).apply(this === receiver ? obj : this, args);
+                            if (mapMutationMethods.includes(key as string)) {
+                                onChange(path || undefined);
+                            }
+                            return result;
+                        };
+                    }
+
+                    // For Set, we only want to wrap mutation methods, not read methods like 'has'
+                    if (obj.constructor.name === 'Set') {
+                        const setMutationMethods = ['add', 'delete', 'clear'];
+                        return function (this: any, ...args: any[]) {
+                            const result = (value as Function).apply(this === receiver ? obj : this, args);
+                            if (setMutationMethods.includes(key as string)) {
+                                onChange(path || undefined);
+                            }
+                            return result;
+                        };
+                    }
                 }
 
                 return value;
