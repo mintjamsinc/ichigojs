@@ -296,10 +296,28 @@ export class VForDirective implements VDirective {
             }
         }
 
-        // Then remove from DOM
+        // Then remove from DOM. Handle both Element nodes and fragment-marked ranges.
         for (const vNode of nodesToRemove) {
-            if (vNode.node.parentNode) {
-                vNode.node.parentNode.removeChild(vNode.node);
+            // If this VNode stored fragment markers, remove the range between them
+            const startMarker = vNode.userData.get?.('vfor_fragment_start');
+            const endMarker = vNode.userData.get?.('vfor_fragment_end');
+            if (startMarker && endMarker && startMarker.parentNode === endMarker.parentNode && startMarker.parentNode) {
+                const parentNode = startMarker.parentNode;
+                let node: Node | null = startMarker;
+                // Remove nodes from startMarker up to and including endMarker
+                while (node) {
+                    const next = node.nextSibling;
+                    parentNode.removeChild(node);
+                    if (node === endMarker) break;
+                    node = next;
+                }
+                continue;
+            }
+
+            // Fallback: remove the node itself if it's attached
+            const parentOfNode = (vNode.node as Node).parentNode;
+            if (parentOfNode) {
+                parentOfNode.removeChild(vNode.node as Node);
             }
         }
 
@@ -339,6 +357,31 @@ export class VForDirective implements VDirective {
                     dependentIdentifiers: depIds,
                 });
 
+                // If clone is a DocumentFragment, insert it between start/end comment markers
+                if (clone.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+                    const startMarker = document.createComment('#vfor-fragment-start');
+                    const endMarker = document.createComment('#vfor-fragment-end');
+
+                    // Insert start and end markers and the fragment's children between them
+                    if (prevNode.nextSibling) {
+                        parent.insertBefore(startMarker, prevNode.nextSibling);
+                    } else {
+                        parent.appendChild(startMarker);
+                    }
+                    parent.insertBefore(endMarker, startMarker.nextSibling);
+                    parent.insertBefore(clone, endMarker);
+
+                    // Store markers on the VNode for later removal/movement
+                    vNode.userData.set('vfor_fragment_start', startMarker);
+                    vNode.userData.set('vfor_fragment_end', endMarker);
+
+                    newRenderedItems.set(key, vNode);
+                    vNode.forceUpdate();
+                    // Use endMarker as prevNode for subsequent insertions
+                    prevNode = endMarker;
+                    continue;
+                }
+
                 // Determine what to insert: anchor node (if exists) or the clone itself
                 const nodeToInsert = vNode.anchorNode || clone;
 
@@ -358,8 +401,9 @@ export class VForDirective implements VDirective {
                 // Update bindings
                 this.#updateItemBindings(vNode, context);
 
-                // Determine the actual node in DOM: anchor node (if exists) or vNode.node
-                const actualNode = vNode.anchorNode || vNode.node;
+                // Determine the actual node in DOM: prefer fragment end marker, then anchor node, then vNode.node
+                const fragmentEnd = vNode.userData.get?.('vfor_fragment_end');
+                const actualNode = fragmentEnd || vNode.anchorNode || vNode.node;
 
                 // Move to correct position if needed
                 if (prevNode.nextSibling !== actualNode) {
@@ -371,8 +415,9 @@ export class VForDirective implements VDirective {
                 }
             }
 
-            // Use anchor node as prevNode if it exists, otherwise use vNode.node
-            prevNode = vNode.anchorNode || vNode.node;
+            // Use fragment end marker > anchor node > vNode.node as prevNode
+            const fragmentEndForPrev = vNode.userData.get?.('vfor_fragment_end');
+            prevNode = fragmentEndForPrev || vNode.anchorNode || vNode.node;
         }
 
         // Update rendered items map
@@ -578,21 +623,19 @@ export class VForDirective implements VDirective {
     /**
      * Clones the original node of the directive's virtual node.
      * When the source element is a <template>, its children (stored in .content)
-     * are cloned into a <div style="display:contents"> wrapper so that multiple
-     * root nodes can be managed as a single VNode without adding a visible element.
-     * @returns The cloned HTMLElement.
+     * are cloned into a DocumentFragment so that multiple root nodes can be
+     * managed without adding an extra wrapper element.
+     * @returns The cloned Node (Element or DocumentFragment).
      */
-    #cloneNode(): HTMLElement {
+    #cloneNode(): Node {
         const element = this.#vNode.node as HTMLElement;
 
         if (element instanceof HTMLTemplateElement) {
-            const wrapper = document.createElement('div');
-            wrapper.style.display = 'contents';
-            wrapper.appendChild(element.content.cloneNode(true));
-            return wrapper;
+            // Return a cloned DocumentFragment containing the template content
+            return element.content.cloneNode(true);
         }
 
-        return element.cloneNode(true) as HTMLElement;
+        return element.cloneNode(true) as Node;
     }
 
     /**

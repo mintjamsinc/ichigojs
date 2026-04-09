@@ -175,6 +175,17 @@ export class VNode {
                     });
                 });
             }
+        } else if (this.#nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+            // If the node is a DocumentFragment, create child VNodes for its children
+            // DocumentFragment is not an Element so it has no directives itself.
+            this.#childVNodes = [];
+            for (const childNode of Array.from(this.#node.childNodes)) {
+                new VNode({
+                    node: childNode,
+                    vApplication: this.#vApplication,
+                    parentVNode: this
+                });
+            }
         }
 
         // Register this node as a dependent of the parent node, if any
@@ -480,6 +491,17 @@ export class VNode {
                     d.onUpdated?.();
                 });
             }
+        } else if (this.#nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+            // For document fragments (e.g. from <template v-if>), propagate updates
+            // to dependent virtual nodes so that child bindings stay reactive.
+            this.#dependents?.forEach(dependentNode => {
+                const changed = dependentNode.dependentIdentifiers.some(id =>
+                    changes.some(change => dependentNode.bindings.doesChangeMatchIdentifier(change, id))
+                );
+                if (changed) {
+                    dependentNode.update();
+                }
+            });
         }
     }
 
@@ -536,6 +558,11 @@ export class VNode {
                     d.onUpdated?.();
                 });
             }
+        } else if (this.#nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+            // For document fragments, recursively force update child VNodes
+            this.#childVNodes?.forEach(childVNode => {
+                childVNode.forceUpdate();
+            });
         }
     }
 

@@ -104,6 +104,9 @@ export class IchigoElement extends HTMLElement {
         this.appendChild(root);
         this.#mountRoot = root;
 
+        // If props were set before connectedCallback, ensure mount is scheduled
+        this.#scheduleMountIfNeeded();
+
         // --- 5. Mount strategy ---
         // If this component has no declared props, mount immediately.
         // If it has props, mount will be triggered from _setProp() once the parent

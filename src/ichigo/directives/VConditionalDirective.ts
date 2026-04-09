@@ -241,10 +241,33 @@ export abstract class VConditionalDirective implements VDirective {
             parentVNode: this.#vNode,
             bindings: this.#vNode.bindings
         });
-
         // Insert after the anchor node AFTER VNode creation
+        const anchorParent = this.#vNode.anchorNode?.parentNode;
+        const nextSibling = this.#vNode.anchorNode?.nextSibling ?? null;
+
+        if (clone.nodeType === Node.DOCUMENT_FRAGMENT_NODE && anchorParent) {
+            const startMarker = document.createComment('#vif-fragment-start');
+            const endMarker = document.createComment('#vif-fragment-end');
+
+            if (nextSibling) {
+                anchorParent.insertBefore(startMarker, nextSibling);
+            } else {
+                anchorParent.appendChild(startMarker);
+            }
+            anchorParent.insertBefore(endMarker, startMarker.nextSibling);
+            anchorParent.insertBefore(clone, endMarker);
+
+            // Store markers for later removal
+            vNode.userData.set('vif_fragment_start', startMarker);
+            vNode.userData.set('vif_fragment_end', endMarker);
+
+            this.#renderedVNode = vNode;
+            this.#renderedVNode.forceUpdate();
+            return;
+        }
+
         const nodeToInsert = vNode.anchorNode || clone;
-        this.#vNode.anchorNode?.parentNode?.insertBefore(nodeToInsert, this.#vNode.anchorNode.nextSibling);
+        anchorParent?.insertBefore(nodeToInsert, nextSibling);
 
         this.#renderedVNode = vNode;
         this.#renderedVNode.forceUpdate();
@@ -263,29 +286,44 @@ export abstract class VConditionalDirective implements VDirective {
         // Destroy VNode first (calls @unmount hooks while DOM is still accessible)
         this.#renderedVNode.destroy();
 
-        // Then remove from DOM
-        this.#renderedVNode.node.parentNode?.removeChild(this.#renderedVNode.node);
+        // Then remove from DOM. Handle fragment markers if present
+        const startMarker = this.#renderedVNode.userData.get?.('vif_fragment_start');
+        const endMarker = this.#renderedVNode.userData.get?.('vif_fragment_end');
+        if (startMarker && endMarker && startMarker.parentNode === endMarker.parentNode && startMarker.parentNode) {
+            const parentNode = startMarker.parentNode;
+            let node: Node | null = startMarker;
+            while (node) {
+                const next = node.nextSibling;
+                parentNode.removeChild(node);
+                if (node === endMarker) break;
+                node = next;
+            }
+            this.#renderedVNode = undefined;
+            return;
+        }
+
+        const parent = (this.#renderedVNode.node as Node).parentNode;
+        if (parent) {
+            parent.removeChild(this.#renderedVNode.node as Node);
+        }
         this.#renderedVNode = undefined;
     }
 
     /**
      * Clones the original node of the directive's virtual node.
-     * When the source element is a <template>, its children (stored in .content)
-     * are cloned into a <div style="display:contents"> wrapper so that multiple
-     * root nodes can be managed as a single VNode without adding a visible element.
-     * @returns The cloned HTMLElement.
+     * When the source element is a <template>, returns a DocumentFragment
+     * cloned from the template's content.
+     * @returns The cloned Node (HTMLElement or DocumentFragment).
      */
-    #cloneNode(): HTMLElement {
+    #cloneNode(): Node {
         const element = this.#vNode.node as HTMLElement;
 
         if (element instanceof HTMLTemplateElement) {
-            const wrapper = document.createElement('div');
-            wrapper.style.display = 'contents';
-            wrapper.appendChild(element.content.cloneNode(true));
-            return wrapper;
+            // Return a DocumentFragment cloned from the template content
+            return element.content.cloneNode(true);
         }
 
-        return element.cloneNode(true) as HTMLElement;
+        return element.cloneNode(true) as Node;
     }
 
     /**
