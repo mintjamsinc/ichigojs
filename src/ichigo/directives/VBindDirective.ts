@@ -250,6 +250,13 @@ export class VBindDirective implements VDirective {
             this.#updateClass(element, value);
         } else if (attributeName === 'style') {
             this.#updateStyle(element, value);
+        } else if (this.#isCustomElementProperty(element, attributeName, value)) {
+            // Custom elements: set objects/arrays (and declared props) as properties
+            // so complex values are not serialized to strings via setAttribute.
+            // HTML attributes are lowercased by the browser, so resolve to the
+            // actual camelCase property name declared on the custom element.
+            const propName = this.#resolveCustomElementPropertyName(element, attributeName);
+            (element as any)[propName] = value;
         } else if (this.#isDOMProperty(attributeName)) {
             this.#updateProperty(element, attributeName, value);
         } else if (this.#isBooleanAttribute(attributeName)) {
@@ -335,6 +342,50 @@ export class VBindDirective implements VDirective {
      */
     #camelToKebab(str: string): string {
         return str.replace(/([A-Z])/g, '-$1').toLowerCase();
+    }
+
+    /**
+     * Returns true when the target is a custom element and the binding should be
+     * delivered as a property rather than an HTML attribute.
+     *
+     * Two conditions trigger property delivery:
+     *  1. The value is an object or array — serialising these to a string attribute
+     *     would lose type information.
+     *  2. The element exposes a matching property accessor (e.g. a prop declared via
+     *     defineComponent), even when the value is a primitive.
+     */
+    #isCustomElementProperty(element: HTMLElement, name: string, value: any): boolean {
+        if (!element.tagName.includes('-')) {
+            return false;
+        }
+        const isObjectOrArray = Array.isArray(value) || (typeof value === 'object' && value !== null);
+        return isObjectOrArray || name in element;
+    }
+
+    /**
+     * Resolves the actual property name on a custom element for a given
+     * (lowercased) HTML attribute name.  HTML attributes are always lowercase,
+     * but custom element props are typically camelCase.  This method checks the
+     * element's declared _props (set by defineComponent) for a case-insensitive
+     * match, falling back to scanning the prototype's own property descriptors.
+     */
+    #resolveCustomElementPropertyName(element: HTMLElement, name: string): string {
+        // Fast path: exact match already exists
+        if (name in element) {
+            return name;
+        }
+
+        // Check declared _props from defineComponent / IchigoElement
+        const props: string[] | undefined = (element.constructor as any)._props;
+        if (Array.isArray(props)) {
+            const lowerName = name.toLowerCase();
+            const match = props.find(p => p.toLowerCase() === lowerName);
+            if (match) {
+                return match;
+            }
+        }
+
+        return name;
     }
 
     /**

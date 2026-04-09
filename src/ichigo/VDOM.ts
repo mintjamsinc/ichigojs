@@ -30,6 +30,7 @@ export class VDOM {
     /**
      * Gets the component registry.
      * @return {VComponentRegistry} The component registry.
+     * @deprecated This method is deprecated and will be removed in a future release. Please use the new component registration system instead.
      */
     static get componentRegistry(): VComponentRegistry {
         return this.#componentRegistry;

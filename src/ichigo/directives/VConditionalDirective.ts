@@ -229,10 +229,11 @@ export abstract class VConditionalDirective implements VDirective {
         // Clone the original node and create a new VNode for it
         const clone = this.#cloneNode();
 
-        // Insert the cloned node after the anchor node, or as a child of the parent if no anchor
-        this.#vNode.anchorNode?.parentNode?.insertBefore(clone, this.#vNode.anchorNode.nextSibling);
-        
-        // Create a new VNode for the cloned element
+        // Create a new VNode for the cloned element BEFORE inserting into DOM.
+        // This prevents custom elements (Web Components) from having their
+        // connectedCallback fire before VNode processes their children, which
+        // would cause the parent VApplication to incorrectly adopt the custom
+        // element's internal template content as its own VNode tree.
         // Pass the current bindings to ensure loop variables from v-for are available
         const vNode = new VNode({
             node: clone,
@@ -240,6 +241,10 @@ export abstract class VConditionalDirective implements VDirective {
             parentVNode: this.#vNode,
             bindings: this.#vNode.bindings
         });
+
+        // Insert after the anchor node AFTER VNode creation
+        const nodeToInsert = vNode.anchorNode || clone;
+        this.#vNode.anchorNode?.parentNode?.insertBefore(nodeToInsert, this.#vNode.anchorNode.nextSibling);
 
         this.#renderedVNode = vNode;
         this.#renderedVNode.forceUpdate();
@@ -265,11 +270,21 @@ export abstract class VConditionalDirective implements VDirective {
 
     /**
      * Clones the original node of the directive's virtual node.
-     * This is used to create a new instance of the node for rendering.
+     * When the source element is a <template>, its children (stored in .content)
+     * are cloned into a <div style="display:contents"> wrapper so that multiple
+     * root nodes can be managed as a single VNode without adding a visible element.
      * @returns The cloned HTMLElement.
      */
     #cloneNode(): HTMLElement {
         const element = this.#vNode.node as HTMLElement;
+
+        if (element instanceof HTMLTemplateElement) {
+            const wrapper = document.createElement('div');
+            wrapper.style.display = 'contents';
+            wrapper.appendChild(element.content.cloneNode(true));
+            return wrapper;
+        }
+
         return element.cloneNode(true) as HTMLElement;
     }
 

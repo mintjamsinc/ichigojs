@@ -2,6 +2,7 @@
 
 /**
  * Represents a reusable component definition.
+ * @deprecated This class is deprecated and will be removed in a future release. Please use the new component registration system instead.
  */
 export class VComponent {
     /**

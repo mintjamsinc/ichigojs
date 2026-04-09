@@ -7,3 +7,7 @@ export { ReactiveProxy } from './ichigo/util/ReactiveProxy';
 
 export { ExpressionUtils } from './ichigo/util/ExpressionUtils';
 
+export { defineComponent } from './ichigo/components/defineComponent';
+export type { IchigoComponentOptions } from './ichigo/components/IchigoComponentOptions';
+export { IchigoElement } from './ichigo/components/IchigoElement';
+

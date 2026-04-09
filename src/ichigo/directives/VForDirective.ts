@@ -577,12 +577,21 @@ export class VForDirective implements VDirective {
 
     /**
      * Clones the original node of the directive's virtual node.
-     * This is used to create a new instance of the node for rendering.
+     * When the source element is a <template>, its children (stored in .content)
+     * are cloned into a <div style="display:contents"> wrapper so that multiple
+     * root nodes can be managed as a single VNode without adding a visible element.
      * @returns The cloned HTMLElement.
      */
     #cloneNode(): HTMLElement {
-        // Clone the original element
         const element = this.#vNode.node as HTMLElement;
+
+        if (element instanceof HTMLTemplateElement) {
+            const wrapper = document.createElement('div');
+            wrapper.style.display = 'contents';
+            wrapper.appendChild(element.content.cloneNode(true));
+            return wrapper;
+        }
+
         return element.cloneNode(true) as HTMLElement;
     }
 
