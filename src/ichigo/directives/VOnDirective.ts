@@ -247,25 +247,29 @@ export class VOnDirective implements VDirective {
         this.#listener = (event: Event) => {
             // Check key modifiers for keyboard events
             if (event instanceof KeyboardEvent) {
-                const keyModifiers = ['enter', 'tab', 'delete', 'esc', 'space', 'up', 'down', 'left', 'right'];
-                const hasKeyModifier = keyModifiers.some(key => this.#modifiers.has(key));
+                // Map of modifier alias -> KeyboardEvent.key values it matches.
+                // Multiple values allow a single modifier to match several physical keys
+                // (e.g. `.delete` matches both Delete and Backspace, matching Vue's behavior).
+                // Multiple aliases pointing to the same key are allowed (e.g. `.esc` / `.escape`).
+                const keyMap: Record<string, string[]> = {
+                    'enter': ['Enter'],
+                    'tab': ['Tab'],
+                    'delete': ['Delete', 'Backspace'],
+                    'esc': ['Escape'],
+                    'escape': ['Escape'],
+                    'space': [' '],
+                    'up': ['ArrowUp'],
+                    'down': ['ArrowDown'],
+                    'left': ['ArrowLeft'],
+                    'right': ['ArrowRight']
+                };
+
+                const hasKeyModifier = Object.keys(keyMap).some(key => this.#modifiers.has(key));
 
                 if (hasKeyModifier) {
-                    const keyMap: Record<string, string> = {
-                        'enter': 'Enter',
-                        'tab': 'Tab',
-                        'delete': 'Delete',
-                        'esc': 'Escape',
-                        'space': ' ',
-                        'up': 'ArrowUp',
-                        'down': 'ArrowDown',
-                        'left': 'ArrowLeft',
-                        'right': 'ArrowRight'
-                    };
-
                     let keyMatched = false;
-                    for (const [modifier, keyValue] of Object.entries(keyMap)) {
-                        if (this.#modifiers.has(modifier) && event.key === keyValue) {
+                    for (const [modifier, keyValues] of Object.entries(keyMap)) {
+                        if (this.#modifiers.has(modifier) && keyValues.includes(event.key)) {
                             keyMatched = true;
                             break;
                         }
