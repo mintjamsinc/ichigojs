@@ -90,10 +90,16 @@ export class VOnDirective implements VDirective {
         }
 
 
-        // Parse the expression to extract identifiers and create the handler wrapper
+        // Parse the expression to extract identifiers and create the handler wrapper.
+        // Event handlers are parsed in script mode so that users can write multi-statement bodies
+        // (e.g. "a=1; b=2"), declarations, and control-flow constructs — matching Vue semantics.
         const expression = context.attribute.value;
         if (expression) {
-            this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(expression, context.vNode.vApplication.functionDependencies);
+            this.#dependentIdentifiers = ExpressionUtils.extractIdentifiers(
+                expression,
+                context.vNode.vApplication.functionDependencies,
+                { asScript: true }
+            );
         }
 
         // Check if this is a lifecycle hook or a regular event
@@ -339,10 +345,11 @@ export class VOnDirective implements VDirective {
                 return originalMethod($ctx);
             }
 
-            // For inline expressions, rewrite to use 'this' context
-            // This allows assignments like "currentTab = 'shop'" to work correctly
-            const rewrittenExpr = this.#rewriteExpression(expression, identifiers);
-            const funcBody = `return (${rewrittenExpr});`;
+            // For inline bodies, rewrite to use 'this' context
+            // This allows assignments like "currentTab = 'shop'" to work correctly.
+            // Script mode allows multi-statement bodies (e.g. "a=1; init()") and control-flow.
+            const rewrittenExpr = this.#rewriteExpression(expression, identifiers, { asScript: true });
+            const funcBody = rewrittenExpr;
             const func = new Function('$ctx', funcBody) as (...args: any[]) => any;
             return func.call(bindings?.raw, $ctx);
         };
@@ -377,12 +384,15 @@ export class VOnDirective implements VDirective {
                 return originalMethod(event, $ctx);
             }
 
-            // For inline expressions, rewrite to use 'this' context
-            // This allows assignments like "currentTab = 'shop'" to work correctly
-            const rewrittenExpr = this.#rewriteExpression(expression, identifiers);
-            const funcBody = `return (${rewrittenExpr});`;
-            const func = new Function('event', '$ctx', funcBody) as (...args: any[]) => any;
-            return func.call(bindings?.raw, event, $ctx);
+            // For inline bodies, rewrite to use 'this' context
+            // This allows assignments like "currentTab = 'shop'" to work correctly.
+            // Script mode allows multi-statement bodies (e.g. "a=1; b=2") and control-flow,
+            // so we emit the rewritten source directly as the function body (no `return (...)`).
+            const rewrittenExpr = this.#rewriteExpression(expression, identifiers, { asScript: true });
+            const funcBody = rewrittenExpr;
+            // '$event' is an alias for 'event' for Vue compatibility
+            const func = new Function('event', '$event', '$ctx', funcBody) as (...args: any[]) => any;
+            return func.call(bindings?.raw, event, event, $ctx);
         };
     }
 
@@ -394,7 +404,7 @@ export class VOnDirective implements VDirective {
      * @param identifiers The list of identifiers that are available in bindings.
      * @returns The rewritten expression.
      */
-    #rewriteExpression(expression: string, identifiers: string[]): string {
-        return ExpressionUtils.rewriteExpression(expression, identifiers);
+    #rewriteExpression(expression: string, identifiers: string[], options?: { asScript?: boolean }): string {
+        return ExpressionUtils.rewriteExpression(expression, identifiers, options);
     }
 }

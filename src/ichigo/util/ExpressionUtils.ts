@@ -11,11 +11,22 @@ export class ExpressionUtils {
      * Extracts variable and function names used in the expression.
      * @param expression The expression string to analyze.
      * @param functionDependencies A dictionary mapping function names to their dependencies.
+     * @param options Optional parsing options.
+     *   - asScript: If true, parse the input as a Script (allows multi-statement source with semicolons,
+     *     declarations, control-flow, etc.). If false/omitted, parse as a single expression (the default,
+     *     for backward compatibility with interpolation and binding directives).
      * @returns An array of identifier names.
      */
-    static extractIdentifiers(expression: string, functionDependencies: Record<string, string[]>): string[] {
+    static extractIdentifiers(
+        expression: string,
+        functionDependencies: Record<string, string[]>,
+        options?: { asScript?: boolean }
+    ): string[] {
         const identifiers = new Set<string>();
-        const ast = acorn.parse(`(${expression})`, { ecmaVersion: "latest" });
+        // In expression mode we wrap in parens so acorn parses the source as a single expression.
+        // In script mode we parse as a Program so that multi-statement bodies (e.g. "a=1; b=2") work.
+        const source = options?.asScript ? expression : `(${expression})`;
+        const ast = acorn.parse(source, { ecmaVersion: "latest" });
 
         // Use walk.full instead of walk.simple to visit ALL nodes including assignment LHS
         walk.full(ast, (node: any) => {
@@ -266,10 +277,14 @@ export class ExpressionUtils {
      * @param identifiers The list of identifiers that are available in bindings.
      * @returns The rewritten expression.
      */
-    static rewriteExpression(expression: string, identifiers: string[]): string {
+    static rewriteExpression(
+        expression: string,
+        identifiers: string[],
+        options?: { asScript?: boolean }
+    ): string {
         // Reserved words and built-in objects that should not be prefixed with 'this.'
         const reserved = new Set([
-            'event', '$ctx', '$newValue',
+            'event', '$event', '$ctx', '$newValue',
             'true', 'false', 'null', 'undefined', 'NaN', 'Infinity',
             'Math', 'Date', 'String', 'Number', 'Boolean', 'Array', 'Object',
             'JSON', 'console', 'window', 'document', 'navigator',
@@ -282,7 +297,7 @@ export class ExpressionUtils {
         // identifiers that are used (right-hand side), not assigned to (left-hand side)
         let allIdentifiersInExpression: string[];
         try {
-            allIdentifiersInExpression = ExpressionUtils.extractIdentifiers(expression, {});
+            allIdentifiersInExpression = ExpressionUtils.extractIdentifiers(expression, {}, options);
         } catch (error) {
             console.warn('[ichigo.js] Failed to extract identifiers from expression:', expression, error);
             return expression;
@@ -308,7 +323,26 @@ export class ExpressionUtils {
             // Build a map of positions to replace: { start: number, end: number, name: string }[]
             const replacements: { start: number, end: number, name: string }[] = [];
 
-            const parsedAst = acorn.parse(`(${expression})`, { ecmaVersion: 'latest' });
+            // In script mode we must not wrap in parens (that would make multi-statement input invalid).
+            // Offsets from the parser therefore refer directly to the original expression, so no shift.
+            const asScript = options?.asScript === true;
+            const source = asScript ? expression : `(${expression})`;
+            const offsetShift = asScript ? 0 : 1;
+            const parsedAst = acorn.parse(source, { ecmaVersion: 'latest' });
+
+            // Track identifiers that are locally declared within the handler body (let/const/var, function
+            // params) so we don't rewrite them to `this.xxx`. Only relevant in script mode, where the user
+            // can write declarations; in expression mode there are no declarations to track.
+            const locallyDeclared = new Set<string>();
+            if (asScript) {
+                walk.full(parsedAst, (node: any) => {
+                    if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier') {
+                        locallyDeclared.add(node.id.name);
+                    } else if (node.type === 'FunctionDeclaration' && node.id?.type === 'Identifier') {
+                        locallyDeclared.add(node.id.name);
+                    }
+                });
+            }
 
             // Collect all identifier nodes that should be replaced
             // Use walk.fullAncestor to visit ALL nodes (including assignment LHS) while tracking ancestors
@@ -319,6 +353,11 @@ export class ExpressionUtils {
 
                 // Skip if not in our identifier set
                 if (!bindingIdentifiers.has(node.name)) {
+                    return;
+                }
+
+                // Skip identifiers that were declared locally in the handler body
+                if (locallyDeclared.has(node.name)) {
                     return;
                 }
 
@@ -334,10 +373,10 @@ export class ExpressionUtils {
                     }
                 }
 
-                // Add to replacements list (adjust for the wrapping parentheses)
+                // Add to replacements list (adjust for the wrapping parentheses in expression mode)
                 replacements.push({
-                    start: node.start - 1,
-                    end: node.end - 1,
+                    start: node.start - offsetShift,
+                    end: node.end - offsetShift,
                     name: node.name
                 });
             });
