@@ -179,6 +179,18 @@ export class VDirectiveManager {
         // Other directives (@click, :class, etc.) will be processed on the cloned/rendered elements.
         const attributes: Attr[] = [];
         if (element.hasAttribute(StandardDirectiveName.V_FOR)) {
+            // <template v-for v-if> is not supported: v-for clones .content (a
+            // DocumentFragment), so the v-if attribute on the <template> itself
+            // is lost. Warn the developer so silent failure is avoided.
+            if (element instanceof HTMLTemplateElement && element.hasAttribute(StandardDirectiveName.V_IF)) {
+                console.warn(
+                    '[ichigo.js] <template> cannot combine v-for and v-if. ' +
+                    'The v-if will be ignored. Move v-if to an inner element, ' +
+                    'or replace <template> with a regular element.',
+                    element
+                );
+            }
+
             // For v-for template element: only process v-for and :key
             // Other attributes will be processed when child VNodes are created for cloned elements
             attributes.push(element.getAttributeNode(StandardDirectiveName.V_FOR)!);
