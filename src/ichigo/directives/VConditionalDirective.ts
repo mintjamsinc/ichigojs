@@ -8,6 +8,7 @@ import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { StandardDirectiveName } from "./StandardDirectiveName";
 import { ExpressionEvaluator } from "../util/ExpressionEvaluator";
+import { VFragmentRange } from "../util/VFragmentRange";
 
 /**
  * Base class for conditional directives such as v-if, v-else-if, and v-else.
@@ -246,20 +247,7 @@ export abstract class VConditionalDirective implements VDirective {
         const nextSibling = this.#vNode.anchorNode?.nextSibling ?? null;
 
         if (clone.nodeType === Node.DOCUMENT_FRAGMENT_NODE && anchorParent) {
-            const startMarker = document.createComment('#vif-fragment-start');
-            const endMarker = document.createComment('#vif-fragment-end');
-
-            if (nextSibling) {
-                anchorParent.insertBefore(startMarker, nextSibling);
-            } else {
-                anchorParent.appendChild(startMarker);
-            }
-            anchorParent.insertBefore(endMarker, startMarker.nextSibling);
-            anchorParent.insertBefore(clone, endMarker);
-
-            // Store markers for later removal
-            vNode.userData.set('vif_fragment_start', startMarker);
-            vNode.userData.set('vif_fragment_end', endMarker);
+            vNode.fragmentRange = VFragmentRange.insert(anchorParent, nextSibling, 'vif-fragment', clone);
 
             this.#renderedVNode = vNode;
             this.#renderedVNode.forceUpdate();
@@ -286,18 +274,11 @@ export abstract class VConditionalDirective implements VDirective {
         // Destroy VNode first (calls @unmount hooks while DOM is still accessible)
         this.#renderedVNode.destroy();
 
-        // Then remove from DOM. Handle fragment markers if present
-        const startMarker = this.#renderedVNode.userData.get?.('vif_fragment_start');
-        const endMarker = this.#renderedVNode.userData.get?.('vif_fragment_end');
-        if (startMarker && endMarker && startMarker.parentNode === endMarker.parentNode && startMarker.parentNode) {
-            const parentNode = startMarker.parentNode;
-            let node: Node | null = startMarker;
-            while (node) {
-                const next = node.nextSibling;
-                parentNode.removeChild(node);
-                if (node === endMarker) break;
-                node = next;
-            }
+        // Then remove from DOM. Handle fragment ranges if present.
+        const range = this.#renderedVNode.fragmentRange;
+        if (range) {
+            range.remove();
+            this.#renderedVNode.fragmentRange = undefined;
             this.#renderedVNode = undefined;
             return;
         }

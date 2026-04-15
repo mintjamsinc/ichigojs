@@ -7,6 +7,7 @@ import { VDirectiveManager } from "./directives/VDirectiveManager";
 import { VNodeInit } from "./VNodeInit";
 import { VTextEvaluator } from "./VTextEvaluator";
 import { ReactiveProxy } from "./util/ReactiveProxy";
+import { VFragmentRange } from "./util/VFragmentRange";
 
 /**
  * Represents a virtual node in the virtual DOM.
@@ -109,6 +110,14 @@ export class VNode {
      * VNode is destroyed.
      */
     #userData?: Map<string, any>;
+
+    /**
+     * When this VNode wraps a <template>-derived DocumentFragment that has been
+     * expanded into the DOM, this range tracks the start/end boundary of the
+     * expanded content. Directives such as v-for and v-if use this to move or
+     * remove the entire fragment atomically.
+     */
+    #fragmentRange?: VFragmentRange;
 
     /**
      * Creates an instance of the virtual node.
@@ -385,6 +394,19 @@ export class VNode {
             this.#userData = new Map();
         }
         return this.#userData;
+    }
+
+    /**
+     * The DOM range that bounds this VNode's expanded fragment content, if any.
+     * Set by directives that expand a <template> into a DocumentFragment
+     * (currently v-for and v-if).
+     */
+    get fragmentRange(): VFragmentRange | undefined {
+        return this.#fragmentRange;
+    }
+
+    set fragmentRange(range: VFragmentRange | undefined) {
+        this.#fragmentRange = range;
     }
 
     /**

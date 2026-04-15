@@ -8,6 +8,7 @@ import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { VBindingsPreparer } from "../VBindingsPreparer";
 import { ExpressionEvaluator } from "../util/ExpressionEvaluator";
+import { VFragmentRange } from "../util/VFragmentRange";
 
 /**
  * Directive for rendering a list of items using a loop.
@@ -207,6 +208,12 @@ export class VForDirective implements VDirective {
 
         // Then remove DOM nodes
         for (const vNode of this.#renderedItems.values()) {
+            const range = vNode.fragmentRange;
+            if (range) {
+                range.remove();
+                vNode.fragmentRange = undefined;
+                continue;
+            }
             if (vNode.node.parentNode) {
                 vNode.node.parentNode.removeChild(vNode.node);
             }
@@ -296,21 +303,12 @@ export class VForDirective implements VDirective {
             }
         }
 
-        // Then remove from DOM. Handle both Element nodes and fragment-marked ranges.
+        // Then remove from DOM. Handle both Element nodes and fragment ranges.
         for (const vNode of nodesToRemove) {
-            // If this VNode stored fragment markers, remove the range between them
-            const startMarker = vNode.userData.get?.('vfor_fragment_start');
-            const endMarker = vNode.userData.get?.('vfor_fragment_end');
-            if (startMarker && endMarker && startMarker.parentNode === endMarker.parentNode && startMarker.parentNode) {
-                const parentNode = startMarker.parentNode;
-                let node: Node | null = startMarker;
-                // Remove nodes from startMarker up to and including endMarker
-                while (node) {
-                    const next = node.nextSibling;
-                    parentNode.removeChild(node);
-                    if (node === endMarker) break;
-                    node = next;
-                }
+            const range = vNode.fragmentRange;
+            if (range) {
+                range.remove();
+                vNode.fragmentRange = undefined;
                 continue;
             }
 
@@ -357,28 +355,15 @@ export class VForDirective implements VDirective {
                     dependentIdentifiers: depIds,
                 });
 
-                // If clone is a DocumentFragment, insert it between start/end comment markers
+                // If clone is a DocumentFragment, wrap it in a VFragmentRange so the
+                // entire expanded content moves/removes as one atomic unit.
                 if (clone.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
-                    const startMarker = document.createComment('#vfor-fragment-start');
-                    const endMarker = document.createComment('#vfor-fragment-end');
-
-                    // Insert start and end markers and the fragment's children between them
-                    if (prevNode.nextSibling) {
-                        parent.insertBefore(startMarker, prevNode.nextSibling);
-                    } else {
-                        parent.appendChild(startMarker);
-                    }
-                    parent.insertBefore(endMarker, startMarker.nextSibling);
-                    parent.insertBefore(clone, endMarker);
-
-                    // Store markers on the VNode for later removal/movement
-                    vNode.userData.set('vfor_fragment_start', startMarker);
-                    vNode.userData.set('vfor_fragment_end', endMarker);
+                    const range = VFragmentRange.insert(parent, prevNode.nextSibling, 'vfor-fragment', clone);
+                    vNode.fragmentRange = range;
 
                     newRenderedItems.set(key, vNode);
                     vNode.forceUpdate();
-                    // Use endMarker as prevNode for subsequent insertions
-                    prevNode = endMarker;
+                    prevNode = range.lastNode;
                     continue;
                 }
 
@@ -401,23 +386,27 @@ export class VForDirective implements VDirective {
                 // Update bindings
                 this.#updateItemBindings(vNode, context);
 
-                // Determine the actual node in DOM: prefer fragment end marker, then anchor node, then vNode.node
-                const fragmentEnd = vNode.userData.get?.('vfor_fragment_end');
-                const actualNode = fragmentEnd || vNode.anchorNode || vNode.node;
-
-                // Move to correct position if needed
-                if (prevNode.nextSibling !== actualNode) {
-                    if (prevNode.nextSibling) {
-                        parent.insertBefore(actualNode, prevNode.nextSibling);
-                    } else {
-                        parent.appendChild(actualNode);
+                // For fragment-backed iterations, move the entire range atomically.
+                // For single-node iterations, move just the node.
+                const range = vNode.fragmentRange;
+                if (range) {
+                    if (prevNode.nextSibling !== range.firstNode) {
+                        range.moveBefore(parent, prevNode.nextSibling);
+                    }
+                } else {
+                    const actualNode = vNode.anchorNode || vNode.node;
+                    if (prevNode.nextSibling !== actualNode) {
+                        if (prevNode.nextSibling) {
+                            parent.insertBefore(actualNode, prevNode.nextSibling);
+                        } else {
+                            parent.appendChild(actualNode);
+                        }
                     }
                 }
             }
 
-            // Use fragment end marker > anchor node > vNode.node as prevNode
-            const fragmentEndForPrev = vNode.userData.get?.('vfor_fragment_end');
-            prevNode = fragmentEndForPrev || vNode.anchorNode || vNode.node;
+            // Advance prevNode to this iteration's last DOM node
+            prevNode = vNode.fragmentRange?.lastNode ?? vNode.anchorNode ?? vNode.node;
         }
 
         // Update rendered items map
