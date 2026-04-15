@@ -219,6 +219,37 @@ List rendering:
 </ul>
 ```
 
+##### Using `<template>` as a fragment
+
+`v-for` and `v-if` can be placed on a `<template>` element to render
+multiple nodes per iteration without introducing a wrapper element:
+
+```html
+<dl>
+  <template v-for="item in items" :key="item.id">
+    <dt>{{ item.term }}</dt>
+    <dd>{{ item.description }}</dd>
+  </template>
+</dl>
+```
+
+`<template>` supports **either** `v-for` **or** `v-if` per element, but
+**not both on the same `<template>`**. If you need both, either:
+
+1. Nest them on separate `<template>` / element levels:
+    ```html
+    <template v-for="item in items" :key="item.id">
+      <div v-if="item.visible">{{ item.name }}</div>
+    </template>
+    ```
+2. Use a regular element instead of `<template>`:
+    ```html
+    <div v-for="item in items" v-if="item.visible" :key="item.id">...</div>
+    ```
+
+Combining `v-for` and `v-if` on the same element works for all
+non-`<template>` tags (v-for is evaluated first, v-if per iteration).
+
 #### v-show
 
 Toggle visibility:
