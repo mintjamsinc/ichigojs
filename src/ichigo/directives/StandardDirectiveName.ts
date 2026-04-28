@@ -31,5 +31,7 @@ export enum StandardDirectiveName {
     /** Raw HTML content directive. */
     V_HTML = "v-html",
     /** Text content directive. */
-    V_TEXT = "v-text"
+    V_TEXT = "v-text",
+    /** Focus management directive. */
+    V_FOCUS = "v-focus"
 }

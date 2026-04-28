@@ -18,6 +18,7 @@ import { VPerformanceDirective } from "./VPerformanceDirective";
 import { VResizeDirective } from "./VResizeDirective";
 import { VShowDirective } from "./VShowDirective";
 import { VTextDirective } from "./VTextDirective";
+import { VFocusDirective } from "./VFocusDirective";
 
 /**
  * The directive parser for standard directives.
@@ -60,7 +61,10 @@ export class VStandardDirectiveParser implements VDirectiveParser {
             // v-html
             context.attribute.name === StandardDirectiveName.V_HTML ||
             // v-text
-            context.attribute.name === StandardDirectiveName.V_TEXT) {
+            context.attribute.name === StandardDirectiveName.V_TEXT ||
+            // v-focus, v-focus.<modifier>
+            context.attribute.name === StandardDirectiveName.V_FOCUS ||
+            context.attribute.name.startsWith(StandardDirectiveName.V_FOCUS + ".")) {
             return true;
         }
 
@@ -138,6 +142,12 @@ export class VStandardDirectiveParser implements VDirectiveParser {
         // v-text
         if (context.attribute.name === StandardDirectiveName.V_TEXT) {
             return new VTextDirective(context);
+        }
+
+        // v-focus, v-focus.<modifier>
+        if (context.attribute.name === StandardDirectiveName.V_FOCUS ||
+            context.attribute.name.startsWith(StandardDirectiveName.V_FOCUS + ".")) {
+            return new VFocusDirective(context);
         }
 
         throw new Error(`The attribute "${context.attribute.name}" cannot be parsed by ${this.name}.`);
