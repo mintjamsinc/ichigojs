@@ -3,7 +3,7 @@
 import { ExpressionUtils } from "./util/ExpressionUtils";
 import { VLogger } from "./util/VLogger";
 import { VLogManager } from "./util/VLogManager";
-import { VApplicationOptions } from "./VApplicationOptions";
+import { VApplicationOptions, VComputedDefinition } from "./VApplicationOptions";
 import { VBindings } from "./VBindings";
 import { VNode } from "./VNode";
 import { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
@@ -102,8 +102,15 @@ export class VApplication {
         // Analyze function dependencies
         this.#functionDependencies = ExpressionUtils.analyzeFunctionDependencies(options.methods || {});
 
-        // Analyze computed dependencies
-        this.#computedDependencies = ExpressionUtils.analyzeFunctionDependencies(options.computed || {});
+        // Analyze computed dependencies based on getter functions only.
+        // Writable computeds (defined as { get, set }) contribute their getter for dependency analysis.
+        const computedGetters: Record<string, Function> = {};
+        if (options.computed) {
+            for (const [key, def] of Object.entries(options.computed)) {
+                computedGetters[key] = VApplication.#getComputedGetter(def);
+            }
+        }
+        this.#computedDependencies = ExpressionUtils.analyzeFunctionDependencies(computedGetters);
 
         // Initialize watcher manager
         this.#watcher = new VWatcher(this.#logger);
@@ -266,6 +273,28 @@ export class VApplication {
     }
 
     /**
+     * Extracts the getter function from a computed property definition.
+     * Supports both bare function form and { get, set } object form.
+     */
+    static #getComputedGetter(def: VComputedDefinition): () => unknown {
+        if (typeof def === 'function') {
+            return def;
+        }
+        return def.get;
+    }
+
+    /**
+     * Extracts the setter function from a computed property definition, if any.
+     * Returns undefined for read-only (function-form) computed properties.
+     */
+    static #getComputedSetter(def: VComputedDefinition): ((value: any) => void) | undefined {
+        if (typeof def === 'function') {
+            return undefined;
+        }
+        return def.set;
+    }
+
+    /**
      * Computes dependent identifiers for a given computed property and value.
      * This is used to track dependencies in directives like v-for.
      * @param computedName The name of the computed property.
@@ -330,6 +359,21 @@ export class VApplication {
             if (data && typeof data === 'object') {
                 for (const [key, value] of Object.entries(data)) {
                     this.#bindings.set(key, value);
+                }
+            }
+        }
+
+        // Register setters for writable computed properties so that assignments to them
+        // (e.g. via v-model or direct mutation through bindings.raw) route through the user-provided
+        // setter, which typically writes back to underlying reactive properties.
+        if (this.#options.computed) {
+            for (const [key, def] of Object.entries(this.#options.computed)) {
+                const setter = VApplication.#getComputedSetter(def);
+                if (setter) {
+                    const bindings = this.#bindings;
+                    this.#bindings.registerWritableComputed(key, (value: any) => {
+                        setter.call(bindings.raw, value);
+                    });
                 }
             }
         }
@@ -529,7 +573,7 @@ export class VApplication {
             }
 
             // Now compute this property
-            const computedFn = this.#options.computed![key];
+            const computedFn = VApplication.#getComputedGetter(this.#options.computed![key]);
             try {
                 const oldValue = this.#bindings?.get(key);
                 const newValue = computedFn.call(this.#bindings?.raw);

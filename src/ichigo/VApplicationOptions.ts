@@ -3,6 +3,17 @@
 import { LogLevel } from "./util/LogLevel";
 import { WatcherDictionary } from "./VWatcherOptions";
 
+/**
+ * Definition of a computed property. Either a getter function, or an object exposing both
+ * a getter and a setter (writable computed).
+ */
+export type VComputedDefinition =
+    | (() => unknown)
+    | {
+        get: () => unknown;
+        set: (value: any) => void;
+    };
+
 export interface VApplicationOptions {
     /**
      * A function that returns the initial data for the application.
@@ -12,10 +23,15 @@ export interface VApplicationOptions {
 
     /**
      * A dictionary of computed properties for the application.
-     * Each key is the name of the computed property, and the value is a function that computes its value.
+     * Each key is the name of the computed property, and the value is either:
+     *  - a getter function that computes its value (read-only computed), or
+     *  - an object `{ get, set }` that exposes both a getter and a setter (writable computed).
+     *
+     * Writable computed properties allow expressions like `v-model="myComputed"` to assign through
+     * the `set` function, while reads still go through `get`.
      */
     computed?: {
-        [key: string]: () => unknown;
+        [key: string]: VComputedDefinition;
     };
 
     /**

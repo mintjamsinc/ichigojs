@@ -53,6 +53,14 @@ export class VBindings {
 	#localAliases: Map<string, string> = new Map();
 
 	/**
+	 * Setters for writable computed properties. When a key registered here is assigned
+	 * through the bindings proxy (e.g. via v-model or `bindings.set`), the setter is invoked
+	 * instead of writing directly to the local store. The cached value of the computed property
+	 * is updated by the recompute cycle through `setSilent`, which bypasses this routing.
+	 */
+	#writableComputeds: Map<string, (value: any) => void> = new Map();
+
+	/**
 	 * Creates a new instance of VBindings.
 	 * @param parent The parent bindings, if any.
 	 */
@@ -72,6 +80,15 @@ export class VBindings {
 				return this.#parent?.raw[key as string];
 			},
 			set: (obj, key, value) => {
+				// If this key is a writable computed, route the assignment through its setter.
+				// `setSilent` (used to update the cached value during recompute) sets `suppressOnChange`,
+				// which bypasses this routing so the cached value can be written directly.
+				if (!this.#suppressOnChange && this.#writableComputeds.has(key as string)) {
+					const setter = this.#writableComputeds.get(key as string)!;
+					setter(value);
+					return true;
+				}
+
 				let target = obj;
 				if (!Reflect.has(target, key)) {
 					for (let parent = this.#parent; parent; parent = parent.#parent) {
@@ -272,6 +289,17 @@ export class VBindings {
 		} finally {
 			this.#suppressOnChange = false;
 		}
+	}
+
+	/**
+	 * Registers a setter for a writable computed property. When the given key is assigned
+	 * through the bindings proxy, the setter will be invoked instead of writing directly to
+	 * the local store.
+	 * @param key The computed property name.
+	 * @param setter The setter function to invoke on assignment.
+	 */
+	registerWritableComputed(key: string, setter: (value: any) => void): void {
+		this.#writableComputeds.set(key, setter);
 	}
 
 	/**
