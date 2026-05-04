@@ -64,9 +64,6 @@ lib-cov/
 *.iml
 # End of IDE settings
 
-# Claude Code settings
-.claude/
-
 # Markdown files (except README.md)
 *.md
 !README.md
