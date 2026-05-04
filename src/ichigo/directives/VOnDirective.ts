@@ -19,6 +19,10 @@ import { VDOMUpdater } from "../VDOMUpdater";
  * The `v-on` directive supports event modifiers such as `.stop`, `.prevent`, `.capture`, `.self`, and `.once` to modify the behavior of the event listener.
  * For example, `v-on:click.stop="handleClick"` will stop the event from propagating up the DOM tree.
  *
+ * Key modifiers (KeyboardEvent): `.enter`, `.tab`, `.delete` (Delete/Backspace), `.esc` / `.escape`, `.space`, `.up`, `.down`, `.left`, `.right`.
+ * Mouse button modifiers (MouseEvent): `.left`, `.middle`, `.right`.
+ * System modifiers (KeyboardEvent and MouseEvent): `.shift`, `.ctrl`, `.alt`, `.meta`, plus `.exact` to require that no other system modifiers are held.
+ *
  * Additionally, this directive supports lifecycle hooks:
  *     @mount="onMount"       - Called before the VNode is mounted to the DOM element
  *     @mounted="onMounted"   - Called after the VNode is mounted to the DOM element
@@ -243,14 +247,15 @@ export class VOnDirective implements VDirective {
         const useCapture = this.#modifiers.has('capture');
         const isOnce = this.#modifiers.has('once');
 
+        // System modifier keys (held during the event) shared by KeyboardEvent and MouseEvent.
+        const systemModifiers = ['shift', 'ctrl', 'alt', 'meta'] as const;
+
         // Create the event listener function
         this.#listener = (event: Event) => {
-            // Check key modifiers for keyboard events
+            // Check key modifiers for keyboard events.
+            // The `.left` / `.right` aliases here mean ArrowLeft / ArrowRight; the same tokens
+            // map to mouse buttons further below, dispatched by event type to avoid ambiguity.
             if (event instanceof KeyboardEvent) {
-                // Map of modifier alias -> KeyboardEvent.key values it matches.
-                // Multiple values allow a single modifier to match several physical keys
-                // (e.g. `.delete` matches both Delete and Backspace, matching Vue's behavior).
-                // Multiple aliases pointing to the same key are allowed (e.g. `.esc` / `.escape`).
                 const keyMap: Record<string, string[]> = {
                     'enter': ['Enter'],
                     'tab': ['Tab'],
@@ -278,6 +283,52 @@ export class VOnDirective implements VDirective {
                     // If key modifier specified but key doesn't match, return early
                     if (!keyMatched) {
                         return;
+                    }
+                }
+            }
+
+            // Check mouse button modifiers for mouse events.
+            // `.left` / `.middle` / `.right` map to MouseEvent.button values 0 / 1 / 2.
+            if (event instanceof MouseEvent) {
+                const buttonMap: Record<string, number> = {
+                    'left': 0,
+                    'middle': 1,
+                    'right': 2
+                };
+
+                const hasButtonModifier = Object.keys(buttonMap).some(b => this.#modifiers.has(b));
+
+                if (hasButtonModifier) {
+                    let buttonMatched = false;
+                    for (const [modifier, buttonValue] of Object.entries(buttonMap)) {
+                        if (this.#modifiers.has(modifier) && event.button === buttonValue) {
+                            buttonMatched = true;
+                            break;
+                        }
+                    }
+
+                    if (!buttonMatched) {
+                        return;
+                    }
+                }
+            }
+
+            // Check system modifier keys (shift / ctrl / alt / meta) and `.exact`.
+            // These properties exist on both KeyboardEvent and MouseEvent.
+            if (event instanceof KeyboardEvent || event instanceof MouseEvent) {
+                // Required system modifiers must be held.
+                for (const mod of systemModifiers) {
+                    if (this.#modifiers.has(mod) && !(event as any)[`${mod}Key`]) {
+                        return;
+                    }
+                }
+
+                // `.exact` rejects events with extra system modifiers held that weren't listed.
+                if (this.#modifiers.has('exact')) {
+                    for (const mod of systemModifiers) {
+                        if ((event as any)[`${mod}Key`] && !this.#modifiers.has(mod)) {
+                            return;
+                        }
                     }
                 }
             }

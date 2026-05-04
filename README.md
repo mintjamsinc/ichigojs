@@ -277,7 +277,27 @@ Event handling with modifiers:
 <div @click.stop="handleClick">Stop propagation</div>
 ```
 
-Supported modifiers: `.stop`, `.prevent`, `.capture`, `.self`, `.once`
+Event modifiers: `.stop`, `.prevent`, `.capture`, `.self`, `.once`
+
+Key modifiers (KeyboardEvent): `.enter`, `.tab`, `.delete` (matches Delete/Backspace), `.esc` / `.escape`, `.space`, `.up`, `.down`, `.left`, `.right`
+
+Mouse button modifiers (MouseEvent): `.left`, `.middle`, `.right`
+
+System modifier keys (KeyboardEvent and MouseEvent): `.shift`, `.ctrl`, `.alt`, `.meta`. Add `.exact` to require that no other system modifiers are held.
+
+```html
+<!-- Shift + Click -->
+<button @click.shift="onShiftClick">Shift+Click</button>
+
+<!-- Right-click without bringing up the browser menu -->
+<div @contextmenu.prevent="onMenu">Right-click me</div>
+
+<!-- Middle-click -->
+<a @mousedown.middle="onMiddleClick">Middle-click</a>
+
+<!-- Ctrl+Click only (no other modifiers held) -->
+<button @click.ctrl.exact="onCtrlClickOnly">Ctrl+Click only</button>
+```
 
 **Event Handlers with Context:**
 
