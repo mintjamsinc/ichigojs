@@ -348,18 +348,25 @@ export class VBindDirective implements VDirective {
      * Returns true when the target is a custom element and the binding should be
      * delivered as a property rather than an HTML attribute.
      *
-     * Two conditions trigger property delivery:
+     * Three conditions trigger property delivery:
      *  1. The value is an object or array — serialising these to a string attribute
      *     would lose type information.
      *  2. The element exposes a matching property accessor (e.g. a prop declared via
      *     defineComponent), even when the value is a primitive.
+     *  3. The element declares a matching prop in its static _props (case-insensitive
+     *     and kebab-case → camelCase tolerant), so primitive values reach the
+     *     reactive binding via the generated setter instead of being lost as a
+     *     plain HTML attribute that no attributeChangedCallback observes.
      */
     #isCustomElementProperty(element: HTMLElement, name: string, value: any): boolean {
         if (!element.tagName.includes('-')) {
             return false;
         }
         const isObjectOrArray = Array.isArray(value) || (typeof value === 'object' && value !== null);
-        return isObjectOrArray || name in element;
+        if (isObjectOrArray || name in element) {
+            return true;
+        }
+        return this.#findDeclaredProp(element, name) !== undefined;
     }
 
     /**
@@ -376,22 +383,26 @@ export class VBindDirective implements VDirective {
         if (name in element) {
             return name;
         }
+        return this.#findDeclaredProp(element, name) ?? name;
+    }
 
-        // Check declared _props from defineComponent / IchigoElement
+    /**
+     * Looks up a declared prop on a custom element constructor whose name matches
+     * the given attribute name, treating the comparison as case-insensitive and
+     * tolerant of kebab-case → camelCase conversion.  Returns the canonical prop
+     * name (as declared) when a match is found, or undefined otherwise.
+     */
+    #findDeclaredProp(element: HTMLElement, name: string): string | undefined {
         const props: string[] | undefined = (element.constructor as any)._props;
-        if (Array.isArray(props)) {
-            const lowerName = name.toLowerCase();
-            const camelName = this.#kebabToCamel(lowerName);
-            const match = props.find(p => {
-                const lowerProp = p.toLowerCase();
-                return lowerProp === lowerName || lowerProp === camelName.toLowerCase() || p === camelName;
-            });
-            if (match) {
-                return match;
-            }
+        if (!Array.isArray(props)) {
+            return undefined;
         }
-
-        return name;
+        const lowerName = name.toLowerCase();
+        const camelLower = this.#kebabToCamel(lowerName).toLowerCase();
+        return props.find(p => {
+            const lowerProp = p.toLowerCase();
+            return lowerProp === lowerName || lowerProp === camelLower;
+        });
     }
 
     /**
