@@ -367,7 +367,9 @@ export class VBindDirective implements VDirective {
      * (lowercased) HTML attribute name.  HTML attributes are always lowercase,
      * but custom element props are typically camelCase.  This method checks the
      * element's declared _props (set by defineComponent) for a case-insensitive
-     * match, falling back to scanning the prototype's own property descriptors.
+     * match against both the raw attribute name and its kebab-case → camelCase
+     * conversion (so `user-name` resolves to `userName`), falling back to the
+     * original name when no match is found.
      */
     #resolveCustomElementPropertyName(element: HTMLElement, name: string): string {
         // Fast path: exact match already exists
@@ -379,13 +381,24 @@ export class VBindDirective implements VDirective {
         const props: string[] | undefined = (element.constructor as any)._props;
         if (Array.isArray(props)) {
             const lowerName = name.toLowerCase();
-            const match = props.find(p => p.toLowerCase() === lowerName);
+            const camelName = this.#kebabToCamel(lowerName);
+            const match = props.find(p => {
+                const lowerProp = p.toLowerCase();
+                return lowerProp === lowerName || lowerProp === camelName.toLowerCase() || p === camelName;
+            });
             if (match) {
                 return match;
             }
         }
 
         return name;
+    }
+
+    /**
+     * Converts kebab-case to camelCase (e.g. `user-name` → `userName`).
+     */
+    #kebabToCamel(str: string): string {
+        return str.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
     }
 
     /**
