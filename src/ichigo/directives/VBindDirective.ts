@@ -177,6 +177,14 @@ export class VBindDirective implements VDirective {
     }
 
     /**
+     * Evaluates the bound expression and returns the current value.
+     * Returns undefined when no evaluator is available (e.g., empty expression).
+     */
+    evaluate(): any {
+        return this.#evaluator?.evaluate();
+    }
+
+    /**
      * @inheritdoc
      */
     get onMount(): (() => void) | undefined {

@@ -112,15 +112,13 @@ export class VModelDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#evaluator?.dependentIdentifiers ?? [];
-
-        // Create and return the DOM updater
+        const self = this;
         const updater: VDOMUpdater = {
             get dependentIdentifiers(): string[] {
-                return identifiers;
+                return self.#collectDependentIdentifiers();
             },
             applyToDOM: () => {
-                this.#render();
+                self.#render();
             }
         };
         return updater;
@@ -137,7 +135,30 @@ export class VModelDirective implements VDirective {
      * @inheritdoc
      */
     get dependentIdentifiers(): string[] {
-        return this.#evaluator?.dependentIdentifiers ?? [];
+        return this.#collectDependentIdentifiers();
+    }
+
+    /**
+     * Collects identifiers this directive's render depends on. For checkboxes
+     * this includes the v-model expression itself plus the expressions bound to
+     * `:value`, `:true-value`, and `:false-value`, since the rendered checked
+     * state changes when any of these change.
+     */
+    #collectDependentIdentifiers(): string[] {
+        const ids = new Set<string>(this.#evaluator?.dependentIdentifiers ?? []);
+
+        const element = this.#vNode.node as HTMLElement;
+        if (element instanceof HTMLInputElement && element.type === 'checkbox') {
+            const manager = this.#vNode.directiveManager;
+            for (const attrName of ['value', 'true-value', 'false-value']) {
+                const bindDirective = manager?.findBindDirective(attrName);
+                if (bindDirective) {
+                    bindDirective.dependentIdentifiers.forEach(id => ids.add(id));
+                }
+            }
+        }
+
+        return Array.from(ids);
     }
 
     /**
@@ -228,7 +249,7 @@ export class VModelDirective implements VDirective {
         // Update the element based on its type
         if (element instanceof HTMLInputElement) {
             if (element.type === 'checkbox') {
-                element.checked = !!value;
+                this.#renderCheckbox(element, value);
             } else if (element.type === 'radio') {
                 // Prefer the original typed value stored by VBindDirective (:value binding)
                 // to avoid type coercion issues (e.g., boolean false vs string "false").
@@ -260,7 +281,7 @@ export class VModelDirective implements VDirective {
             // Get the new value based on element type
             if (target instanceof HTMLInputElement) {
                 if (target.type === 'checkbox') {
-                    newValue = target.checked;
+                    newValue = this.#computeCheckboxNewValue(target);
                 } else if (target.type === 'radio') {
                     // Prefer the original typed value stored by VBindDirective (:value binding)
                     // to preserve the type on write-back (e.g., boolean false, number 0).
@@ -274,14 +295,118 @@ export class VModelDirective implements VDirective {
                 newValue = target.value;
             }
 
-            // Apply modifiers to the value
-            newValue = this.#applyModifiers(newValue);
+            // Apply modifiers to the value (skip for checkboxes: their value
+            // is either boolean, a custom true/false value, or an array, none
+            // of which should be coerced by .trim or .number).
+            const isCheckbox = target instanceof HTMLInputElement && target.type === 'checkbox';
+            if (!isCheckbox) {
+                newValue = this.#applyModifiers(newValue);
+            }
 
             // Update the binding
             this.#updateBinding(newValue);
         };
 
         element.addEventListener(eventName, this.#listener);
+    }
+
+    /**
+     * Renders a checkbox in one of three modes (Vue-compatible):
+     *   1. Array binding: the bound value is an array; the checkbox is checked
+     *      when its element-value is a member of that array.
+     *   2. true-value/false-value binding: when `:true-value` (and optionally
+     *      `:false-value`) is provided via v-bind, the checkbox is checked
+     *      when the bound value strictly equals the resolved true-value.
+     *   3. Boolean binding (default): the bound value is coerced to boolean.
+     */
+    #renderCheckbox(element: HTMLInputElement, value: any): void {
+        if (Array.isArray(value)) {
+            const elementValue = this.#resolveCheckboxElementValue(element);
+            element.checked = value.indexOf(elementValue) !== -1;
+            return;
+        }
+
+        const trueValueDescriptor = this.#resolveCheckboxTrueFalseValues(element);
+        if (trueValueDescriptor) {
+            element.checked = value === trueValueDescriptor.trueValue;
+            return;
+        }
+
+        element.checked = !!value;
+    }
+
+    /**
+     * Computes the value to write back to the bound expression when a checkbox
+     * change event fires. Mirrors the three-mode logic of #renderCheckbox.
+     *
+     * For array binding, the current value of the bound expression is read so
+     * that a fresh array can be returned (the existing array is not mutated,
+     * which preserves reactivity semantics).
+     */
+    #computeCheckboxNewValue(target: HTMLInputElement): any {
+        const currentValue = this.#evaluator?.evaluate();
+
+        if (Array.isArray(currentValue)) {
+            const elementValue = this.#resolveCheckboxElementValue(target);
+            const next = currentValue.slice();
+            const index = next.indexOf(elementValue);
+            if (target.checked) {
+                if (index === -1) {
+                    next.push(elementValue);
+                }
+            } else {
+                if (index !== -1) {
+                    next.splice(index, 1);
+                }
+            }
+            return next;
+        }
+
+        const trueValueDescriptor = this.#resolveCheckboxTrueFalseValues(target);
+        if (trueValueDescriptor) {
+            return target.checked ? trueValueDescriptor.trueValue : trueValueDescriptor.falseValue;
+        }
+
+        return target.checked;
+    }
+
+    /**
+     * Resolves the typed element value for a checkbox. Prefers the value bound
+     * via `:value` (evaluated through the sibling VBindDirective so type is
+     * preserved), then the typed value previously stored on the element by
+     * VBindDirective, and finally the raw string `value` attribute.
+     */
+    #resolveCheckboxElementValue(element: HTMLInputElement): any {
+        const bindDirective = this.#vNode.directiveManager?.findBindDirective('value');
+        if (bindDirective) {
+            return bindDirective.evaluate();
+        }
+        if ((element as any)._value !== undefined) {
+            return (element as any)._value;
+        }
+        return element.value;
+    }
+
+    /**
+     * Resolves the (true-value, false-value) pair for a checkbox if either is
+     * bound via `:true-value` or `:false-value`. Returns undefined when no
+     * true/false value binding is present, signalling that the default boolean
+     * mode should be used.
+     *
+     * If only one of the two is bound, the other defaults match Vue: an unbound
+     * true-value defaults to literal `true`, an unbound false-value to `false`.
+     */
+    #resolveCheckboxTrueFalseValues(element: HTMLInputElement): { trueValue: any; falseValue: any } | undefined {
+        const manager = this.#vNode.directiveManager;
+        const trueBind = manager?.findBindDirective('true-value');
+        const falseBind = manager?.findBindDirective('false-value');
+        if (!trueBind && !falseBind) {
+            return undefined;
+        }
+        return {
+            trueValue: trueBind ? trueBind.evaluate() : true,
+            falseValue: falseBind ? falseBind.evaluate() : false,
+        };
     }
 
     /**

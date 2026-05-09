@@ -125,6 +125,30 @@ export class VDirectiveManager {
     }
 
     /**
+     * Finds a VBindDirective that binds the given attribute name (e.g. "value",
+     * "true-value", "false-value"). Returns undefined if no matching v-bind
+     * directive is registered on this node.
+     *
+     * Used by directives such as v-model that need to read the typed value of a
+     * sibling v-bind without depending on the attribute order in the source HTML.
+     */
+    findBindDirective(attrName: string): VBindDirective | undefined {
+        if (!this.#directives || this.#directives.length === 0) {
+            return undefined;
+        }
+        for (const directive of this.#directives) {
+            if (directive.name !== StandardDirectiveName.V_BIND) {
+                continue;
+            }
+            const bindDirective = directive as unknown as VBindDirective;
+            if (bindDirective.attributeName === attrName) {
+                return bindDirective;
+            }
+        }
+        return undefined;
+    }
+
+    /**
      * Gets the VBindDirective for options specific to the given directive name.
      * Searches in order: `:options.{directive}` -> `:options`
      *
