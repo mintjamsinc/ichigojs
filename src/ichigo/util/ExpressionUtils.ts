@@ -147,12 +147,17 @@ export class ExpressionUtils {
                 const ast = acorn.parse(source, { ecmaVersion: "latest" });
                 const dependencies = new Set<string>();
                 const declaredVariables = new Set<string>();
+                const thisAliases = new Set<string>();
 
                 // First, collect all declared variables (const, let, var, function params, etc.)
                 walk.ancestor(ast, {
                     VariableDeclarator(node: any) {
                         if (node.id.type === 'Identifier') {
                             declaredVariables.add(node.id.name);
+                            // Detect aliases assigned from `this`, e.g. `let vm = this;`
+                            if (node.init && node.init.type === 'ThisExpression') {
+                                thisAliases.add(node.id.name);
+                            }
                         }
                     },
                     FunctionDeclaration(node: any) {
@@ -209,9 +214,13 @@ export class ExpressionUtils {
                         }
                     },
                     MemberExpression(node: any) {
-                        // Handle 'this.propertyName' patterns
-                        if (node.object.type === 'ThisExpression' && node.property.type === 'Identifier') {
-                            dependencies.add(node.property.name);
+                        // Handle 'this.propertyName' patterns and aliases like 'vm.x' when 'vm = this'
+                        if (node.property.type === 'Identifier') {
+                            if (node.object.type === 'ThisExpression') {
+                                dependencies.add(node.property.name);
+                            } else if (node.object.type === 'Identifier' && thisAliases.has(node.object.name)) {
+                                dependencies.add(node.property.name);
+                            }
                         }
                     }
                 });
@@ -320,8 +329,8 @@ export class ExpressionUtils {
         }
 
         try {
-            // Build a map of positions to replace: { start: number, end: number, name: string }[]
-            const replacements: { start: number, end: number, name: string }[] = [];
+            // Build a map of positions to replace: { start: number, end: number, name: string, asThisAlias?: boolean }[]
+            const replacements: { start: number, end: number, name: string, asThisAlias?: boolean }[] = [];
 
             // In script mode we must not wrap in parens (that would make multi-statement input invalid).
             // Offsets from the parser therefore refer directly to the original expression, so no shift.
@@ -331,13 +340,17 @@ export class ExpressionUtils {
             const parsedAst = acorn.parse(source, { ecmaVersion: 'latest' });
 
             // Track identifiers that are locally declared within the handler body (let/const/var, function
-            // params) so we don't rewrite them to `this.xxx`. Only relevant in script mode, where the user
-            // can write declarations; in expression mode there are no declarations to track.
+            // params) so we don't rewrite them to `this.xxx`. Additionally detect `this` aliases such as
+            // `let vm = this;` so that `vm.x` can be rewritten to `this.x` even though `vm` is locally declared.
             const locallyDeclared = new Set<string>();
+            const thisAliases = new Set<string>();
             if (asScript) {
                 walk.full(parsedAst, (node: any) => {
                     if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier') {
                         locallyDeclared.add(node.id.name);
+                        if (node.init && node.init.type === 'ThisExpression') {
+                            thisAliases.add(node.id.name);
+                        }
                     } else if (node.type === 'FunctionDeclaration' && node.id?.type === 'Identifier') {
                         locallyDeclared.add(node.id.name);
                     }
@@ -356,21 +369,37 @@ export class ExpressionUtils {
                     return;
                 }
 
-                // Skip identifiers that were declared locally in the handler body
+                // Locally declared identifiers must not be rewritten to `this.xxx`. The one
+                // exception is a `this`-alias (e.g. `let vm = this;`): when such an alias is
+                // used as the OBJECT of a MemberExpression (`vm.x`), we replace just the
+                // object with `this` so that `vm.x` becomes `this.x`. In every other position
+                // (the declaration LHS, a bare reference such as `console.log(vm)`, an
+                // argument, etc.) the alias must be left untouched — rewriting it to
+                // `this.vm` would either produce a syntax error (`let this.vm = this;`) or
+                // change the meaning at runtime.
+                // walk.fullAncestor includes the visited node itself as the last entry of
+                // `ancestors`, so the actual parent node is at length - 2.
+                const parentNode = ancestors.length >= 2 ? ancestors[ancestors.length - 2] : undefined;
+                const isAliasAsMemberObject =
+                    parentNode?.type === 'MemberExpression' && parentNode.object === node;
+
                 if (locallyDeclared.has(node.name)) {
+                    if (!thisAliases.has(node.name) || !isAliasAsMemberObject) {
+                        return;
+                    }
+                    replacements.push({
+                        start: node.start - offsetShift,
+                        end: node.end - offsetShift,
+                        name: node.name,
+                        asThisAlias: true
+                    });
                     return;
                 }
 
-                // Check if this identifier is a property of a MemberExpression
-                // (e.g., in 'obj.prop', we should skip 'prop')
-                if (ancestors.length >= 1) {
-                    const parent = ancestors[ancestors.length - 1];
-                    if (parent.type === 'MemberExpression') {
-                        // Skip if this identifier is the property (not the object) of a non-computed member access
-                        if (!parent.computed && parent.property === node) {
-                            return;
-                        }
-                    }
+                // Skip identifiers that are the property (not the object) of a non-computed
+                // member access (e.g., the `prop` in `obj.prop`).
+                if (parentNode?.type === 'MemberExpression' && !parentNode.computed && parentNode.property === node) {
+                    return;
                 }
 
                 // Add to replacements list (adjust for the wrapping parentheses in expression mode)
@@ -387,9 +416,8 @@ export class ExpressionUtils {
             // Apply replacements
             let result = expression;
             for (const replacement of replacements) {
-                result = result.substring(0, replacement.start) +
-                         `this.${replacement.name}` +
-                         result.substring(replacement.end);
+                const insertion = replacement.asThisAlias ? 'this' : `this.${replacement.name}`;
+                result = result.substring(0, replacement.start) + insertion + result.substring(replacement.end);
             }
 
             return result;

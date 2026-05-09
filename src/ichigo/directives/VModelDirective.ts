@@ -148,12 +148,25 @@ export class VModelDirective implements VDirective {
         const ids = new Set<string>(this.#evaluator?.dependentIdentifiers ?? []);
 
         const element = this.#vNode.node as HTMLElement;
-        if (element instanceof HTMLInputElement && element.type === 'checkbox') {
+        if (element instanceof HTMLInputElement) {
             const manager = this.#vNode.directiveManager;
-            for (const attrName of ['value', 'true-value', 'false-value']) {
-                const bindDirective = manager?.findBindDirective(attrName);
-                if (bindDirective) {
-                    bindDirective.dependentIdentifiers.forEach(id => ids.add(id));
+
+            // For checkboxes and radios, v-model's rendered state depends on
+            // the element's typed `:value` binding (if present). Checkboxes
+            // additionally depend on `:true-value` / `:false-value` bindings.
+            if (element.type === 'checkbox' || element.type === 'radio') {
+                const valueBind = manager?.findBindDirective('value');
+                if (valueBind) {
+                    valueBind.dependentIdentifiers.forEach(id => ids.add(id));
+                }
+            }
+
+            if (element.type === 'checkbox') {
+                for (const attrName of ['true-value', 'false-value']) {
+                    const bindDirective = manager?.findBindDirective(attrName);
+                    if (bindDirective) {
+                        bindDirective.dependentIdentifiers.forEach(id => ids.add(id));
+                    }
                 }
             }
         }
@@ -251,11 +264,13 @@ export class VModelDirective implements VDirective {
             if (element.type === 'checkbox') {
                 this.#renderCheckbox(element, value);
             } else if (element.type === 'radio') {
-                // Prefer the original typed value stored by VBindDirective (:value binding)
-                // to avoid type coercion issues (e.g., boolean false vs string "false").
-                const radioValue = (element as any)._value !== undefined
-                    ? (element as any)._value
-                    : element.value;
+                // Prefer the typed value from a sibling :value binding when present,
+                // falling back to any stored `_value` or the raw string `value`.
+                const manager = this.#vNode.directiveManager;
+                const bindDirective = manager?.findBindDirective('value');
+                const radioValue = bindDirective !== undefined
+                    ? bindDirective.evaluate()
+                    : ((element as any)._value !== undefined ? (element as any)._value : element.value);
                 element.checked = radioValue === value;
             } else {
                 element.value = value ?? '';
@@ -283,11 +298,13 @@ export class VModelDirective implements VDirective {
                 if (target.type === 'checkbox') {
                     newValue = this.#computeCheckboxNewValue(target);
                 } else if (target.type === 'radio') {
-                    // Prefer the original typed value stored by VBindDirective (:value binding)
-                    // to preserve the type on write-back (e.g., boolean false, number 0).
-                    newValue = (target as any)._value !== undefined
-                        ? (target as any)._value
-                        : target.value;
+                    // Prefer the typed value from a sibling :value binding when present,
+                    // falling back to any stored `_value` or the raw string `value`.
+                    const manager = this.#vNode.directiveManager;
+                    const bindDirective = manager?.findBindDirective('value');
+                    newValue = bindDirective !== undefined
+                        ? bindDirective.evaluate()
+                        : ((target as any)._value !== undefined ? (target as any)._value : target.value);
                 } else {
                     newValue = target.value;
                 }
