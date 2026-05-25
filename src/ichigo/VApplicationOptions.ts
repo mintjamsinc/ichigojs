@@ -50,6 +50,14 @@ export interface VApplicationOptions {
     watch?: WatcherDictionary;
 
     /**
+     * Optional list of event names this application/component is expected to emit via `$emit`.
+     * When declared, emitting an event whose name is not in this list logs a development warning.
+     * When omitted, `$emit` accepts any event name without warning. This is documentation/validation
+     * only and never blocks dispatch.
+     */
+    emits?: string[];
+
+    /**
      * The log level for the application.
      * This property determines the verbosity of logging output.
      * If not specified, the default log level will be used.

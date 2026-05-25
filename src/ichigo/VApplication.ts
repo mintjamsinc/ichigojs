@@ -4,6 +4,7 @@ import { ExpressionUtils } from "./util/ExpressionUtils";
 import { VLogger } from "./util/VLogger";
 import { VLogManager } from "./util/VLogManager";
 import { VApplicationOptions, VComputedDefinition } from "./VApplicationOptions";
+import { VEmitOptions } from "./VEmitOptions";
 import { VBindings } from "./VBindings";
 import { VNode } from "./VNode";
 import { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
@@ -331,6 +332,7 @@ export class VApplication {
         // Inject utility methods into bindings
         this.#bindings.set('$nextTick', (callback: () => void) => this.#nextTick(callback));
         this.#bindings.set('$markRaw', <T extends object>(obj: T) => ReactiveProxy.markRaw(obj));
+        this.#bindings.set('$emit', (name: string, detail?: any, options?: VEmitOptions) => this.#emit(name, detail, options));
 
         // Add methods
         if (this.#options.methods) {
@@ -623,6 +625,41 @@ export class VApplication {
         for (const key of Object.keys(this.#computedDependencies)) {
             compute(key);
         }
+    }
+
+    /**
+     * Dispatches a CustomEvent, providing the framework-level `$emit` available in expressions
+     * and methods. By default the event is dispatched on the application root element with
+     * `bubbles: true`, so a parent component can listen for it via `v-on` / `@` on the component
+     * tag (the root is rendered inside the host custom element, so the event bubbles out of it).
+     *
+     * The dispatch target can be overridden via `options.target` (e.g. `document` / `window`) to
+     * use a global event bus, interoperating with native `addEventListener` listeners.
+     *
+     * @param name The event name (e.g. "selected"). Listened to as `@selected` on the parent side.
+     * @param detail The payload exposed as `event.detail`.
+     * @param options Dispatch options (bubbles, cancelable, composed, target).
+     * @returns The result of dispatchEvent: false if a listener called preventDefault(), otherwise true.
+     */
+    #emit(name: string, detail?: any, options?: VEmitOptions): boolean {
+        // Documentation/validation only: warn when emitting an event not declared in `emits`.
+        if (this.#options.emits && !this.#options.emits.includes(name)) {
+            this.#logger.warn(`Event '${name}' is emitted but not declared in the 'emits' option.`);
+        }
+
+        const target: EventTarget | undefined = options?.target ?? (this.#vNode?.node as EventTarget | undefined);
+        if (!target) {
+            this.#logger.warn(`$emit('${name}') was called before the application was mounted; the event was not dispatched.`);
+            return false;
+        }
+
+        const event = new CustomEvent(name, {
+            detail,
+            bubbles: options?.bubbles ?? true,
+            cancelable: options?.cancelable ?? true,
+            composed: options?.composed ?? false,
+        });
+        return target.dispatchEvent(event);
     }
 
     /**

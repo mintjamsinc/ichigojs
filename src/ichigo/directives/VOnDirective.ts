@@ -23,6 +23,15 @@ import { VDOMUpdater } from "../VDOMUpdater";
  * Mouse button modifiers (MouseEvent): `.left`, `.middle`, `.right`.
  * System modifiers (KeyboardEvent and MouseEvent): `.shift`, `.ctrl`, `.alt`, `.meta`, plus `.exact` to require that no other system modifiers are held.
  *
+ * Listen target and filter modifiers (two orthogonal axes):
+ *   - Listen target (where the listener is attached): `.window`, `.document`. When omitted the listener
+ *     is attached to the bound element. This is useful for global / cross-component events, e.g.
+ *     `@webtop-message.document="onMessage"`, and the listener is removed automatically on unmount.
+ *   - Filter (whether the handler runs): `.self` fires only when `event.target` is the bound element;
+ *     `.outside` fires only when `event.target` is outside the bound element (e.g. click-outside to
+ *     close a popup). `.outside` implies listening on `document` (capture phase) even without `.document`,
+ *     and `.self` / `.outside` are mutually exclusive.
+ *
  * Additionally, this directive supports lifecycle hooks:
  *     @mount="onMount"       - Called before the VNode is mounted to the DOM element
  *     @mounted="onMounted"   - Called after the VNode is mounted to the DOM element
@@ -69,6 +78,30 @@ export class VOnDirective implements VDirective {
     #listener?: (event: Event) => void;
 
     /**
+     * The resolved target the listener is attached to (element, document, or window).
+     * Stored so destroy() removes the listener from the same target it was added to.
+     */
+    #resolvedTarget?: EventTarget;
+
+    /**
+     * The resolved capture flag. Shared by attach and destroy so they stay in sync,
+     * since `.outside` forces capture phase regardless of the `.capture` modifier.
+     */
+    #useCapture: boolean = false;
+
+    /**
+     * Whether the listener has actually been attached. `.outside` defers attachment by a
+     * microtask, so destroy() must not attempt removal before it is attached.
+     */
+    #attached: boolean = false;
+
+    /**
+     * Whether the directive has been destroyed. Guards the deferred `.outside` attachment
+     * from attaching after the node was already unmounted.
+     */
+    #destroyed: boolean = false;
+
+    /**
      * Map of lifecycle hook names to their handler functions.
      */
     #lifecycleHooks: Map<string, () => void> = new Map();
@@ -93,6 +126,13 @@ export class VOnDirective implements VDirective {
             parts.slice(1).forEach(mod => this.#modifiers.add(mod));
         }
 
+
+        // `.self` and `.outside` are mutually exclusive filters; together they can never fire.
+        if (this.#modifiers.has('self') && this.#modifiers.has('outside')) {
+            context.vNode.vApplication.logManager
+                .getLogger('VOnDirective')
+                .warn(`The '.self' and '.outside' modifiers on '${attrName}' are mutually exclusive; the handler will never fire.`);
+        }
 
         // Parse the expression to extract identifiers and create the handler wrapper.
         // Event handlers are parsed in script mode so that users can write multi-statement bodies
@@ -222,11 +262,10 @@ export class VOnDirective implements VDirective {
      * @inheritdoc
      */
     destroy(): void {
-        // Remove the event listener when the directive is destroyed
-        if (this.#eventName && this.#listener) {
-            const element = this.#vNode.node as HTMLElement;
-            const useCapture = this.#modifiers.has('capture');
-            element.removeEventListener(this.#eventName, this.#listener, useCapture);
+        this.#destroyed = true;
+        // Remove the event listener from the same target/phase it was attached to.
+        if (this.#eventName && this.#listener && this.#resolvedTarget && this.#attached) {
+            this.#resolvedTarget.removeEventListener(this.#eventName, this.#listener, this.#useCapture);
         }
     }
 
@@ -244,8 +283,23 @@ export class VOnDirective implements VDirective {
 
         const element = this.#vNode.node as HTMLElement;
         const eventName = this.#eventName;
-        const useCapture = this.#modifiers.has('capture');
         const isOnce = this.#modifiers.has('once');
+        const isOutside = this.#modifiers.has('outside');
+
+        // Resolve the listen target (orthogonal to filters): `.window` / `.document` attach
+        // the listener globally; `.outside` also requires a global listener to detect events
+        // originating outside the element, so it implies `document`.
+        this.#resolvedTarget = this.#modifiers.has('window')
+            ? window
+            : (this.#modifiers.has('document') || isOutside)
+                ? document
+                : element;
+
+        // `.outside` listens in capture phase so it is not suppressed by a descendant's
+        // stopPropagation(); otherwise the capture flag follows the `.capture` modifier.
+        this.#useCapture = this.#modifiers.has('capture') || isOutside;
+        const useCapture = this.#useCapture;
+        const target = this.#resolvedTarget;
 
         // System modifier keys (held during the event) shared by KeyboardEvent and MouseEvent.
         const systemModifiers = ['shift', 'ctrl', 'alt', 'meta'] as const;
@@ -343,6 +397,14 @@ export class VOnDirective implements VDirective {
             if (this.#modifiers.has('self') && event.target !== element) {
                 return;
             }
+            // `.outside`: only fire when the event originates outside the bound element.
+            // A non-Node target (e.g. window) is treated as outside.
+            if (isOutside) {
+                const eventTarget = event.target;
+                if (eventTarget instanceof Node && element.contains(eventTarget)) {
+                    return;
+                }
+            }
 
             // Call the pre-generated handler wrapper (if exists)
             if (this.#handlerWrapper) {
@@ -354,12 +416,26 @@ export class VOnDirective implements VDirective {
 
             // If 'once' modifier is used, remove the listener after first execution
             if (isOnce && this.#listener) {
-                element.removeEventListener(eventName, this.#listener, useCapture);
+                target.removeEventListener(eventName, this.#listener, useCapture);
+                this.#attached = false;
             }
         };
 
-        // Attach the event listener
-        element.addEventListener(eventName, this.#listener, useCapture);
+        if (isOutside) {
+            // Defer attachment by one microtask so the listener does not catch the same
+            // interaction that mounted this element (e.g. the click that opened a popup,
+            // which would otherwise immediately close it). Skip if already destroyed.
+            queueMicrotask(() => {
+                if (this.#destroyed || !this.#listener) {
+                    return;
+                }
+                target.addEventListener(eventName, this.#listener, useCapture);
+                this.#attached = true;
+            });
+        } else {
+            target.addEventListener(eventName, this.#listener, useCapture);
+            this.#attached = true;
+        }
     }
 
     /**

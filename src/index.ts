@@ -11,3 +11,5 @@ export { defineComponent } from './ichigo/components/defineComponent';
 export type { IchigoComponentOptions } from './ichigo/components/IchigoComponentOptions';
 export { IchigoElement } from './ichigo/components/IchigoElement';
 
+export type { VEmitOptions } from './ichigo/VEmitOptions';
+

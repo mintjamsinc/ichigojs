@@ -38,7 +38,7 @@ import { IchigoElement } from './IchigoElement';
  * @param options  Component options including template selector and optional props.
  */
 export function defineComponent(tagName: string, options: IchigoComponentOptions): void {
-    const { props = [], template, data, computed, methods, watch, logLevel } = options;
+    const { props = [], template, data, computed, methods, watch, emits, logLevel } = options;
 
     // Build a subclass of IchigoElement specific to this component
     class ComponentElement extends IchigoElement {
@@ -64,6 +64,7 @@ export function defineComponent(tagName: string, options: IchigoComponentOptions
                 computed,
                 methods,
                 watch,
+                emits,
                 logLevel,
             };
         }
