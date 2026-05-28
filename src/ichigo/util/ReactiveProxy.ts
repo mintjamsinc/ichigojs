@@ -1,6 +1,20 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
 /**
+ * A listener notified when something changes inside a reactive subtree.
+ * Receives the full source path of the changed property (e.g. "items[0].name").
+ */
+type ReactiveListener = (changedPath?: string) => void;
+
+/**
+ * A dispatcher owns the set of listeners attached to a given proxy subtree.
+ * The same dispatcher instance is shared by every nested proxy reached
+ * through a single outermost create() call, so changes at any depth fan out
+ * to every subscriber once.
+ */
+type ReactiveDispatcher = { listeners: Set<ReactiveListener> };
+
+/**
  * Utility class for creating reactive proxies that automatically track changes.
  */
 export class ReactiveProxy {
@@ -29,6 +43,14 @@ export class ReactiveProxy {
     private static proxyPaths = new WeakMap<object, string>();
 
     /**
+     * Dispatchers per (target, path). Every target reached while walking a proxy
+     * subtree registers an entry pointing at the same dispatcher as the outermost
+     * proxy of that subtree, so callers can look up the dispatcher from any
+     * intermediate proxy when subscribing.
+     */
+    private static dispatchers = new WeakMap<object, Map<string, ReactiveDispatcher>>();
+
+    /**
      * A Map to store path aliases.
      * Key: alias path (e.g., "editingNestedStep.steps")
      * Value: source path (e.g., "routes[0].steps[0].steps")
@@ -43,9 +65,15 @@ export class ReactiveProxy {
      * @param target The object to make reactive.
      * @param onChange Callback function to call when the object changes. Receives the full path of the changed property.
      * @param path The current path in the object tree (used internally for nested objects).
+     * @param inheritedDispatcher Internal: the dispatcher inherited from an enclosing create() call when wrapping a nested target. External callers must omit this.
      * @returns A reactive proxy of the target object.
      */
-    static create<T extends object>(target: T, onChange: (changedPath?: string) => void, path: string = ''): T {
+    static create<T extends object>(
+        target: T,
+        onChange?: (changedPath?: string) => void,
+        path: string = '',
+        inheritedDispatcher?: ReactiveDispatcher
+    ): T {
         // If the target is not an object or is null, return it as-is
         if (typeof target !== 'object' || target === null) {
             return target;
@@ -67,6 +95,14 @@ export class ReactiveProxy {
         // Check if the target is already a proxy - if so, return it as-is to prevent double-wrapping
         if (this.proxyToTarget.has(target)) {
             return target;
+        }
+
+        // Resolve (and register) the dispatcher for this (target, path).
+        // Nested create() calls inherit the dispatcher from the enclosing call so
+        // that a single dispatcher fans out changes at any depth of the subtree.
+        const dispatcher = this.resolveDispatcher(target, path, inheritedDispatcher);
+        if (onChange) {
+            dispatcher.listeners.add(onChange);
         }
 
         // Check if we already have a proxy for this target with this path
@@ -103,7 +139,7 @@ export class ReactiveProxy {
                     // Build the nested path
                     const keyStr = String(key);
                     const nestedPath = path ? (Array.isArray(obj) ? `${path}[${keyStr}]` : `${path}.${keyStr}`) : keyStr;
-                    return ReactiveProxy.create(value, onChange, nestedPath);
+                    return ReactiveProxy.create(value, undefined, nestedPath, dispatcher);
                 }
 
                 // If the value is a function, we need to wrap it to ensure that any mutations it performs also trigger onChange
@@ -117,7 +153,7 @@ export class ReactiveProxy {
 
                         return function (this: any, ...args: any[]) {
                             const result = (value as Function).apply(this === receiver ? obj : this, args);
-                            onChange(path || undefined);
+                            ReactiveProxy.dispatch(dispatcher, path || undefined);
                             return result;
                         };
                     }
@@ -128,7 +164,7 @@ export class ReactiveProxy {
                         return function (this: any, ...args: any[]) {
                             const result = (value as Function).apply(this === receiver ? obj : this, args);
                             if (mapMutationMethods.includes(key as string)) {
-                                onChange(path || undefined);
+                                ReactiveProxy.dispatch(dispatcher, path || undefined);
                             }
                             return result;
                         };
@@ -140,7 +176,7 @@ export class ReactiveProxy {
                         return function (this: any, ...args: any[]) {
                             const result = (value as Function).apply(this === receiver ? obj : this, args);
                             if (setMutationMethods.includes(key as string)) {
-                                onChange(path || undefined);
+                                ReactiveProxy.dispatch(dispatcher, path || undefined);
                             }
                             return result;
                         };
@@ -158,7 +194,7 @@ export class ReactiveProxy {
                 if (oldValue !== value) {
                     const keyStr = String(key);
                     const fullPath = path ? (Array.isArray(obj) ? `${path}[${keyStr}]` : `${path}.${keyStr}`) : keyStr;
-                    onChange(fullPath);
+                    ReactiveProxy.dispatch(dispatcher, fullPath);
                 }
 
                 return result;
@@ -168,7 +204,7 @@ export class ReactiveProxy {
                 const result = Reflect.deleteProperty(obj, key);
                 const keyStr = String(key);
                 const fullPath = path ? (Array.isArray(obj) ? `${path}[${keyStr}]` : `${path}.${keyStr}`) : keyStr;
-                onChange(fullPath);
+                ReactiveProxy.dispatch(dispatcher, fullPath);
                 return result;
             }
         });
@@ -185,6 +221,85 @@ export class ReactiveProxy {
         }
 
         return proxy;
+    }
+
+    /**
+     * Looks up the dispatcher associated with (target, path), or installs a new one.
+     * When called for a nested target during proxy walking, the enclosing dispatcher
+     * is reused so a single subtree fans out changes through one notification path.
+     */
+    private static resolveDispatcher(
+        target: object,
+        path: string,
+        inheritedDispatcher?: ReactiveDispatcher
+    ): ReactiveDispatcher {
+        let pathMap = this.dispatchers.get(target);
+        if (!pathMap) {
+            pathMap = new Map();
+            this.dispatchers.set(target, pathMap);
+        }
+        const existing = pathMap.get(path);
+        if (existing) {
+            return existing;
+        }
+        const dispatcher = inheritedDispatcher ?? { listeners: new Set<ReactiveListener>() };
+        pathMap.set(path, dispatcher);
+        return dispatcher;
+    }
+
+    /**
+     * Invokes every listener attached to the dispatcher.
+     * Iterates a snapshot of the listener set so unsubscribing during dispatch is safe.
+     */
+    private static dispatch(dispatcher: ReactiveDispatcher, changedPath?: string): void {
+        if (dispatcher.listeners.size === 0) {
+            return;
+        }
+        const snapshot = Array.from(dispatcher.listeners);
+        for (const listener of snapshot) {
+            listener(changedPath);
+        }
+    }
+
+    /**
+     * Subscribes a listener to changes inside the subtree of an existing reactive proxy.
+     *
+     * The listener is scoped by the proxy's source path: only changes at or below that
+     * path are delivered, which lets a child component receive notifications when the
+     * nested contents of a prop change even though the prop reference itself is unchanged.
+     *
+     * @param proxyOrTarget A proxy returned from create(), or the underlying target object.
+     * @param listener Called with the full source path of every relevant change.
+     * @returns A function that removes the subscription.
+     */
+    static subscribe(proxyOrTarget: object, listener: ReactiveListener): () => void {
+        if (typeof proxyOrTarget !== 'object' || proxyOrTarget === null) {
+            return () => {};
+        }
+        const target = (this.proxyToTarget.get(proxyOrTarget) ?? proxyOrTarget) as object;
+        const scopePath = this.proxyPaths.get(proxyOrTarget) ?? '';
+        const pathMap = this.dispatchers.get(target);
+        const dispatcher = pathMap?.get(scopePath);
+        if (!dispatcher) {
+            return () => {};
+        }
+        const wrapper: ReactiveListener = scopePath
+            ? (changedPath?: string) => {
+                if (
+                    changedPath === scopePath ||
+                    (typeof changedPath === 'string' && (
+                        changedPath.startsWith(scopePath + '.') ||
+                        changedPath.startsWith(scopePath + '[')
+                    ))
+                ) {
+                    listener(changedPath);
+                }
+            }
+            : listener;
+        dispatcher.listeners.add(wrapper);
+        return () => {
+            dispatcher.listeners.delete(wrapper);
+        };
     }
 
     /**

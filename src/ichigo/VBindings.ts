@@ -61,6 +61,15 @@ export class VBindings {
 	#writableComputeds: Map<string, (value: any) => void> = new Map();
 
 	/**
+	 * Unsubscribe handles for external reactive proxies received as binding values
+	 * (typically component props). Each entry keeps the child bindings notified when
+	 * nested properties of a shared object change even though the prop reference itself
+	 * stays the same. The previous subscription is released whenever the binding value
+	 * is replaced, the binding is set to null/undefined, or the bindings are destroyed.
+	 */
+	#externalSubscriptions: Map<string, () => void> = new Map();
+
+	/**
 	 * Creates a new instance of VBindings.
 	 * @param parent The parent bindings, if any.
 	 */
@@ -100,6 +109,7 @@ export class VBindings {
 				}
 
 				let newValue = value;
+				let receivedExternalProxy = false;
 				if (typeof value === 'object' && value !== null) {
 					// Check if the value already has a path (it's an existing reactive proxy reference)
 					const existingPath = ReactiveProxy.getPath(value);
@@ -109,6 +119,7 @@ export class VBindings {
 						this.#logger?.debug(`Path alias registered: ${key as string} -> ${existingPath}`);
 						// Keep the existing proxy as-is to preserve reactivity chain
 						newValue = value;
+						receivedExternalProxy = true;
 					} else {
 						// Before wrapping, check if any properties are existing ReactiveProxies
 						// and register path aliases for them
@@ -153,6 +164,35 @@ export class VBindings {
 				const oldValue = Reflect.get(target, key);
 				const result = Reflect.set(target, key, newValue);
 
+				// Manage external subscription to a reactive proxy received as the value.
+				// When the reference changes, drop the previous subscription. When a new
+				// reactive proxy is installed, subscribe so nested changes propagate to
+				// this bindings instance even though the proxy reference itself is stable.
+				if (oldValue !== newValue) {
+					const prevUnsubscribe = this.#externalSubscriptions.get(key as string);
+					if (prevUnsubscribe) {
+						prevUnsubscribe();
+						this.#externalSubscriptions.delete(key as string);
+					}
+				}
+				if (receivedExternalProxy && !this.#externalSubscriptions.has(key as string)) {
+					const unsubscribe = ReactiveProxy.subscribe(newValue, (changedPath?: string) => {
+						if (!changedPath) {
+							return;
+						}
+						let path = '';
+						for (const part of changedPath.split('.')) {
+							path = path ? `${path}.${part}` : part;
+							this.#logger?.debug(`Binding changed (external): ${path}`);
+							this.#changes.add(path);
+						}
+						if (!this.#suppressOnChange) {
+							this.#onChange?.(changedPath);
+						}
+					});
+					this.#externalSubscriptions.set(key as string, unsubscribe);
+				}
+
 				// Detect changes
 				let hasChanged = oldValue !== newValue;
 
@@ -183,6 +223,11 @@ export class VBindings {
 			},
 			deleteProperty: (obj, key) => {
 				const result = Reflect.deleteProperty(obj, key);
+				const prevUnsubscribe = this.#externalSubscriptions.get(key as string);
+				if (prevUnsubscribe) {
+					prevUnsubscribe();
+					this.#externalSubscriptions.delete(key as string);
+				}
 				this.#logger?.debug(`Binding deleted: ${key as string}`);
 				this.#changes.add(key as string);
 				this.#onChange?.(key as string);
@@ -274,6 +319,19 @@ export class VBindings {
 	 */
 	remove(key: string): void {
 		delete this.#local[key];
+	}
+
+	/**
+	 * Releases all external proxy subscriptions held by these bindings.
+	 * Should be called when the owning application is unmounted so the parent
+	 * application's reactive objects do not keep references to listener closures
+	 * (and through them, this bindings instance) alive.
+	 */
+	destroy(): void {
+		for (const unsubscribe of this.#externalSubscriptions.values()) {
+			unsubscribe();
+		}
+		this.#externalSubscriptions.clear();
 	}
 
 	/**

@@ -227,6 +227,7 @@ export class VApplication {
             this.#vNode.destroy();
             this.#vNode = undefined;
         }
+        this.#bindings?.destroy();
         this.#logger.info('Application unmounted.');
     }
 
