@@ -9,14 +9,17 @@ A simple and intuitive reactive framework. Lightweight, fast, and user-friendly 
 
 - ✨ **Vue-like API** - Familiar syntax for Vue developers
 - ⚡ **Reactive Proxy System** - Automatic change detection without manual triggers
-- 🎯 **Computed Properties** - Automatic dependency tracking and re-evaluation
+- 🎯 **Computed Properties** - Automatic dependency tracking and re-evaluation, including writable computed (`{ get, set }`)
+- 👀 **Watchers** - React to data changes with the `watch` option (`deep`, `immediate`)
 - 🔄 **Two-way Binding** - `v-model` with modifiers (`.lazy`, `.number`, `.trim`)
 - 🔌 **Lifecycle Hooks** - `@mount`, `@mounted`, `@update`, `@updated`, `@unmount`, `@unmounted` with context (`$ctx`)
 - 💾 **userData Storage** - Proxy-free storage for third-party library instances with auto-cleanup
+- 🧩 **Components** - Reusable Web Components via `defineComponent` with `props`, `slot`, and `$emit`
 - 📦 **Lightweight** - Minimal bundle size
 - 🚀 **High Performance** - Efficient batched updates via microtask queue
 - 💪 **TypeScript** - Written in TypeScript with full type support
-- 🎨 **Directives** - `v-if`, `v-for`, `v-show`, `v-bind`, `v-on`, `v-model`, `v-resize`, `v-intersection`, `v-performance`
+- 🎨 **Directives** - `v-if`, `v-else-if`, `v-else`, `v-for`, `v-show`, `v-bind`, `v-on`, `v-model`, `v-text`, `v-html`, `v-focus`, `v-resize`, `v-intersection`, `v-performance`
+- 🎯 **Focus Management** - Declarative focus control with the `v-focus` directive (`.select`, `.cursor-end`)
 - 📐 **Resize Observer** - Monitor element size changes with `v-resize` directive
 - 👁️ **Intersection Observer** - Detect element visibility with `v-intersection` directive
 - ⚡ **Performance Observer** - Monitor performance metrics with `v-performance` directive
@@ -195,6 +198,84 @@ VDOM.createApp({
 }).mount('#app');
 ```
 
+**Writable Computed Properties:**
+
+A computed property can also be defined as an object with both a `get` and a
+`set` function. This makes it writable, so it can be used as a `v-model` target
+or assigned to directly. Reads go through `get`, while assignments are routed
+through `set`.
+
+```javascript
+VDOM.createApp({
+  data() {
+    return {
+      firstName: 'John',
+      lastName: 'Doe'
+    };
+  },
+  computed: {
+    fullName: {
+      get() {
+        return `${this.firstName} ${this.lastName}`;
+      },
+      set(value) {
+        const [first, last] = value.split(' ');
+        this.firstName = first;
+        this.lastName = last;
+      }
+    }
+  }
+}).mount('#app');
+```
+
+```html
+<!-- Assigning through v-model invokes the computed setter -->
+<input v-model="fullName">
+```
+
+### Watchers
+
+Use the `watch` option to run a callback whenever a watched property changes.
+Keys are property paths (e.g. `"count"`, `"user.name"`), and the callback
+receives the new and previous values.
+
+```javascript
+VDOM.createApp({
+  data() {
+    return {
+      count: 0,
+      user: { name: 'Alice' }
+    };
+  },
+  watch: {
+    // Shorthand: a callback function
+    count(newValue, oldValue) {
+      console.log(`count changed from ${oldValue} to ${newValue}`);
+    },
+
+    // Watch a nested property by path
+    'user.name'(newValue, oldValue) {
+      console.log(`name changed from ${oldValue} to ${newValue}`);
+    },
+
+    // Full form: an options object with deep / immediate
+    user: {
+      handler(newValue, oldValue) {
+        console.log('user object changed', newValue);
+      },
+      deep: true,      // Observe nested changes inside the object
+      immediate: true  // Invoke once immediately with the current value
+    }
+  }
+}).mount('#app');
+```
+
+**Watcher options:**
+
+- `handler` - The callback invoked when the watched value changes
+- `deep` - When `true`, deeply observes nested object/array changes (default: `false`)
+- `immediate` - When `true`, invokes the handler once immediately on registration with the current value (default: `false`)
+
 ### Directives
 
 #### v-if / v-else-if / v-else
@@ -313,6 +394,73 @@ methods: {
   }
 }
 ```
+
+#### v-text
+
+Set the text content of an element. The expression result replaces the
+element's `textContent`. Unlike `v-html`, the content is rendered as plain
+text, so HTML is escaped and XSS is not a concern.
+
+```html
+<span v-text="message"></span>
+
+<!-- Equivalent to -->
+<span>{{ message }}</span>
+```
+
+Use `v-text` when you want to set the entire text content of an element from a
+single expression (it overwrites any existing content), rather than
+interpolating with `{{ }}`.
+
+#### v-html
+
+Set the raw HTML content of an element. The expression result is assigned to
+the element's `innerHTML`.
+
+```html
+<div v-html="htmlContent"></div>
+```
+
+> ⚠️ **Security warning:** Dynamically rendering arbitrary HTML can easily lead
+> to XSS attacks. Only use `v-html` on **trusted** content, and **never** on
+> user-provided content. For plain text, use `v-text` or `{{ }}` interpolation
+> instead.
+
+#### v-focus
+
+Declaratively manage focus on an element. Focus is deferred via
+`requestAnimationFrame`, so elements that become visible just before the
+directive runs (for example inside a `v-if` or a `display: none` container)
+still receive focus reliably.
+
+```html
+<!-- Focus once after mount -->
+<input v-focus>
+
+<!-- Focus + select all text after mount -->
+<input v-focus.select>
+
+<!-- Focus + place the caret at the end of the value -->
+<input v-focus.cursor-end value="prefilled">
+
+<!-- Conditional focus: fires when the expression goes from falsy to truthy -->
+<input v-focus="isEditing">
+
+<!-- Conditional focus + select all -->
+<input v-focus.select="isEditing">
+```
+
+**Behavior:**
+
+- **Without an expression**, the element is focused exactly once after mount.
+- **With an expression**, focus fires only on the falsy → truthy edge, so the
+  user is not repeatedly re-focused on every reactive update. If the value is
+  already truthy on mount, the element is focused immediately.
+
+**Modifiers:**
+
+- `.select` - After focusing, selects all text in the input/textarea
+- `.cursor-end` - After focusing, places the caret at the end of the value
 
 #### v-resize
 
@@ -591,8 +739,19 @@ Two-way data binding:
 <input v-model.number="age">          <!-- Convert to number -->
 <input v-model.trim="username">       <!-- Trim whitespace -->
 
-<!-- Checkbox -->
+<!-- Checkbox (boolean) -->
 <input type="checkbox" v-model="isChecked">
+
+<!-- Checkbox with custom true/false values -->
+<input type="checkbox" v-model="status" :true-value="'yes'" :false-value="'no'">
+
+<!-- Checkbox group bound to an array -->
+<input type="checkbox" value="a" v-model="selectedItems">
+<input type="checkbox" value="b" v-model="selectedItems">
+
+<!-- Radio -->
+<input type="radio" value="a" v-model="picked">
+<input type="radio" value="b" v-model="picked">
 
 <!-- Select -->
 <select v-model="selected">
@@ -600,6 +759,13 @@ Two-way data binding:
   <option value="b">Option B</option>
 </select>
 ```
+
+**Supported elements:**
+
+- **Text inputs / `<textarea>`** - Binds to the element's value
+- **Checkbox** - Binds to a boolean, to a custom value pair via `:true-value` / `:false-value`, or to an array (when the bound value is an array, the checkbox's `value` is added/removed)
+- **Radio** - Binds to the `value` (or `:value`) of the selected radio button
+- **Select** - Binds to the selected option's value (re-applied automatically when options are generated dynamically via `v-for`)
 
 ### Methods
 
@@ -637,6 +803,108 @@ methods: {
     });
   }
 }
+```
+
+## Components
+
+ichigo.js components are real [Custom Elements](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements)
+backed by the same reactivity system. Define a component with `defineComponent`,
+pointing it at a `<template>` for its markup.
+
+```html
+<!-- Component markup -->
+<template id="my-list">
+  <ul v-if="items.length > 0">
+    <li v-for="item of items" :key="item.id">{{ item.name }}</li>
+  </ul>
+  <!-- Fallback content projected from the parent -->
+  <slot></slot>
+</template>
+```
+
+```javascript
+import { defineComponent } from '@mintjamsinc/ichigojs';
+
+defineComponent('my-list', {
+  template: '#my-list',     // CSS selector for the <template>
+  props: ['items'],         // Props received from the parent
+  data() {
+    // Props are accessible via `this` and can be defaulted/transformed here
+    return { items: this.items ?? [] };
+  }
+});
+```
+
+```html
+<!-- Usage -->
+<my-list :items="searchResults">
+  <span slot="empty">No results.</span>
+</my-list>
+```
+
+**Props:**
+
+- Declared via the `props` array. Each declared prop becomes a property on the
+  custom element, so the parent can bind to it with `v-bind` / `:`
+  (e.g. `:items="searchResults"`).
+- Props are reactive from the start and are included in the component's data
+  automatically. Values returned from `data()` take precedence, allowing you to
+  default or transform a prop (e.g. `this.items ?? []`).
+
+**Slots:**
+
+Use the native `<slot>` element in the component template to project content
+from the parent. ichigo.js components use Light DOM.
+
+### Events (`$emit`)
+
+Components (and applications) can dispatch custom events with `$emit`, which is
+available in both templates and methods. By default the event bubbles from the
+component's root element, so a parent can listen for it with `v-on` / `@` on the
+component tag.
+
+```javascript
+defineComponent('my-button', {
+  template: '#my-button',
+  // Optional: declare the events this component emits.
+  // Emitting an undeclared event logs a development warning (validation only;
+  // it never blocks dispatch). Omit `emits` to allow any event name.
+  emits: ['selected'],
+  methods: {
+    onClick() {
+      // $emit(name, detail?, options?)
+      this.$emit('selected', { id: 42 });
+    }
+  }
+});
+```
+
+```html
+<!-- Parent listens for the custom event; payload is in event.detail -->
+<my-button @selected="onSelected"></my-button>
+```
+
+**`$emit(name, detail?, options?)`:**
+
+- `name` - The event name (listened to as `@name` on the parent)
+- `detail` - The payload exposed as `event.detail`
+- `options` - Dispatch options (`VEmitOptions`):
+  - `bubbles` - Whether the event bubbles (default: `true`)
+  - `cancelable` - Whether `preventDefault()` has an effect (default: `true`); `$emit` returns `false` when a listener calls `preventDefault()`
+  - `composed` - Whether the event crosses shadow DOM boundaries (default: `false`)
+  - `target` - The dispatch target (default: the application root element). Set to `document` / `window` for a global event bus.
+
+### Legacy component directive (`v-component`)
+
+> ⚠️ **Deprecated.** The `v-component` directive and the `VComponentRegistry`
+> are deprecated and will be removed in a future release. Use
+> [`defineComponent`](#components) (Custom Elements) for new code.
+
+For reference, the legacy mechanism renders a component registered in the
+application's `VComponentRegistry` by id, passing props through `:options`:
+
+```html
+<div v-component="my-component" :options="{ message: 'Hello' }"></div>
 ```
 
 ## Performance
@@ -696,12 +964,32 @@ Creates a new application instance.
 
 **Options:**
 
-- `data()`: Function that returns the initial data object
-- `computed`: Object containing computed property definitions
+- `data()`: Function that returns the initial data object. Called with a `$ctx` (`{ $markRaw }`) as `this`.
+- `computed`: Object containing computed property definitions. Each value is either a getter function (read-only) or a `{ get, set }` object (writable).
 - `methods`: Object containing method definitions
+- `watch`: Object mapping property paths to watcher definitions (a callback, or `{ handler, deep, immediate }`)
+- `emits`: Optional array of event names the app/component is expected to emit via `$emit`. Emitting an undeclared event logs a development warning (validation only).
 - `logLevel`: Logging level (`'debug'` | `'info'` | `'warn'` | `'error'`)
 
 **Returns:** Application instance with `mount(selector)` method
+
+**Instance helpers** (available in `data()`, methods, expressions, and lifecycle hooks as appropriate):
+
+- `$markRaw(obj)`: Marks an object as non-reactive (see [Marking Objects as Non-Reactive](#marking-objects-as-non-reactive))
+- `$nextTick(callback)`: Runs a callback after the next DOM update
+- `$emit(name, detail?, options?)`: Dispatches a custom event (see [Events](#events-emit))
+- `$ctx`: Lifecycle/handler context with `element`, `vnode`, and `userData`
+
+### defineComponent(tagName, options)
+
+Defines and registers a custom element backed by ichigo.js reactivity. See [Components](#components).
+
+**Options** (extends the `createApp` options above):
+
+- `template`: CSS selector for the `<template>` element that defines the component's markup (required)
+- `props`: Array of property names received from the parent via attribute/property binding
+
+**Returns:** `void` (the custom element is registered via `customElements.define`)
 
 ## Contributing
 
