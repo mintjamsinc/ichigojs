@@ -53,9 +53,18 @@ export class VForDirective implements VDirective {
     #useOfSyntax: boolean = false;  // Track if 'of' syntax was used
 
     /**
-     * Map to track rendered items by their keys
+     * Ordered list of currently rendered items.
+     *
+     * This is intentionally an ordered array of { key, vNode } entries rather
+     * than a Map<key, VNode>. The :key attribute is a *reconciliation hint*
+     * used to identify and reuse the same logical row across re-renders — it is
+     * not the identity of the rendered set. Keying the rendered set by a Map
+     * would make it structurally impossible to hold two rows that resolve to
+     * the same key, which would silently drop application data. The most
+     * fundamental invariant of a list directive is "N items in => N rows out",
+     * so the rendered set must be a positional list that can carry duplicates.
      */
-    #renderedItems = new Map<any, VNode>();
+    #renderedItems: Array<{ key: any; vNode: VNode }> = [];
 
     /**
      * Previous iterations to detect changes
@@ -202,12 +211,12 @@ export class VForDirective implements VDirective {
     destroy(): void {
         // Clean up all rendered items
         // First destroy all VNodes (calls @unmount hooks), then remove from DOM
-        for (const vNode of this.#renderedItems.values()) {
+        for (const { vNode } of this.#renderedItems) {
             vNode.destroy();
         }
 
         // Then remove DOM nodes
-        for (const vNode of this.#renderedItems.values()) {
+        for (const { vNode } of this.#renderedItems) {
             const range = vNode.fragmentRange;
             if (range) {
                 range.remove();
@@ -219,7 +228,7 @@ export class VForDirective implements VDirective {
             }
         }
 
-        this.#renderedItems.clear();
+        this.#renderedItems = [];
         this.#previousIterations = [];
     }
 
@@ -270,7 +279,24 @@ export class VForDirective implements VDirective {
     }
 
     /**
-     * Key-based diffing for efficient DOM updates
+     * Key-based diffing for efficient DOM updates.
+     *
+     * Reconciliation model
+     * --------------------
+     * The :key attribute is treated as a *hint* for reusing the same logical
+     * row across re-renders, not as the identity of the rendered set. The
+     * previously rendered rows are placed into a pool keyed by :key (a queue
+     * per key, so equal keys can hold more than one row). Each incoming
+     * iteration then claims a row from its key's queue when one is available,
+     * otherwise a fresh row is created. Whatever stays in the pool at the end
+     * is genuinely gone and is destroyed and removed.
+     *
+     * This guarantees the directive's most fundamental invariant — "N items in
+     * => N rows out" — even when the application supplies duplicate keys. We
+     * still warn on duplicates because they make reuse ambiguous (reordering
+     * becomes positional rather than identity-stable), but we never silently
+     * drop the application's data, and no row is ever orphaned: every old row
+     * is either reused or explicitly removed.
      */
     #updateList(newIterations: Array<{ key: any; item: any; index: number; objectKey?: string }>): void {
         const parent = this.#vNode.anchorNode?.parentNode;
@@ -280,24 +306,41 @@ export class VForDirective implements VDirective {
             throw new Error('v-for element must have a parent and anchor');
         }
 
-        const newRenderedItems = new Map<any, VNode>();
-
-        // Track which keys are still needed and detect duplicates
-        const neededKeys = new Set<any>();
-        const seenKeys = new Set<any>();
-        for (const ctx of newIterations) {
-            if (seenKeys.has(ctx.key)) {
-                console.warn(`[ichigo.js] Duplicate key detected in v-for: "${ctx.key}". This may cause unexpected behavior. Keys should be unique.`);
+        // Build a reuse pool from the currently rendered rows. A queue per key
+        // (FIFO) lets duplicate keys reuse multiple rows: the first incoming
+        // occurrence claims the first existing row, the second claims the next,
+        // and so on.
+        const pool = new Map<any, VNode[]>();
+        for (const { key, vNode } of this.#renderedItems) {
+            let queue = pool.get(key);
+            if (!queue) {
+                queue = [];
+                pool.set(key, queue);
             }
-            seenKeys.add(ctx.key);
-            neededKeys.add(ctx.key);
+            queue.push(vNode);
         }
 
-        // Remove items that are no longer needed
+        // Decide, for each incoming iteration in order, whether it reuses an
+        // existing row or needs a new one. Reused rows are taken out of the
+        // pool so that what remains afterwards is exactly the set to remove.
+        const seenKeys = new Set<any>();
+        const plan: Array<{ context: { key: any; item: any; index: number; objectKey?: string }; reused?: VNode }> = [];
+        for (const context of newIterations) {
+            if (seenKeys.has(context.key)) {
+                console.warn(`[ichigo.js] Duplicate key detected in v-for: "${context.key}". All entries are still rendered, but reordering may be unstable. Keys should be unique.`);
+            }
+            seenKeys.add(context.key);
+
+            const queue = pool.get(context.key);
+            const reused = queue && queue.length ? queue.shift() : undefined;
+            plan.push({ context, reused });
+        }
+
+        // Remove rows that were not reused.
         // First destroy VNodes (calls @unmount hooks while DOM is still accessible)
         const nodesToRemove: VNode[] = [];
-        for (const [key, vNode] of this.#renderedItems) {
-            if (!neededKeys.has(key)) {
+        for (const queue of pool.values()) {
+            for (const vNode of queue) {
                 nodesToRemove.push(vNode);
                 vNode.destroy();
             }
@@ -319,12 +362,13 @@ export class VForDirective implements VDirective {
             }
         }
 
-        // Add or reorder items
+        // Add or reorder rows, building the new ordered rendered set.
+        const newRenderedItems: Array<{ key: any; vNode: VNode }> = [];
         let prevNode: Node = anchor;
 
-        for (const context of newIterations) {
+        for (const { context, reused } of plan) {
             const { key } = context;
-            let vNode = this.#renderedItems.get(key);
+            let vNode = reused;
 
             if (!vNode) {
                 // Create new item
@@ -361,7 +405,7 @@ export class VForDirective implements VDirective {
                     const range = VFragmentRange.insert(parent, prevNode.nextSibling, 'vfor-fragment', clone);
                     vNode.fragmentRange = range;
 
-                    newRenderedItems.set(key, vNode);
+                    newRenderedItems.push({ key, vNode });
                     vNode.forceUpdate();
                     prevNode = range.lastNode;
                     continue;
@@ -377,11 +421,11 @@ export class VForDirective implements VDirective {
                     parent.appendChild(nodeToInsert);
                 }
 
-                newRenderedItems.set(key, vNode);
+                newRenderedItems.push({ key, vNode });
                 vNode.forceUpdate();
             } else {
                 // Reuse existing item
-                newRenderedItems.set(key, vNode);
+                newRenderedItems.push({ key, vNode });
 
                 // Update bindings
                 this.#updateItemBindings(vNode, context);
@@ -409,7 +453,7 @@ export class VForDirective implements VDirective {
             prevNode = vNode.fragmentRange?.lastNode ?? vNode.anchorNode ?? vNode.node;
         }
 
-        // Update rendered items map
+        // Update the ordered rendered set
         this.#renderedItems = newRenderedItems;
     }
 
