@@ -324,7 +324,11 @@ export class VApplication {
     #initializeBindings(): void {
         // Create bindings with change tracking
         this.#bindings = new VBindings({
-            onChange: () => {
+            onChange: (identifier: string) => {
+                // Pull-based invalidation: mark dependent computed properties dirty synchronously
+                // so a subsequent synchronous read returns a fresh value, then schedule the
+                // batched DOM update for the next microtask.
+                this.#markDirtyComputeds(identifier);
                 this.#scheduleUpdate();
             },
             vApplication: this
@@ -381,8 +385,17 @@ export class VApplication {
             }
         }
 
-        // Add computed properties (initialization mode)
-        this.#recomputeProperties(true);
+        // Register computed properties for pull-based (lazy) evaluation. Each computed is
+        // recomputed on first access after being marked dirty, rather than eagerly in the update
+        // microtask. We mark them all dirty and resolve once here so that initial values are
+        // cached and recorded as changes for the first render.
+        if (this.#options.computed) {
+            for (const key of Object.keys(this.#options.computed)) {
+                this.#bindings.registerComputed(key, () => this.#recomputeOne(key));
+                this.#bindings.markComputedDirty(key);
+            }
+        }
+        this.#flushDirtyComputeds();
     }
 
     /**
@@ -446,8 +459,9 @@ export class VApplication {
      * Executes an immediate DOM update.
      */
     #update(): void {
-        // Re-evaluate computed properties that depend on changed values
-        this.#recomputeProperties();
+        // Resolve any computed properties still marked dirty (those not already pulled by a
+        // synchronous read) so that the set of changed identifiers is complete before the DOM diff.
+        this.#flushDirtyComputeds();
 
         // Apply computed source path mappings to changes
         // This converts paths like "model.elements[0].executionListeners"
@@ -504,127 +518,126 @@ export class VApplication {
     }
 
     /**
-     * Recursively recomputes computed properties based on changed identifiers.
-     * @param isInitialization - If true, computes all computed properties regardless of dependencies
+     * Marks computed properties as dirty (pull-based invalidation) when a dependency changes.
+     * Uses the statically analyzed dependency graph; because computed→computed dependencies are
+     * flattened to their underlying reactive paths during analysis, a single change marks every
+     * transitively dependent computed dirty in one pass. The actual recomputation is deferred until
+     * the value is read (see #recomputeOne).
+     * @param identifier The changed identifier reported by the bindings change tracker.
      */
-    #recomputeProperties(isInitialization: boolean = false): void {
-        if (!this.#options.computed) {
+    #markDirtyComputeds(identifier: string): void {
+        if (!this.#options.computed || !this.#bindings) {
             return;
         }
 
-        const computed = new Set<string>();
-        const processing = new Set<string>();
-
-        // Gather all changed identifiers, including all parent paths
-        // e.g., for "model.elements[0].messageRef", also add:
-        // "model.elements[0]", "model.elements", "model"
-        const allChanges = new Set<string>();
-        this.#bindings?.changes.forEach(id => {
-            allChanges.add(id);
-
-            // Add all parent paths by progressively stripping from the end
-            let path = id;
-            while (path.length > 0) {
-                // Find last separator (either '[' or '.')
-                const bracketIdx = path.lastIndexOf('[');
-                const dotIdx = path.lastIndexOf('.');
-                const lastSep = Math.max(bracketIdx, dotIdx);
-
-                if (lastSep === -1) {
-                    break;
-                }
-
-                path = path.substring(0, lastSep);
-                if (path.length > 0) {
-                    allChanges.add(path);
-                }
-            }
-        });
-
-        // Helper function to recursively compute a property
-        const compute = (key: string): void => {
-            // Skip if already computed in this update cycle
-            if (computed.has(key)) {
-                return;
-            }
-
-            // Detect circular dependency
-            if (processing.has(key)) {
-                this.#logger.error(`Circular dependency detected for computed property '${key}'`);
-                return;
-            }
-
-            processing.add(key);
-
-            // Get the dependencies for this computed property
+        for (const key of Object.keys(this.#computedDependencies)) {
             const deps = this.#computedDependencies[key] || [];
+            if (deps.some(dep => this.#dependencyAffectedBy(dep, identifier))) {
+                this.#bindings.markComputedDirty(key);
+            }
+        }
+    }
 
-            // First, recursively compute any dependent computed properties.
-            // This must happen before the change check so that computed→computed
-            // dependency chains are resolved and allChanges is up-to-date.
-            for (const dep of deps) {
-                if (this.#options.computed![dep]) {
-                    compute(dep);
-                }
+    /**
+     * Determines whether a change to `changePath` affects a computed dependency `dep`, taking both
+     * path directions into account:
+     *  - an exact match;
+     *  - `changePath` is a descendant of `dep` (e.g. dep "cartItems", change "cartItems.0.quantity")
+     *    — a nested mutation of the dependency;
+     *  - `dep` is a descendant of `changePath` (e.g. dep "user.name", change "user") — the container
+     *    holding the dependency was replaced wholesale.
+     * Local and global path aliases (e.g. computed source paths) are also honored via the bindings'
+     * own alias-aware matcher.
+     * @param dep The dependency path declared by a computed property.
+     * @param changePath The identifier reported by the bindings change tracker.
+     */
+    #dependencyAffectedBy(dep: string, changePath: string): boolean {
+        if (changePath === dep) {
+            return true;
+        }
+        if (changePath.startsWith(dep + '.') || changePath.startsWith(dep + '[')) {
+            return true;
+        }
+        if (dep.startsWith(changePath + '.') || dep.startsWith(changePath + '[')) {
+            return true;
+        }
+        // Fall back to alias-aware matching for aliased paths (computed source paths, props, etc.).
+        return this.#bindings!.doesChangeMatchIdentifier(changePath, dep);
+    }
+
+    /**
+     * Forces resolution of all computed properties currently marked dirty so that the set of
+     * changed identifiers is complete before watcher notification and the DOM diff. Computeds that
+     * were already pulled by a synchronous read earlier in the cycle are no longer dirty and are
+     * skipped, so each computed is recomputed at most once per update cycle.
+     */
+    #flushDirtyComputeds(): void {
+        this.#bindings?.flushDirtyComputeds();
+    }
+
+    /**
+     * Recomputes a single computed property and updates its cached value. Registered with the
+     * bindings as the pull-based recompute callback, so it runs lazily the first time the property
+     * is read after being marked dirty (or during the pre-render flush). Computed→computed chains
+     * resolve naturally and order-independently: reading a dependent computed inside the getter
+     * triggers its own lazy resolution through the bindings proxy.
+     *
+     * When the value actually changes, the computed name is recorded as a change so that
+     * dependency-precise DOM updates and watcher notifications still fire, and the source-path
+     * mapping is refreshed so nested changes to the underlying object map back to the computed.
+     * @param key The computed property name.
+     */
+    #recomputeOne(key: string): void {
+        if (!this.#options.computed || !this.#bindings) {
+            return;
+        }
+
+        const def = this.#options.computed[key];
+        if (!def) {
+            return;
+        }
+
+        const computedFn = VApplication.#getComputedGetter(def);
+        try {
+            // Read the previous value without triggering re-resolution, for change detection.
+            const oldValue = this.#bindings.peekComputed(key);
+            const newValue = computedFn.call(this.#bindings.raw);
+
+            // Check if the value actually changed.
+            let hasChanged = oldValue !== newValue;
+
+            // For arrays, always treat as changed (VBindings detects length changes via its length
+            // cache). This preserves the precise-update behavior of the previous eager implementation.
+            if (!hasChanged && Array.isArray(newValue)) {
+                hasChanged = true;
             }
 
-            // If none of the dependencies have changed, skip recomputation (unless it's initialization).
-            // Checked after recursive computation to detect transitive changes through computed properties.
-            if (!isInitialization && !deps.some(dep => allChanges.has(dep))) {
-                computed.add(key);
-                return;
-            }
+            // Cache the value silently so the read returns it without re-triggering reactivity.
+            this.#bindings.setSilent(key, newValue);
 
-            // Now compute this property
-            const computedFn = VApplication.#getComputedGetter(this.#options.computed![key]);
-            try {
-                const oldValue = this.#bindings?.get(key);
-                const newValue = computedFn.call(this.#bindings?.raw);
+            if (hasChanged) {
+                // Mark the computed property as changed so UI and watchers depending on it update.
+                this.#bindings.markChanged(key);
 
-                // Check if the value actually changed
-                let hasChanged = oldValue !== newValue;
-
-                // For arrays, always update (VBindings will detect length changes via its length cache)
-                if (!hasChanged && Array.isArray(newValue)) {
-                    hasChanged = true;
-                }
-
-                if (hasChanged) {
-                    // Use setSilent to avoid triggering onChange during computed property updates
-                    // Then mark the computed property as changed so UI depending on it will update
-                    this.#bindings?.setSilent(key, newValue);
-                    this.#bindings?.markChanged(key);
-                    allChanges.add(key);
-
-                    // Track source path mapping for computed property values
-                    // This allows changes like "model.elements[0].x" to be mapped to "selectedElement.x"
-                    if (typeof newValue === 'object' && newValue !== null) {
-                        const sourcePath = ReactiveProxy.getPath(newValue);
-                        if (sourcePath) {
-                            // Remove old mapping for this computed property
-                            for (const [path, name] of this.#computedSourcePaths) {
-                                if (name === key) {
-                                    this.#computedSourcePaths.delete(path);
-                                    break;
-                                }
+                // Track source path mapping for computed property values.
+                // This allows changes like "model.elements[0].x" to be mapped to "selectedElement.x".
+                if (typeof newValue === 'object' && newValue !== null) {
+                    const sourcePath = ReactiveProxy.getPath(newValue);
+                    if (sourcePath) {
+                        // Remove old mapping for this computed property
+                        for (const [path, name] of this.#computedSourcePaths) {
+                            if (name === key) {
+                                this.#computedSourcePaths.delete(path);
+                                break;
                             }
-                            // Add new mapping
-                            this.#computedSourcePaths.set(sourcePath, key);
                         }
+                        // Add new mapping
+                        this.#computedSourcePaths.set(sourcePath, key);
                     }
                 }
-            } catch (error) {
-                this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
             }
-
-            computed.add(key);
-            processing.delete(key);
-        };
-
-        // Compute all properties; the recursive logic inside compute() handles
-        // dependency ordering and skips properties whose dependencies did not change.
-        for (const key of Object.keys(this.#computedDependencies)) {
-            compute(key);
+        } catch (error) {
+            this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
         }
     }
 

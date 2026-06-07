@@ -198,7 +198,25 @@ VDOM.createApp({
 }).mount('#app');
 ```
 
-**Writable Computed Properties:**
+**Lazy (pull-based) evaluation:**
+
+Computed properties are evaluated lazily and cached. When a dependency changes,
+the dependent computed is marked stale (rather than eagerly recomputed) and is
+recomputed on the next read. Because of this, reading a computed property
+**synchronously after mutating a dependency returns an up-to-date value** — you
+do not have to wait for the next tick:
+
+```javascript
+this.cartItems.push(item);
+console.log(this.subtotal); // already reflects the new item
+```
+
+DOM updates remain batched in a microtask, so multiple synchronous mutations
+still result in a single render. Each computed is recomputed at most once per
+update cycle (on first read, or during the pre-render flush, whichever comes
+first), and a computed whose recomputed value is unchanged does not trigger DOM
+updates or watchers that depend on it. Computed→computed chains resolve
+automatically and independently of declaration order.
 
 A computed property can also be defined as an object with both a `get` and a
 `set` function. This makes it writable, so it can be used as a `v-model` target
@@ -913,7 +931,7 @@ ichigo.js uses several optimization techniques:
 
 - **Microtask batching**: Multiple synchronous changes result in a single DOM update
 - **Efficient change tracking**: Only changed properties trigger re-evaluation
-- **Smart computed caching**: Computed properties only re-evaluate when dependencies change
+- **Lazy computed caching**: Computed properties are pull-based — they re-evaluate only when a dependency changes and the value is actually read, at most once per update cycle
 
 Benchmark (1000 item list update): **~6.8ms** ⚡
 

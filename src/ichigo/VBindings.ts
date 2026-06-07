@@ -70,6 +70,35 @@ export class VBindings {
 	#externalSubscriptions: Map<string, () => void> = new Map();
 
 	/**
+	 * Recompute callbacks for computed properties registered on these bindings.
+	 * Maps a computed property name to a function that recomputes and caches its value.
+	 * Only the bindings instance that owns the computed (typically the root) holds an entry;
+	 * child bindings resolve computed reads by delegating to their parent through the proxy.
+	 */
+	#computedRecomputers: Map<string, () => void> = new Map();
+
+	/**
+	 * The set of computed properties whose cached value is stale and must be recomputed on next
+	 * access (pull-based evaluation). Populated by markComputedDirty when a dependency changes,
+	 * and cleared as each computed is resolved.
+	 */
+	#dirtyComputeds: Set<string> = new Set();
+
+	/**
+	 * Guard set used to detect re-entrant (circular) computed resolution. While a computed is
+	 * being recomputed its name is held here; a nested read of the same computed returns the
+	 * currently cached (stale) value instead of recursing infinitely.
+	 */
+	#resolvingComputeds: Set<string> = new Set();
+
+	/**
+	 * The plain backing object behind the #local proxy. Kept as a direct reference so the cached
+	 * value of a computed property can be read without triggering pull-based re-evaluation
+	 * (see peekComputed).
+	 */
+	#store: Record<string, any> = {};
+
+	/**
 	 * Creates a new instance of VBindings.
 	 * @param parent The parent bindings, if any.
 	 */
@@ -81,8 +110,13 @@ export class VBindings {
 			this.#logger.debug(`VBindings created. Parent: ${this.#parent ? 'yes' : 'no'}`);
 		}
 
-		this.#local = new Proxy({}, {
+		this.#local = new Proxy(this.#store, {
 			get: (obj, key) => {
+				// Pull-based evaluation: if this key is a dirty computed property, recompute it now
+				// so the read returns a fresh value (synchronously, even before the update microtask).
+				if (typeof key === 'string') {
+					this.#resolveComputedIfDirty(key);
+				}
 				if (Reflect.has(obj, key)) {
 					return Reflect.get(obj, key);
 				}
@@ -358,6 +392,83 @@ export class VBindings {
 	 */
 	registerWritableComputed(key: string, setter: (value: any) => void): void {
 		this.#writableComputeds.set(key, setter);
+	}
+
+	/**
+	 * Registers a computed property for pull-based (lazy) evaluation. The provided recompute
+	 * callback is invoked the first time the property is read after it has been marked dirty
+	 * (or during the pre-render flush), and is expected to update the cached value (typically
+	 * via setSilent).
+	 * @param key The computed property name.
+	 * @param recompute The callback that recomputes and caches the property's value.
+	 */
+	registerComputed(key: string, recompute: () => void): void {
+		this.#computedRecomputers.set(key, recompute);
+	}
+
+	/**
+	 * Marks a computed property as dirty so it will be recomputed on next access.
+	 * @param key The computed property name.
+	 */
+	markComputedDirty(key: string): void {
+		this.#dirtyComputeds.add(key);
+	}
+
+	/**
+	 * Reads the currently cached value of a computed property without triggering pull-based
+	 * re-evaluation. Used by the recompute routine to obtain the previous value for change
+	 * detection. Falls back to the parent bindings when the key is not stored locally.
+	 * @param key The computed property name.
+	 * @returns The cached value, or undefined if not cached.
+	 */
+	peekComputed(key: string): any {
+		if (Object.prototype.hasOwnProperty.call(this.#store, key)) {
+			return this.#store[key];
+		}
+		return this.#parent?.peekComputed(key);
+	}
+
+	/**
+	 * Forces resolution of every computed property currently marked dirty. Called before the DOM
+	 * diff and watcher notification so that the set of changed identifiers is complete.
+	 */
+	flushDirtyComputeds(): void {
+		for (const key of [...this.#dirtyComputeds]) {
+			this.#resolveComputedIfDirty(key);
+		}
+	}
+
+	/**
+	 * Resolves a computed property if its cached value is dirty (pull-based evaluation), by
+	 * invoking its registered recompute callback. Computed→computed chains resolve naturally:
+	 * reading another computed inside the getter re-enters this method for that key. Re-entrant
+	 * resolution of the same key (a circular dependency) is detected and short-circuited, leaving
+	 * the previously cached value in place.
+	 * @param key The property name to resolve.
+	 */
+	#resolveComputedIfDirty(key: string): void {
+		const recompute = this.#computedRecomputers.get(key);
+		if (!recompute) {
+			// Not a computed owned by these bindings; a parent (if any) resolves it when the value
+			// is read through the proxy delegation in the get trap.
+			return;
+		}
+		if (!this.#dirtyComputeds.has(key)) {
+			return;
+		}
+		if (this.#resolvingComputeds.has(key)) {
+			this.#logger?.warn(`Circular dependency detected while resolving computed property '${key}'.`);
+			return;
+		}
+		this.#resolvingComputeds.add(key);
+		try {
+			// Clear the dirty flag before recomputing so reads of this same key during recomputation
+			// (other than a true cycle) do not attempt to resolve it again.
+			this.#dirtyComputeds.delete(key);
+			recompute();
+		} finally {
+			this.#resolvingComputeds.delete(key);
+		}
 	}
 
 	/**
