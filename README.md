@@ -1021,6 +1021,10 @@ MIT License - Copyright (c) 2025 MintJams Inc.
 
 Inspired by [Vue.js](https://vuejs.org/) - A progressive JavaScript framework.
 
+## Trademarks
+
+All trademarks are the property of their respective owners.
+
 ---
 
 Built with ❤️ by [MintJams Inc.](https://github.com/mintjamsinc)
