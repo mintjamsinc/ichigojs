@@ -101,7 +101,8 @@ export class VApplication {
         this.#logger = this.#logManager.getLogger('VApplication');
 
         // Analyze function dependencies
-        this.#functionDependencies = ExpressionUtils.analyzeFunctionDependencies(options.methods || {});
+        const methods: Record<string, Function> = (options.methods || {}) as Record<string, Function>;
+        this.#functionDependencies = ExpressionUtils.analyzeFunctionDependencies(methods);
 
         // Analyze computed dependencies based on getter functions only.
         // Writable computeds (defined as { get, set }) contribute their getter for dependency analysis.
@@ -111,7 +112,23 @@ export class VApplication {
                 computedGetters[key] = VApplication.#getComputedGetter(def);
             }
         }
-        this.#computedDependencies = ExpressionUtils.analyzeFunctionDependencies(computedGetters);
+        // Resolve computed dependencies against BOTH the computed getters AND the methods, so a
+        // computed that delegates to a method inherits that method's reactive dependencies. A
+        // computed whose only reactive reads happen inside a called method (e.g. a reactive i18n
+        // `t()` helper that reads `this.localization`) would otherwise never be invalidated, leaving
+        // its binding stale on a dependency change. Analyzing the combined set flattens every
+        // computed→method (and computed→computed, method→method) edge down to the underlying
+        // reactive paths — the same expansion that template-expression analysis already performs for
+        // method calls (see ExpressionUtils.extractIdentifiers). We then keep only the computed
+        // entries, since #computedDependencies must be keyed by computed name alone.
+        const combinedDependencies = ExpressionUtils.analyzeFunctionDependencies({
+            ...methods,
+            ...computedGetters,
+        });
+        this.#computedDependencies = {};
+        for (const key of Object.keys(computedGetters)) {
+            this.#computedDependencies[key] = combinedDependencies[key] || [];
+        }
 
         // Initialize watcher manager
         this.#watcher = new VWatcher(this.#logger);
@@ -519,10 +536,10 @@ export class VApplication {
 
     /**
      * Marks computed properties as dirty (pull-based invalidation) when a dependency changes.
-     * Uses the statically analyzed dependency graph; because computed→computed dependencies are
-     * flattened to their underlying reactive paths during analysis, a single change marks every
-     * transitively dependent computed dirty in one pass. The actual recomputation is deferred until
-     * the value is read (see #recomputeOne).
+     * Uses the statically analyzed dependency graph; because computed→computed and computed→method
+     * dependencies are flattened to their underlying reactive paths during analysis, a single change
+     * marks every transitively dependent computed dirty in one pass. The actual recomputation is
+     * deferred until the value is read (see #recomputeOne).
      * @param identifier The changed identifier reported by the bindings change tracker.
      */
     #markDirtyComputeds(identifier: string): void {
