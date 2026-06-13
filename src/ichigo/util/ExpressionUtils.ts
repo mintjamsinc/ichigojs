@@ -233,46 +233,70 @@ export class ExpressionUtils {
             }
         }
 
-        // Second pass: recursively resolve function dependencies
-        const resolvedDependencies: Record<string, string[]> = {};
-        const resolving = new Set<string>(); // To detect circular dependencies
-
-        const resolveDependencies = (funcName: string): string[] => {
-            // If already resolved, return cached result
-            if (resolvedDependencies[funcName]) {
-                return resolvedDependencies[funcName];
-            }
-
-            // Check for circular dependency
-            if (resolving.has(funcName)) {
-                console.warn(`Circular dependency detected for function: ${funcName}`);
-                return [];
-            }
-
-            resolving.add(funcName);
-            const allDependencies = new Set<string>();
-            const directDependencies = functionDependencies[funcName] || [];
-
-            for (const dep of directDependencies) {
-                if (dep === funcName) continue; // Skip self-references
+        // Second pass: resolve each function's transitive reactive dependencies.
+        //
+        // A function's direct dependency list mixes two kinds of identifiers: references to other
+        // functions (call edges) and references to reactive data properties (the values we actually
+        // care about). We want, for every function, the full set of reactive properties reachable by
+        // following call edges to any depth.
+        //
+        // Functions are free to reference each other cyclically — a poller that reschedules itself
+        // (`scheduleOperationPoll` -> `pollOperation` -> `scheduleOperationPoll`), a pair of mutually
+        // recursive helpers, or any state machine. This is valid JavaScript, so the resolver must not
+        // treat it as an error. Every function in a cycle (more precisely, a strongly connected
+        // component) is reachable from the others, so they all share the same transitive dependency
+        // set: the union of every member's direct reactive dependencies.
+        //
+        // A depth-first walk that bails out on back-edges cannot compute that correctly — it drops the
+        // dependencies contributed around the cycle and caches incomplete, traversal-order-dependent
+        // results, which would silently break reactivity for any computed that reads reactive data
+        // through a cyclic method. We instead split each function's direct dependencies into reactive
+        // properties and call edges, then propagate reactive properties along call edges until the sets
+        // stop growing (a fixpoint). This converges regardless of cycles and yields the exact transitive
+        // closure for every function, including those participating in a cycle.
+        const directReactive: Record<string, Set<string>> = {};
+        const callEdges: Record<string, string[]> = {};
+        for (const funcName of Object.keys(functions)) {
+            const reactive = new Set<string>();
+            const edges: string[] = [];
+            for (const dep of functionDependencies[funcName] || []) {
+                if (dep === funcName) continue; // Skip self-references.
                 if (functions[dep]) {
-                    // It's a function, recursively resolve its dependencies
-                    const subDependencies = resolveDependencies(dep);
-                    subDependencies.forEach(subDep => allDependencies.add(subDep));
+                    edges.push(dep); // Call edge to another function.
                 } else {
-                    // It's a variable, add directly
-                    allDependencies.add(dep);
+                    reactive.add(dep); // Reactive data property (terminal dependency).
                 }
             }
+            directReactive[funcName] = reactive;
+            callEdges[funcName] = edges;
+        }
 
-            resolving.delete(funcName);
-            resolvedDependencies[funcName] = Array.from(allDependencies);
-            return resolvedDependencies[funcName];
-        };
-
-        // Resolve all functions
+        // Seed each function with its own direct reactive dependencies, then propagate along call edges
+        // until no set changes. Each pass can only add properties, and the universe of properties is
+        // finite, so the loop is guaranteed to terminate.
+        const resolved: Record<string, Set<string>> = {};
         for (const funcName of Object.keys(functions)) {
-            resolveDependencies(funcName);
+            resolved[funcName] = new Set(directReactive[funcName]);
+        }
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const funcName of Object.keys(functions)) {
+                const target = resolved[funcName];
+                for (const edge of callEdges[funcName]) {
+                    for (const dep of resolved[edge]) {
+                        if (!target.has(dep)) {
+                            target.add(dep);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        const resolvedDependencies: Record<string, string[]> = {};
+        for (const funcName of Object.keys(functions)) {
+            resolvedDependencies[funcName] = Array.from(resolved[funcName]);
         }
 
         return resolvedDependencies;
