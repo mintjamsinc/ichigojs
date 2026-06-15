@@ -59,6 +59,43 @@ export class ReactiveProxy {
     private static pathAliases = new Map<string, string>();
 
     /**
+     * The `Object.prototype.toString` tags of the *only* value types we deeply
+     * proxy. Everything else is returned untouched (raw).
+     *
+     * Rationale: a Proxy can only safely intercept plain data containers. Built-in
+     * and host objects — `Date`, `RegExp`, `File`, `Blob`, `FileList`, `Promise`,
+     * `WeakMap`/`WeakSet`, typed arrays, DOM nodes, etc. — carry private internal
+     * slots, and invoking their native methods with a Proxy as the `this`/receiver
+     * throws "Illegal invocation". They must therefore never be wrapped. This is an
+     * allow-list rather than a deny-list so that *every* such exotic type is
+     * excluded by default, not just the handful we happened to enumerate.
+     *
+     * Plain user-defined class instances report `[object Object]` (unless they set
+     * `Symbol.toStringTag`) and so remain reactive, preserving prior behaviour.
+     * `Map`/`Set` stay reactive because the proxy specially wraps their mutation
+     * methods (see the `get` trap); `WeakMap`/`WeakSet` are intentionally excluded
+     * since they cannot be wrapped that way and would break the same as `File`.
+     *
+     * Callers that want a plain object kept non-reactive can still opt out
+     * explicitly via {@link markRaw}.
+     */
+    private static readonly REACTIVE_TYPE_TAGS: ReadonlySet<string> = new Set([
+        '[object Object]',
+        '[object Array]',
+        '[object Arguments]',
+        '[object Map]',
+        '[object Set]',
+    ]);
+
+    /**
+     * Whether the given non-null object value is one we deeply proxy.
+     * See {@link REACTIVE_TYPE_TAGS} for the reasoning.
+     */
+    private static isReactivable(value: object): boolean {
+        return this.REACTIVE_TYPE_TAGS.has(Object.prototype.toString.call(value));
+    }
+
+    /**
      * Creates a reactive proxy for the given object.
      * The proxy will call the onChange callback whenever a property is modified.
      *
@@ -84,11 +121,10 @@ export class ReactiveProxy {
             return target;
         }
 
-        // Don't wrap built-in objects that have internal slots
-        // These objects require their methods to be called with the correct 'this' context
-        // Use Object.prototype.toString for more reliable type checking
-        const typeTag = Object.prototype.toString.call(target);
-        if (typeTag === '[object Date]' || typeTag === '[object RegExp]' || typeTag === '[object Error]') {
+        // Only deeply proxy plain data containers; return every built-in/host
+        // object (Date, File, Blob, Promise, WeakMap, DOM nodes, …) as-is, since
+        // their native methods break when invoked through a Proxy receiver.
+        if (!this.isReactivable(target)) {
             return target;
         }
 
@@ -129,10 +165,10 @@ export class ReactiveProxy {
                         return value;
                     }
 
-                    // Don't wrap built-in objects that have internal slots
-                    // Use Object.prototype.toString for more reliable type checking
-                    const valueTypeTag = Object.prototype.toString.call(value);
-                    if (valueTypeTag === '[object Date]' || valueTypeTag === '[object RegExp]' || valueTypeTag === '[object Error]') {
+                    // Only deeply proxy plain data containers; hand back built-in
+                    // and host objects (Date, File, Blob, Promise, WeakMap, DOM
+                    // nodes, …) untouched so their native methods keep working.
+                    if (!ReactiveProxy.isReactivable(value)) {
                         return value;
                     }
 
