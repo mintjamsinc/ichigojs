@@ -1027,4 +1027,4 @@ All trademarks are the property of their respective owners.
 
 ---
 
-Built with ❤️ by [MintJams Inc.](https://github.com/mintjamsinc)
+Built with ❤️ by [MintJams Inc.](https://www.mintjams.jp/)
