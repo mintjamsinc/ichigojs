@@ -461,27 +461,31 @@ export class VForDirective implements VDirective {
      * Sets item bindings for a VNode, handling nested destructuring if needed.
      */
     #setItemBindings(bindings: VBindings, context: { key: any; item: any; index: number; objectKey?: string }): void {
+        // Loop variables are scope-local: they must shadow, never overwrite, an
+        // inherited binding of the same name (a data / method / computed key on a
+        // parent scope). setLocal writes to this iteration's own store so a loop
+        // variable named like e.g. the i18n helper `t` cannot clobber it.
         if (this.#itemDestructure && Array.isArray(context.item)) {
             // Nested destructuring: spread array items to individual bindings
             // e.g., item = ['alice', 1] with itemDestructure = ['k', 'v']
-            // bindings.set('k', 'alice')
-            // bindings.set('v', 1)
+            // bindings.setLocal('k', 'alice')
+            // bindings.setLocal('v', 1)
             this.#itemDestructure.forEach((name, i) => {
-                bindings.set(name, context.item[i]);
+                bindings.setLocal(name, context.item[i]);
             });
         } else if (this.#itemName) {
             // Simple item binding
-            bindings.set(this.#itemName, context.item);
+            bindings.setLocal(this.#itemName, context.item);
         }
 
         if (this.#indexName) {
             // For objects, use objectKey if available; otherwise use numeric index
-            bindings.set(this.#indexName, context.objectKey ?? context.index);
+            bindings.setLocal(this.#indexName, context.objectKey ?? context.index);
         }
 
         if (this.#thirdName) {
             // Third argument is always the numeric index
-            bindings.set(this.#thirdName, context.index);
+            bindings.setLocal(this.#thirdName, context.index);
         }
     }
 

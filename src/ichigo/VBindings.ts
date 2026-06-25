@@ -46,6 +46,14 @@ export class VBindings {
 	#suppressOnChange: boolean = false;
 
 	/**
+	 * Flag forcing the next write through the `set` trap to stay in THIS scope's own
+	 * local store instead of walking up to an inherited binding of the same name.
+	 * Set only by {@link setLocal} for scope-local variables (e.g. v-for loop items),
+	 * which must shadow — never overwrite — a parent binding with the same key.
+	 */
+	#localWrite: boolean = false;
+
+	/**
 	 * Per-instance path aliases. Maps local variable names to their reactive source paths.
 	 * Scoped here instead of the global ReactiveProxy map so that v-for items each maintain
 	 * their own alias (e.g. "file" -> "files[0]") without overwriting each other.
@@ -132,8 +140,13 @@ export class VBindings {
 					return true;
 				}
 
+				// For a key that is not local to this scope, an assignment normally
+				// retargets to the nearest parent that owns it, so reassignments
+				// (e.g. `count = count + 1` in a handler) mutate the original binding.
+				// A scope-local write (setLocal — used for v-for loop variables) skips
+				// this walk so the variable shadows, never clobbers, an inherited key.
 				let target = obj;
-				if (!Reflect.has(target, key)) {
+				if (!this.#localWrite && !Reflect.has(target, key)) {
 					for (let parent = this.#parent; parent; parent = parent.#parent) {
 						if (Reflect.has(parent.#local, key)) {
 							target = parent.#local;
@@ -318,6 +331,25 @@ export class VBindings {
 	 */
 	set(key: string, value: any): void {
 		this.#local[key] = value;
+	}
+
+	/**
+	 * Sets a binding value in THIS scope's own local store, without walking up to a
+	 * parent scope. Used for scope-local variables (e.g. v-for loop items) that must
+	 * shadow — never overwrite — an inherited binding of the same name. Contrast with
+	 * {@link set}, which retargets a write of an inherited key to the owning parent so
+	 * that reassignments mutate the original; a loop variable named like a root data /
+	 * method / computed key (e.g. `t`) would otherwise clobber it.
+	 * @param key The binding name.
+	 * @param value The binding value.
+	 */
+	setLocal(key: string, value: any): void {
+		this.#localWrite = true;
+		try {
+			this.#local[key] = value;
+		} finally {
+			this.#localWrite = false;
+		}
 	}
 
 	/**
