@@ -15,6 +15,7 @@ A simple and intuitive reactive framework. Lightweight, fast, and user-friendly 
 - 🔌 **Lifecycle Hooks** - `@mount`, `@mounted`, `@update`, `@updated`, `@unmount`, `@unmounted` with context (`$ctx`)
 - 💾 **userData Storage** - Proxy-free storage for third-party library instances with auto-cleanup
 - 🧩 **Components** - Reusable Web Components via `defineComponent` with `props`, `slot`, and `$emit`
+- 🔗 **Template refs** - Direct access to DOM elements and component hosts via `ref` and `$refs`
 - 📦 **Lightweight** - Minimal bundle size
 - 🚀 **High Performance** - Efficient batched updates via microtask queue
 - 💪 **TypeScript** - Written in TypeScript with full type support
@@ -823,6 +824,102 @@ methods: {
 }
 ```
 
+### Template refs (`$refs`)
+
+Use the `ref` attribute to obtain a direct reference to a DOM element (or a
+component's host element). Referenced elements are collected into the `$refs`
+object, available on `this` in methods and as `$refs` in template expressions —
+the same mechanism as Vue's `$refs`.
+
+```html
+<input ref="search">
+<button @click="focusSearch">Focus</button>
+```
+
+```javascript
+methods: {
+  focusSearch() {
+    // this.$refs.search is the <input> element
+    this.$refs.search.focus();
+  }
+}
+```
+
+**When refs are available:**
+
+A ref is registered during the element's mount phase and removed during its
+unmount phase, so it is already populated by the time a `@mounted` hook runs.
+After changing data, wait for `$nextTick` before reading refs for elements that
+were just rendered (e.g. by `v-if` / `v-for`).
+
+```javascript
+methods: {
+  async showAndFocus() {
+    this.editing = true;            // reveals <input v-if="editing" ref="field">
+    this.$nextTick(() => this.$refs.field.focus());
+  }
+}
+```
+
+**Refs on components:**
+
+A `ref` on a component resolves to the component's **host custom element**, so
+you can call DOM methods on it (focus, scroll, `getBoundingClientRect`,
+`dispatchEvent`, etc.).
+
+```html
+<my-card ref="card"></my-card>
+```
+
+```javascript
+this.$refs.card; // the <my-card> element
+```
+
+**Refs inside `v-for` (arrays):**
+
+When `ref` is used on (or inside) a `v-for`, the matching elements are collected
+into an **array** under that name.
+
+```html
+<ul>
+  <li v-for="item in items" :key="item.id" ref="rows">{{ item.name }}</li>
+</ul>
+```
+
+```javascript
+this.$refs.rows; // [<li>, <li>, <li>, ...] — one entry per rendered row
+```
+
+Entries are stored in registration order. Because reused rows are not
+re-registered, the array order is not guaranteed to match DOM order after a
+reorder — the same caveat Vue documents.
+
+**Dynamic and function refs (`:ref`):**
+
+Bind `ref` with `:ref` to compute it from an expression. If the expression
+evaluates to a **string**, it is used as the ref name; if it evaluates to a
+**function**, the function is called with the element on mount and with `null`
+on unmount (a function ref). Function refs are convenient for `v-for` or dynamic
+scenarios where you want full control over storage.
+
+```html
+<!-- Dynamic name -->
+<input :ref="fieldName">
+
+<!-- Function ref -->
+<li v-for="item in items" :key="item.id" :ref="el => registerRow(item.id, el)">
+  {{ item.name }}
+</li>
+```
+
+`:ref` is evaluated once at mount (it does not reactively re-run when the bound
+value changes).
+
+> **Note:** `$refs` is **not reactive**. Registering or clearing a ref never
+> triggers a re-render, and `$refs` should not be used to drive reactive
+> template output — read it from event handlers and lifecycle hooks instead.
+> This matches Vue's behavior.
+
 ## Components
 
 ichigo.js components are real [Custom Elements](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements)
@@ -996,6 +1093,7 @@ Creates a new application instance.
 - `$markRaw(obj)`: Marks an object as non-reactive (see [Marking Objects as Non-Reactive](#marking-objects-as-non-reactive))
 - `$nextTick(callback)`: Runs a callback after the next DOM update
 - `$emit(name, detail?, options?)`: Dispatches a custom event (see [Events](#events-emit))
+- `$refs`: Object of template references registered via the `ref` attribute (see [Template refs](#template-refs-refs)). Non-reactive.
 - `$ctx`: Lifecycle/handler context with `element`, `vnode`, and `userData`
 
 ### defineComponent(tagName, options)

@@ -80,6 +80,18 @@ export class VApplication {
     #watcher: VWatcher;
 
     /**
+     * Template references registered by the `ref` directive, exposed to data(), methods, and
+     * expressions as `$refs` (Vue's `$refs`). Each entry is either a single Element or, for a
+     * `ref` used inside `v-for`, an array of Elements.
+     *
+     * This object is intentionally marked raw (non-reactive): mutating it when an element mounts or
+     * unmounts must never schedule a render, and it must not be used to drive reactive template
+     * output — matching Vue's semantics for `$refs`. It is held as a direct field (in addition to
+     * being injected as the `$refs` binding) so registration is a plain property write.
+     */
+    #refs: Record<string, Element | Element[]> = {};
+
+    /**
      * Flag to indicate if an update is already scheduled.
      */
     #updateScheduled: boolean = false;
@@ -194,6 +206,14 @@ export class VApplication {
      */
     get functionDependencies(): Record<string, string[]> {
         return this.#functionDependencies;
+    }
+
+    /**
+     * Gets the template references registered via the `ref` directive (Vue's `$refs`). The same
+     * object is exposed to data(), methods, and expressions as `$refs`. Non-reactive by design.
+     */
+    get refs(): Record<string, Element | Element[]> {
+        return this.#refs;
     }
 
     /**
@@ -335,6 +355,57 @@ export class VApplication {
     }
 
     /**
+     * Registers a template reference under the given name. Called by the `ref` directive during the
+     * mount phase. When {@param asArray} is true (the element lives inside a `v-for`), references
+     * accumulate into an array in registration order; otherwise the name holds a single element.
+     *
+     * Mutates the raw (non-reactive) `$refs` object directly, so this never schedules a render.
+     *
+     * @param name The ref name.
+     * @param element The element (or component host element) to register.
+     * @param asArray Whether to collect into an array (refs used inside a v-for).
+     */
+    registerRef(name: string, element: Element, asArray: boolean): void {
+        if (asArray) {
+            const current = this.#refs[name];
+            if (Array.isArray(current)) {
+                if (!current.includes(element)) {
+                    current.push(element);
+                }
+            } else {
+                this.#refs[name] = [element];
+            }
+            return;
+        }
+
+        this.#refs[name] = element;
+    }
+
+    /**
+     * Removes a template reference registered under the given name. Called by the `ref` directive
+     * during the unmount phase. The removal is identity-safe: an entry is only cleared when it still
+     * points at {@param element}, so a newly mounted element that reused the name is never clobbered
+     * by the teardown of the element it replaced.
+     *
+     * @param name The ref name.
+     * @param element The element whose registration should be removed.
+     */
+    unregisterRef(name: string, element: Element): void {
+        const current = this.#refs[name];
+        if (Array.isArray(current)) {
+            const index = current.indexOf(element);
+            if (index !== -1) {
+                current.splice(index, 1);
+            }
+            if (current.length === 0) {
+                delete this.#refs[name];
+            }
+        } else if (current === element) {
+            delete this.#refs[name];
+        }
+    }
+
+    /**
      * Initializes bindings from data, computed properties, and methods.
      * @returns The initialized bindings object.
      */
@@ -355,6 +426,11 @@ export class VApplication {
         this.#bindings.set('$nextTick', (callback: () => void) => this.#nextTick(callback));
         this.#bindings.set('$markRaw', <T extends object>(obj: T) => ReactiveProxy.markRaw(obj));
         this.#bindings.set('$emit', (name: string, detail?: any, options?: VEmitOptions) => this.#emit(name, detail, options));
+
+        // Inject the (non-reactive) $refs container. Marking it raw prevents VBindings from wrapping
+        // it in a reactive proxy, so populating it from the ref directive never schedules a render.
+        ReactiveProxy.markRaw(this.#refs);
+        this.#bindings.set('$refs', this.#refs);
 
         // Add methods
         if (this.#options.methods) {

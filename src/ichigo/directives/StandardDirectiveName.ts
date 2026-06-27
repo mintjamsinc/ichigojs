@@ -33,5 +33,7 @@ export enum StandardDirectiveName {
     /** Text content directive. */
     V_TEXT = "v-text",
     /** Focus management directive. */
-    V_FOCUS = "v-focus"
+    V_FOCUS = "v-focus",
+    /** Template reference directive (Vue's `ref` / `$refs`). */
+    REF = "ref"
 }

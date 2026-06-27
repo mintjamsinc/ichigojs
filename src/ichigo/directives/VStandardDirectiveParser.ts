@@ -19,6 +19,7 @@ import { VResizeDirective } from "./VResizeDirective";
 import { VShowDirective } from "./VShowDirective";
 import { VTextDirective } from "./VTextDirective";
 import { VFocusDirective } from "./VFocusDirective";
+import { VRefDirective } from "./VRefDirective";
 
 /**
  * The directive parser for standard directives.
@@ -64,7 +65,9 @@ export class VStandardDirectiveParser implements VDirectiveParser {
             context.attribute.name === StandardDirectiveName.V_TEXT ||
             // v-focus, v-focus.<modifier>
             context.attribute.name === StandardDirectiveName.V_FOCUS ||
-            context.attribute.name.startsWith(StandardDirectiveName.V_FOCUS + ".")) {
+            context.attribute.name.startsWith(StandardDirectiveName.V_FOCUS + ".") ||
+            // ref, :ref, v-bind:ref
+            this.#isRefAttribute(context.attribute.name)) {
             return true;
         }
 
@@ -72,9 +75,27 @@ export class VStandardDirectiveParser implements VDirectiveParser {
     }
 
     /**
+     * Determines whether the attribute is a template reference (`ref`, `:ref`, or `v-bind:ref`).
+     * The dynamic forms also match the generic v-bind shorthand, so {@link parse} dispatches them
+     * to VRefDirective explicitly before the v-bind branch is reached.
+     */
+    #isRefAttribute(name: string): boolean {
+        return name === StandardDirectiveName.REF ||
+            name === ":" + StandardDirectiveName.REF ||
+            name === StandardDirectiveName.V_BIND + ":" + StandardDirectiveName.REF;
+    }
+
+    /**
      * @inheritdoc
      */
     parse(context: VDirectiveParseContext): VDirective {
+        // ref, :ref, v-bind:ref
+        // Checked before the v-bind branch below, since ":ref" / "v-bind:ref" also match the
+        // generic v-bind shorthand but must be handled as template references, not attribute binds.
+        if (this.#isRefAttribute(context.attribute.name)) {
+            return new VRefDirective(context);
+        }
+
         if (context.attribute.name === StandardDirectiveName.V_IF) {
             return new VIfDirective(context);
         }
