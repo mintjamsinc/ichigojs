@@ -7,6 +7,7 @@ import { VDirective } from "./VDirective";
 import { VDirectiveParseContext } from "./VDirectiveParseContext";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { ExpressionEvaluator } from "../util/ExpressionEvaluator";
+import { toDisplayString } from "../util/DisplayString";
 
 /**
  * Directive for setting text content of an element.
@@ -93,8 +94,7 @@ export class VTextDirective implements VDirective {
             },
             applyToDOM(): void {
                 const element = vNode.node as HTMLElement;
-                const textContent = evaluator.evaluate();
-                element.textContent = textContent ?? '';
+                element.textContent = toDisplayString(evaluator.evaluate());
             }
         };
         return updater;

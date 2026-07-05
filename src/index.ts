@@ -6,6 +6,7 @@ export { VComponentRegistry } from './ichigo/components/VComponentRegistry';
 export { ReactiveProxy } from './ichigo/util/ReactiveProxy';
 
 export { ExpressionUtils } from './ichigo/util/ExpressionUtils';
+export { toDisplayString } from './ichigo/util/DisplayString';
 
 export { defineComponent } from './ichigo/components/defineComponent';
 export type { IchigoComponentOptions } from './ichigo/components/IchigoComponentOptions';

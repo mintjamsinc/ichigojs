@@ -1,6 +1,7 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
 import { ExpressionUtils } from "./util/ExpressionUtils";
+import { toDisplayString } from "./util/DisplayString";
 import { VBindings } from "./VBindings";
 
 /**
@@ -130,8 +131,9 @@ export class VTextEvaluator {
                     return undefined;
                 });
 
-                // Evaluate the expression and replace {{...}} in the text
-                result = result.replace(matches[i][0], String(evaluator.func(...values)));
+                // Evaluate the expression and replace {{...}} in the text.
+                // A function replacement keeps `$`-patterns in the value literal.
+                result = result.replace(matches[i][0], () => toDisplayString(evaluator.func(...values)));
             });
             return result;
         };
