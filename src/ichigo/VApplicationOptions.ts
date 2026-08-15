@@ -17,9 +17,12 @@ export type VComputedDefinition =
 export interface VApplicationOptions {
     /**
      * A function that returns the initial data for the application.
+     * Optional: an application (or component) whose state comes entirely from
+     * props, computed properties, or methods may omit it — the runtime already
+     * treats it as optional.
      * @returns The initial data for the application.
      */
-    data: () => unknown;
+    data?: () => unknown;
 
     /**
      * A dictionary of computed properties for the application.
