@@ -7,6 +7,7 @@ import { VApplicationOptions, VComputedDefinition } from "./VApplicationOptions"
 import { VEmitOptions } from "./VEmitOptions";
 import { VBindings } from "./VBindings";
 import { VNode } from "./VNode";
+import { VNodeInit } from "./VNodeInit";
 import { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
 import { IchigoElementRegistry } from "./components/IchigoElementRegistry";
 import { VComponentRegistry } from "./components/VComponentRegistry";
@@ -236,6 +237,18 @@ export class VApplication {
 
     set hostElement(element: HTMLElement | undefined) {
         this.#hostElement = element;
+    }
+
+    /**
+     * Creates a VNode. Directives that need to build VNode trees at runtime
+     * (e.g. the scoped slot outlet) call this instead of constructing VNode
+     * directly, so they can keep their VNode import type-only and avoid a
+     * VNode -> VDirectiveManager -> directive -> VNode module cycle.
+     * @param init The initialization arguments for the virtual node.
+     * @returns The created VNode.
+     */
+    createVNode(init: VNodeInit): VNode {
+        return new VNode(init);
     }
 
     /**

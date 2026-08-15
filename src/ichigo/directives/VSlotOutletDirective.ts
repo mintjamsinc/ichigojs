@@ -1,6 +1,6 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
-import { VNode } from "../VNode";
+import type { VNode } from "../VNode";
 import { VBindings } from "../VBindings";
 import { VBindingsPreparer } from "../VBindingsPreparer";
 import { VDirective } from "./VDirective";
@@ -300,8 +300,11 @@ export class VSlotOutletDirective implements VDirective {
         // Clone the scoped template's content and create its VNode tree BEFORE
         // inserting into the DOM, so components inside the slot content are
         // compiled before their connectedCallback can expand them.
+        // (Created through the parent application to keep the VNode import
+        // type-only; a direct `new VNode` here would close a module cycle
+        // VNode -> VDirectiveManager -> VSlotOutletDirective -> VNode.)
         const fragment = this.#entry.template.content.cloneNode(true) as DocumentFragment;
-        this.#contentVNode = new VNode({
+        this.#contentVNode = this.#hostVNode.vApplication.createVNode({
             node: fragment,
             vApplication: this.#hostVNode.vApplication,
             parentVNode: this.#hostVNode,
