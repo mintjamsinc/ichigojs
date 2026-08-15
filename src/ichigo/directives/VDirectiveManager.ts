@@ -7,6 +7,7 @@ import { VNode } from "../VNode";
 import { VBindingsPreparer } from "../VBindingsPreparer";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { VBindDirective } from "./VBindDirective";
+import { VSlotOutletDirective } from "./VSlotOutletDirective";
 
 /**
  * Manages directives associated with a virtual node (VNode).
@@ -198,6 +199,26 @@ export class VDirectiveManager {
     #parseDirectives(): VDirective[] | undefined {
         const element = this.#vNode.node as HTMLElement;
 
+        // Parse directives from attributes
+        const directives: VDirective[] = [];
+
+        // Scoped slot outlet: a <slot> element (without structural directives)
+        // inside a component whose host received a matching <template v-slot:...>.
+        // This is an element-based directive, created before the generic
+        // attribute parsing so it can consume the slot-prop bindings (:x).
+        // A <slot> carrying v-if / v-for is handled structurally first; the
+        // outlet is then created when the clone is compiled.
+        if (element.tagName === 'SLOT' &&
+            !element.hasAttribute(StandardDirectiveName.V_FOR) &&
+            !element.hasAttribute(StandardDirectiveName.V_IF) &&
+            !element.hasAttribute(StandardDirectiveName.V_ELSE_IF) &&
+            !element.hasAttribute(StandardDirectiveName.V_ELSE)) {
+            const outlet = VSlotOutletDirective.tryCreate(this.#vNode);
+            if (outlet) {
+                directives.push(outlet);
+            }
+        }
+
         // Collect relevant attributes
         // For v-for, v-if, v-else-if, v-else: process only the structural directive on the template element.
         // Other directives (@click, :class, etc.) will be processed on the cloned/rendered elements.
@@ -235,8 +256,6 @@ export class VDirectiveManager {
             attributes.push(...Array.from(element.attributes));
         }
 
-        // Parse directives from attributes
-        const directives: VDirective[] = [];
         for (const attribute of attributes) {
             // Create a context for parsing the directive
             const context: VDirectiveParseContext = {

@@ -959,17 +959,142 @@ defineComponent('my-list', {
 
 **Props:**
 
-- Declared via the `props` array. Each declared prop becomes a property on the
-  custom element, so the parent can bind to it with `v-bind` / `:`
-  (e.g. `:items="searchResults"`).
+- Declared via the `props` array, or as a record with per-prop options:
+
+```javascript
+defineComponent('my-badge', {
+  template: '#my-badge',
+  props: {
+    label:   { type: String, default: 'none' },
+    count:   { type: Number, default: 0, validator: v => v >= 0 },
+    items:   { type: Array,  default: () => [] },  // Object/Array: use a factory
+    target:  { required: true },                   // any type, but must be provided
+  },
+});
+```
+
+- Each declared prop becomes a property on the custom element, so the parent
+  can bind to it with `v-bind` / `:` (e.g. `:items="searchResults"`).
+- `type`, `required` and `validator` are development aids: violations log a
+  console warning, but the value is always delivered as-is (same philosophy as
+  `emits`).
+- `default` is applied when the prop is `undefined` at mount time, or when the
+  parent later assigns `undefined`. `null` passes through as an explicit
+  "no value". A function default is called as a factory unless `type` includes
+  `Function`.
+- A component with declared props always mounts: values bound by the parent are
+  delivered first, and a component used without any binding mounts with its
+  declared defaults.
+- Plain HTML attributes work as a fallback for props that receive no property
+  value (e.g. `<my-badge label="hi" count="3">`; kebab-case matches camelCase
+  prop names). Attribute values are strings, except that a declared `Boolean`
+  type turns attribute presence into `true` and a declared `Number` type parses
+  numeric strings.
 - Props are reactive from the start and are included in the component's data
   automatically. Values returned from `data()` take precedence, allowing you to
   default or transform a prop (e.g. `this.items ?? []`).
+
+> ⚠️ **Object props are shared references** (same as Vue): when the parent
+> passes an object or array, the component receives the parent's reactive proxy
+> itself. Mutating a nested property from inside the component
+> (e.g. `this.user.name = '...'`) also updates the parent's state. Reassigning
+> the prop itself (`this.user = {...}`) stays local to the component and does
+> not affect the parent. Treat props as read-only and notify the parent with
+> `$emit` when a change is intended.
 
 **Slots:**
 
 Use the native `<slot>` element in the component template to project content
 from the parent. ichigo.js components use Light DOM.
+
+### Scoped slots
+
+A scoped slot lets the parent supply a template for content that the component
+renders with its own data — e.g. the rows of a list or tree. The component
+passes slot props by binding values on the `<slot>` outlet; the parent declares
+a `<template v-slot:name="scopeVar">` and receives those values under the
+scope variable:
+
+```html
+<!-- Component template: bind slot props on the outlet -->
+<template id="my-tree">
+  <ul>
+    <li v-for="(node, i) of items">
+      <slot name="item" :node="node" :index="i">
+        <span>{{ node.label }}</span>   <!-- fallback content -->
+      </slot>
+    </li>
+  </ul>
+</template>
+
+<!-- Usage: slot content sees the PARENT scope plus the scope variable -->
+<my-tree :items="nodes">
+  <template v-slot:item="row">
+    <b>{{ row.node.label }}</b> <i>#{{ row.index }}</i>
+    <my-badge v-if="row.node.count > 0" :value="row.node.count" @picked="onPicked"></my-badge>
+  </template>
+</my-tree>
+```
+
+- Slot content is compiled in the **parent scope** (where it was authored),
+  extended with the slot props under the scope variable — Vue semantics. A
+  scope variable shadows a parent binding of the same name.
+- `#item="row"` is a shorthand for `v-slot:item="row"`. `v-slot="row"`
+  (no name) targets the default `<slot>`.
+- The scope variable must be a **single identifier** — destructuring
+  (`v-slot:item="{ node }"`) is not supported.
+- The scoped template replaces the outlet's fallback content; without a
+  matching `v-slot` template, the fallback renders in the component scope as
+  before. Static slot content (`slot="name"` attribute) coexists with scoped
+  templates.
+- Slot content may freely use directives and other components. Parent-side
+  data changes and component-side slot-prop changes both propagate.
+
+### v-model on components
+
+A component can support `v-model` by accepting a `modelValue` prop and
+emitting an `update:modelValue` event with the new value as the payload
+(Vue 3 convention):
+
+```html
+<template id="my-input">
+  <label>
+    {{ label }}
+    <input :value="modelValue"
+           @input="$emit('update:modelValue', $event.target.value)">
+  </label>
+</template>
+```
+
+```javascript
+defineComponent('my-input', {
+  template: '#my-input',
+  props: {
+    modelValue: { default: '' },
+    label: { default: '' },
+  },
+});
+```
+
+```html
+<my-input v-model="name" :label="'Name'"></my-input>
+```
+
+- `v-model:arg` targets a different prop/event pair — `v-model:size="w"` binds
+  prop `size` and listens for `update:size`. Multiple `v-model:arg` bindings on
+  one component are allowed. HTML attribute names are lowercased by the
+  browser, so address a camelCase prop with kebab-case
+  (`v-model:user-name` → prop `userName`, event `update:userName`).
+- The `.trim` and `.number` modifiers apply to the emitted payload. `.lazy` has
+  no effect on components (the component decides when to emit) and logs a
+  development warning.
+- `update:*` events are always allowed regardless of the `emits` declaration.
+- Emit `update:*` events with the default `$emit` target (the component's root
+  element). The listener attached by `v-model` only accepts events emitted by
+  the component itself, so an `update:modelValue` from a nested component
+  bubbling through does not corrupt the outer binding.
+- The convention works for any custom element that follows it, not only
+  ichigo.js components.
 
 ### Events (`$emit`)
 
@@ -1086,7 +1211,10 @@ Creates a new application instance.
 - `emits`: Optional array of event names the app/component is expected to emit via `$emit`. Emitting an undeclared event logs a development warning (validation only).
 - `logLevel`: Logging level (`'debug'` | `'info'` | `'warn'` | `'error'`)
 
-**Returns:** Application instance with `mount(selector)` method
+**Returns:** Application instance with `mount(selector)` method.
+`mount()` returns the application instance itself, so
+`const app = VDOM.createApp({...}).mount('#app')` keeps a handle for later use
+(e.g. `app.unmount()`).
 
 **Instance helpers** (available in `data()`, methods, expressions, and lifecycle hooks as appropriate):
 
@@ -1103,7 +1231,9 @@ Defines and registers a custom element backed by ichigo.js reactivity. See [Comp
 **Options** (extends the `createApp` options above):
 
 - `template`: CSS selector for the `<template>` element that defines the component's markup (required)
-- `props`: Array of property names received from the parent via attribute/property binding
+- `props`: Props received from the parent — either an array of names, or a record
+  of per-prop options (`type` / `default` / `required` / `validator`).
+  See [Components — Props](#components).
 
 **Returns:** `void` (the custom element is registered via `customElements.define`)
 

@@ -47,9 +47,10 @@ export class VStandardDirectiveParser implements VDirectiveParser {
             // v-bind:<attribute>, :<attribute>
             context.attribute.name.startsWith(StandardDirectiveName.V_BIND + ":") ||
             context.attribute.name.startsWith(":") ||
-            // v-model, v-model.<modifier>
+            // v-model, v-model.<modifier>, v-model:<arg>, v-model:<arg>.<modifier>
             context.attribute.name === StandardDirectiveName.V_MODEL ||
             context.attribute.name.startsWith(StandardDirectiveName.V_MODEL + ".") ||
+            context.attribute.name.startsWith(StandardDirectiveName.V_MODEL + ":") ||
             // v-resize
             context.attribute.name === StandardDirectiveName.V_RESIZE ||
             // v-intersection
@@ -128,9 +129,10 @@ export class VStandardDirectiveParser implements VDirectiveParser {
             return new VBindDirective(context);
         }
 
-        // v-model, v-model.<modifier>
+        // v-model, v-model.<modifier>, v-model:<arg>, v-model:<arg>.<modifier>
         if (context.attribute.name === StandardDirectiveName.V_MODEL ||
-            context.attribute.name.startsWith(StandardDirectiveName.V_MODEL + ".")) {
+            context.attribute.name.startsWith(StandardDirectiveName.V_MODEL + ".") ||
+            context.attribute.name.startsWith(StandardDirectiveName.V_MODEL + ":")) {
             return new VModelDirective(context);
         }
 

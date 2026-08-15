@@ -2,8 +2,9 @@
 
 import { ReactiveProxy } from '../util/ReactiveProxy';
 import { VApplicationOptions } from '../VApplicationOptions';
-import { IchigoComponentOptions } from './IchigoComponentOptions';
+import { IchigoComponentOptions, PropOptions } from './IchigoComponentOptions';
 import { IchigoElement } from './IchigoElement';
+import { IchigoElementRegistry } from './IchigoElementRegistry';
 
 /**
  * Defines and registers a custom element backed by ichigo.js reactivity.
@@ -22,9 +23,8 @@ import { IchigoElement } from './IchigoElement';
  * ```typescript
  * defineComponent('my-list', {
  *   template: '#my-list',
- *   props: ['items'],
- *   data() {
- *     return { items: this.items ?? [] };
+ *   props: {
+ *     items: { type: Array, default: () => [] },
  *   },
  * });
  * ```
@@ -34,16 +34,35 @@ import { IchigoElement } from './IchigoElement';
  * </my-list>
  * ```
  *
+ * Props may be declared as a simple name list (`props: ['items']`) or as a
+ * record with per-prop options (type / default / required / validator).
+ * See {@link PropOptions} for the declaration semantics.
+ *
  * @param tagName  Custom element tag name (must contain a hyphen, e.g. 'my-card').
  * @param options  Component options including template selector and optional props.
  */
 export function defineComponent(tagName: string, options: IchigoComponentOptions): void {
     const { props = [], template, data, computed, methods, watch, emits, logLevel } = options;
 
+    // Normalize the props declaration: a plain name list becomes a record of
+    // empty option objects so the rest of the code handles a single shape.
+    const propOptions: Record<string, PropOptions> = {};
+    if (Array.isArray(props)) {
+        for (const name of props) {
+            propOptions[name] = {};
+        }
+    } else {
+        for (const [name, opts] of Object.entries(props)) {
+            propOptions[name] = opts ?? {};
+        }
+    }
+    const propNames = Object.keys(propOptions);
+
     // Build a subclass of IchigoElement specific to this component
     class ComponentElement extends IchigoElement {
         static override _template = template;
-        static override _props = props;
+        static override _props = propNames;
+        static override _propOptions = propOptions;
 
         static override _buildOptions(propValues: Record<string, any>): VApplicationOptions {
             return {
@@ -72,7 +91,7 @@ export function defineComponent(tagName: string, options: IchigoComponentOptions
 
     // Generate a property getter/setter for each declared prop.
     // This enables the parent VApplication to push updates via `element.propName = value`.
-    for (const prop of props) {
+    for (const prop of propNames) {
         Object.defineProperty(ComponentElement.prototype, prop, {
             get(this: IchigoElement): any {
                 return this._getProp(prop);
@@ -86,4 +105,7 @@ export function defineComponent(tagName: string, options: IchigoComponentOptions
     }
 
     customElements.define(tagName, ComponentElement);
+
+    // Record the tag so VNode can recognize component boundaries during compilation.
+    IchigoElementRegistry.add(tagName);
 }

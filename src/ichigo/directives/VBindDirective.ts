@@ -188,6 +188,14 @@ export class VBindDirective implements VDirective {
      * @inheritdoc
      */
     get onMount(): (() => void) | undefined {
+        // A constant expression (e.g. :label="'Apple'") has no reactive
+        // identifiers, so the identifier-driven update cycle never applies it.
+        // Render it once at mount instead.
+        if (this.#evaluator && this.#evaluator.dependentIdentifiers.length === 0) {
+            return () => {
+                this.#render();
+            };
+        }
         return undefined;
     }
 

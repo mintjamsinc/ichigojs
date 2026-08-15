@@ -8,6 +8,7 @@ import { VEmitOptions } from "./VEmitOptions";
 import { VBindings } from "./VBindings";
 import { VNode } from "./VNode";
 import { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
+import { IchigoElementRegistry } from "./components/IchigoElementRegistry";
 import { VComponentRegistry } from "./components/VComponentRegistry";
 import { ReactiveProxy } from "./util/ReactiveProxy";
 import { VApplicationInit } from "./VApplicationInit";
@@ -95,6 +96,15 @@ export class VApplication {
      * Flag to indicate if an update is already scheduled.
      */
     #updateScheduled: boolean = false;
+
+    /**
+     * The custom element hosting this application when it powers a component
+     * defined via defineComponent(). Set by IchigoElement before mounting.
+     * Used by component-boundary features (e.g. scoped slot outlets) to reach
+     * the host's captured slot templates and parent application scope.
+     * Undefined for regular (non-component) applications.
+     */
+    #hostElement?: HTMLElement;
 
     /**
      * Creates an instance of the virtual application.
@@ -217,10 +227,24 @@ export class VApplication {
     }
 
     /**
+     * The custom element hosting this application when it powers a component
+     * (see the #hostElement field). Undefined for regular applications.
+     */
+    get hostElement(): HTMLElement | undefined {
+        return this.#hostElement;
+    }
+
+    set hostElement(element: HTMLElement | undefined) {
+        this.#hostElement = element;
+    }
+
+    /**
      * Mounts the application.
      * @param target The CSS selector string or HTMLElement to mount the application to.
+     * @returns This application instance, so `VDOM.createApp(...).mount('#app')`
+     * can be assigned for later access (e.g. `app.bindings`, `app.unmount()`).
      */
-    mount(target: string | HTMLElement): void {
+    mount(target: string | HTMLElement): this {
         let element: Element | null;
 
         if (typeof target === 'string') {
@@ -254,6 +278,8 @@ export class VApplication {
         (element as HTMLElement).removeAttribute('v-cloak');
 
         this.#logger.info('Application mounted.');
+
+        return this;
     }
 
     /**
@@ -305,7 +331,15 @@ export class VApplication {
             } else {
                 buffer = null;
                 if (node.nodeType === Node.ELEMENT_NODE) {
-                    this.#cleanElement(node as HTMLElement);
+                    const child = node as HTMLElement;
+                    // Do not clean inside an expanded component: its DOM belongs
+                    // to the component's own application, and removing rendered
+                    // (possibly empty) text nodes would detach them from that
+                    // application's virtual nodes, freezing its output.
+                    if (IchigoElementRegistry.has(child.tagName) && (child as any)._ichigoExpanded === true) {
+                        continue;
+                    }
+                    this.#cleanElement(child);
                 }
             }
         }
@@ -750,7 +784,8 @@ export class VApplication {
      */
     #emit(name: string, detail?: any, options?: VEmitOptions): boolean {
         // Documentation/validation only: warn when emitting an event not declared in `emits`.
-        if (this.#options.emits && !this.#options.emits.includes(name)) {
+        // `update:*` events are the component v-model convention and are always allowed.
+        if (this.#options.emits && !name.startsWith('update:') && !this.#options.emits.includes(name)) {
             this.#logger.warn(`Event '${name}' is emitted but not declared in the 'emits' option.`);
         }
 

@@ -47,17 +47,48 @@ export class VModelDirective implements VDirective {
     #modifiers: Set<string> = new Set();
 
     /**
+     * The argument of the directive (e.g. "size" for `v-model:size`), camelized.
+     * Only meaningful on components; selects the target prop and update event
+     * (prop `size` + event `update:size`). Undefined = the default `modelValue`.
+     */
+    #arg?: string;
+
+    /**
+     * Ensures the "v-model targets an undeclared prop" warning fires only once.
+     */
+    #warnedUndeclaredProp: boolean = false;
+
+    /**
      * @param context The context for parsing the directive.
      */
     constructor(context: VDirectiveParseContext) {
         this.#vNode = context.vNode;
 
-        // Extract modifiers from the directive name
-        // e.g., "v-model.lazy.trim" -> modifiers = ["lazy", "trim"]
+        // Extract the optional argument and modifiers from the directive name
+        // e.g. "v-model" / "v-model.lazy.trim" / "v-model:size" / "v-model:size.number"
         const attrName = context.attribute.name;
-        if (attrName.startsWith('v-model.')) {
-            const parts = attrName.split('.');
-            parts.slice(1).forEach(mod => this.#modifiers.add(mod));
+        let rest = attrName.substring(StandardDirectiveName.V_MODEL.length);
+        if (rest.startsWith(':')) {
+            const dotIndex = rest.indexOf('.');
+            const rawArg = dotIndex === -1 ? rest.substring(1) : rest.substring(1, dotIndex);
+            if (rawArg) {
+                // HTML attribute names are lowercased by the browser, so a
+                // camelCase prop is addressed with kebab-case (v-model:inner-title).
+                this.#arg = rawArg.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
+            }
+            rest = dotIndex === -1 ? '' : rest.substring(dotIndex);
+        }
+        if (rest.startsWith('.')) {
+            rest.split('.').slice(1).forEach(mod => this.#modifiers.add(mod));
+        }
+
+        const element = context.vNode.node as HTMLElement;
+        if (this.#arg && !this.#isComponentElement(element)) {
+            console.warn(`[ichigo] v-model:${this.#arg} is only supported on components; the argument is ignored on <${element.tagName.toLowerCase()}>`);
+            this.#arg = undefined;
+        }
+        if (this.#isComponentElement(element) && this.#modifiers.has('lazy')) {
+            console.warn(`[ichigo] <${element.tagName.toLowerCase()}>: the .lazy modifier has no effect on components (the component decides when to emit 'update:${this.#propName}')`);
         }
 
         // Parse the expression and create the evaluator
@@ -259,6 +290,15 @@ export class VModelDirective implements VDirective {
         // Evaluate the expression to get the value
         const value = this.#evaluator.evaluate();
 
+        // Components: deliver the value as a property (prop `modelValue`, or the
+        // directive argument). For ichigo components this reaches the reactive
+        // bindings through the generated prop setter.
+        if (this.#isComponentElement(element)) {
+            const propName = this.#resolveComponentPropName(element);
+            (element as any)[propName] = value;
+            return;
+        }
+
         // Update the element based on its type
         if (element instanceof HTMLInputElement) {
             if (element.type === 'checkbox') {
@@ -290,6 +330,20 @@ export class VModelDirective implements VDirective {
         const eventName = this.#getEventName();
 
         this.#listener = (event: Event) => {
+            // Components: the payload of the `update:<prop>` CustomEvent is the
+            // new value. Only events emitted by this component itself are
+            // accepted — the default $emit fires on the component's root element
+            // (a direct child of the host), so an event whose target lies deeper
+            // was emitted by a nested component and bubbled through.
+            if (this.#isComponentElement(element)) {
+                const src = event.target as Node | null;
+                if (src !== element && src?.parentElement !== element) {
+                    return;
+                }
+                this.#updateBinding(this.#applyModifiers((event as CustomEvent).detail));
+                return;
+            }
+
             const target = event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
             let newValue: any;
 
@@ -460,10 +514,55 @@ export class VModelDirective implements VDirective {
     }
 
     /**
+     * The target prop name on a component: the camelized directive argument,
+     * or the `modelValue` convention when no argument is given.
+     */
+    get #propName(): string {
+        return this.#arg ?? 'modelValue';
+    }
+
+    /**
+     * Returns true when the bound element is a component (custom element).
+     * The `modelValue` / `update:modelValue` contract works for any custom
+     * element that follows it, not only ichigo components.
+     */
+    #isComponentElement(element: HTMLElement): boolean {
+        return element.tagName.includes('-');
+    }
+
+    /**
+     * Resolves the property name to assign on a component. For ichigo
+     * components the declared prop list fixes up case-insensitive mismatches
+     * (HTML-lowercased arguments vs. camelCase props) and an undeclared target
+     * prop logs a one-time development warning.
+     */
+    #resolveComponentPropName(element: HTMLElement): string {
+        const name = this.#propName;
+        const props: string[] | undefined = (element.constructor as any)._props;
+        if (Array.isArray(props)) {
+            const lower = name.toLowerCase();
+            const canonical = props.find(p => p.toLowerCase() === lower);
+            if (canonical) {
+                return canonical;
+            }
+            if (!this.#warnedUndeclaredProp) {
+                this.#warnedUndeclaredProp = true;
+                console.warn(`[ichigo] <${element.tagName.toLowerCase()}>: v-model targets prop '${name}', which is not declared in the component's props`);
+            }
+        }
+        return name;
+    }
+
+    /**
      * Gets the appropriate event name for the element type.
      */
     #getEventName(): string {
         const element = this.#vNode.node as HTMLElement;
+
+        // Components: listen for the `update:<prop>` convention event.
+        if (this.#isComponentElement(element)) {
+            return 'update:' + this.#propName;
+        }
 
         // .lazy modifier: use 'change' event instead of 'input'
         if (this.#modifiers.has('lazy')) {

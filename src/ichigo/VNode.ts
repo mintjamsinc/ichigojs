@@ -3,6 +3,7 @@
 import { VApplication } from "./VApplication";
 import { VBindings } from "./VBindings";
 import { VCloser } from "./VCloser";
+import { IchigoElementRegistry } from "./components/IchigoElementRegistry";
 import { VDirectiveManager } from "./directives/VDirectiveManager";
 import { VNodeInit } from "./VNodeInit";
 import { VTextEvaluator } from "./VTextEvaluator";
@@ -148,6 +149,14 @@ export class VNode {
 
             const element = this.#node as HTMLElement;
 
+            // If the element is a component defined via defineComponent(), install
+            // the host context so component-boundary features (e.g. scoped slot
+            // outlets) can reach back into this application's scope.
+            const isComponent = IchigoElementRegistry.has(this.#nodeName);
+            if (isComponent) {
+                (element as any)._ichigoHost = { vNode: this };
+            }
+
             // Initialize child virtual nodes
             this.#childVNodes = [];
 
@@ -164,8 +173,20 @@ export class VNode {
                 });
             }
 
+            // A component whose template is already expanded compiles its own
+            // internals with its own VApplication — this (parent) application must
+            // not adopt them (that would strip the component's directives and
+            // evaluate its expressions in the wrong scope). An unexpanded component
+            // element only contains authored slot content, which does belong to
+            // this application's scope and is compiled normally.
+            const isExpandedComponent = isComponent && (element as any)._ichigoExpanded === true;
+            if (isExpandedComponent) {
+                this.#vApplication.logManager.getLogger(this.constructor.name)
+                    .debug(`Skipped compiling internals of expanded component <${this.#nodeName.toLowerCase()}>`);
+            }
+
             // Create child virtual nodes if template preservation is not required
-            if (!this.#templatized) {
+            if (!this.#templatized && !isExpandedComponent) {
                 for (const childNode of Array.from(this.#node.childNodes)) {
                     new VNode({
                         node: childNode,
