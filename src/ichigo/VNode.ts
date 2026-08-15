@@ -196,6 +196,17 @@ export class VNode {
                 }
             }
 
+            // A component element this application compiled but that has not
+            // expanded yet — it deferred to us because an ancestor component
+            // was attaching its template, or its <template> was not loaded when
+            // it connected — is expanded now: the host context is installed,
+            // the directives above delivered the prop values, and any authored
+            // slot content was compiled in this scope. A template source
+            // (v-if / v-for) is left alone; its clones expand on insertion.
+            if (isComponent && !this.#templatized && !isExpandedComponent) {
+                (element as any)._ichigoTryExpand?.();
+            }
+
             // After creating child nodes, call onMounted for directives that do not templatize
             if (!this.#templatized) {
                 // animation frame to ensure DOM is updated
