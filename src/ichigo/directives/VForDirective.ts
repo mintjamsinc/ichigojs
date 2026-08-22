@@ -407,6 +407,7 @@ export class VForDirective implements VDirective {
 
                     newRenderedItems.push({ key, vNode });
                     vNode.forceUpdate();
+                    vNode.expandComponents();
                     prevNode = range.lastNode;
                     continue;
                 }
@@ -423,6 +424,10 @@ export class VForDirective implements VDirective {
 
                 newRenderedItems.push({ key, vNode });
                 vNode.forceUpdate();
+                // Components expand once the clone is in the document and its
+                // bindings have been applied, so they mount connected and with
+                // their props set.
+                vNode.expandComponents();
             } else {
                 // Reuse existing item
                 newRenderedItems.push({ key, vNode });

@@ -230,11 +230,10 @@ export abstract class VConditionalDirective implements VDirective {
         // Clone the original node and create a new VNode for it
         const clone = this.#cloneNode();
 
-        // Create a new VNode for the cloned element BEFORE inserting into DOM.
-        // This prevents custom elements (Web Components) from having their
-        // connectedCallback fire before VNode processes their children, which
-        // would cause the parent VApplication to incorrectly adopt the custom
-        // element's internal template content as its own VNode tree.
+        // Compile the clone BEFORE inserting it, so its directives run against a
+        // subtree nothing else can observe yet (v-if inside creates anchors and
+        // detaches template sources). Components inside are expanded afterwards,
+        // once the clone is in the document — see expandComponents() below.
         // Pass the current bindings to ensure loop variables from v-for are available
         const vNode = new VNode({
             node: clone,
@@ -251,6 +250,7 @@ export abstract class VConditionalDirective implements VDirective {
 
             this.#renderedVNode = vNode;
             this.#renderedVNode.forceUpdate();
+            this.#renderedVNode.expandComponents();
             return;
         }
 
@@ -259,6 +259,9 @@ export abstract class VConditionalDirective implements VDirective {
 
         this.#renderedVNode = vNode;
         this.#renderedVNode.forceUpdate();
+        // Components expand once the clone is in the document and its bindings
+        // have been applied, so they mount connected and with their props set.
+        this.#renderedVNode.expandComponents();
     }
 
     /**

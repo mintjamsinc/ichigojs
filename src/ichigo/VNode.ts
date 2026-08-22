@@ -121,6 +121,33 @@ export class VNode {
     #fragmentRange?: VFragmentRange;
 
     /**
+     * Custom element tags already reported by
+     * {@link VNode.#warnIfUnknownCustomElement}.
+     */
+    static #warnedUnknownTags: Set<string> = new Set();
+
+    /**
+     * Warns about a hyphenated tag that no one has registered — a forgotten
+     * import, a missing defineComponent() call, or a typo in the tag name.
+     * Such an element is compiled as an ordinary element and renders its own
+     * children, which looks enough like a working page to cost an afternoon.
+     * Reported once per tag; third-party custom elements are recognised
+     * through the registry the browser keeps.
+     */
+    static #warnIfUnknownCustomElement(nodeName: string): void {
+        const tag = nodeName.toLowerCase();
+        if (!tag.includes('-') || VNode.#warnedUnknownTags.has(tag)) {
+            return;
+        }
+        if (typeof customElements !== 'undefined' && customElements.get(tag)) {
+            return;
+        }
+        VNode.#warnedUnknownTags.add(tag);
+        console.warn(`[ichigo] <${tag}>: unknown custom element — nothing has registered this tag.`
+            + ' Did you forget to import its module or call defineComponent(), or is the tag misspelled?');
+    }
+
+    /**
      * Creates an instance of the virtual node.
      * @param args The initialization arguments for the virtual node.
      */
@@ -155,6 +182,8 @@ export class VNode {
             const isComponent = IchigoElementRegistry.has(this.#nodeName);
             if (isComponent) {
                 (element as any)._ichigoHost = { vNode: this };
+            } else {
+                VNode.#warnIfUnknownCustomElement(this.#nodeName);
             }
 
             // Initialize child virtual nodes
@@ -196,17 +225,6 @@ export class VNode {
                 }
             }
 
-            // A component element this application compiled but that has not
-            // expanded yet — it deferred to us because an ancestor component
-            // was attaching its template, or its <template> was not loaded when
-            // it connected — is expanded now: the host context is installed,
-            // the directives above delivered the prop values, and any authored
-            // slot content was compiled in this scope. A template source
-            // (v-if / v-for) is left alone; its clones expand on insertion.
-            if (isComponent && !this.#templatized && !isExpandedComponent) {
-                (element as any)._ichigoTryExpand?.();
-            }
-
             // After creating child nodes, call onMounted for directives that do not templatize
             if (!this.#templatized) {
                 // animation frame to ensure DOM is updated
@@ -231,6 +249,43 @@ export class VNode {
 
         // Register this node as a dependent of the parent node, if any
         this.#closers = this.#parentVNode?.addDependent(this);
+    }
+
+    /**
+     * Expands the component elements this application compiled in this subtree
+     * but has not expanded yet, parents before their children.
+     *
+     * This is the ONLY thing that expands a component. It is deliberately a
+     * separate step from compilation rather than a call at the end of the
+     * constructor: a v-if / v-for clone is compiled while it is still detached
+     * (so that its directives run before anything can observe a half-built
+     * subtree), and expanding a detached element would mount a component
+     * application outside the document. The callers therefore compile, insert,
+     * and then call this — see VApplication.mount, VConditionalDirective,
+     * VForDirective and VSlotOutletDirective.
+     *
+     * Walking only {@link childVNodes} keeps the traversal inside this
+     * application: the internals of an expanded component were never compiled
+     * here, so they are not reachable and are left to their own application.
+     * A templatized node is skipped whole — it is a template source, and its
+     * clones expand when they are inserted.
+     */
+    expandComponents(): void {
+        if (this.#templatized) {
+            return;
+        }
+
+        if (this.#nodeType === Node.ELEMENT_NODE && IchigoElementRegistry.has(this.#nodeName)) {
+            const element = this.#node as HTMLElement & {
+                _ichigoExpanded?: boolean;
+                _ichigoExpand?: () => void;
+            };
+            if (element._ichigoExpanded !== true) {
+                element._ichigoExpand?.();
+            }
+        }
+
+        this.#childVNodes?.forEach(child => child.expandComponents());
     }
 
     /**

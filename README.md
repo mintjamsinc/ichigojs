@@ -957,6 +957,18 @@ defineComponent('my-list', {
 </my-list>
 ```
 
+> **Ordering:** a component's `<template>` must be in the document, and
+> `defineComponent()` must have run, before the application that uses the
+> component is mounted. The application expands a component while it compiles
+> it — after installing the host context, delivering the prop values and
+> compiling the projected slot content in the parent scope — so a component
+> compiled without its template is reported as a console warning and left
+> empty. It is never retried: an app that renders anyway is an app whose bug
+> cannot be found. A hyphenated tag that nothing has registered (a forgotten
+> import, a typo) is reported the same way. Components therefore have to live
+> inside a mounted application; one placed outside any application is never
+> expanded.
+
 **Props:**
 
 - Declared via the `props` array, or as a record with per-prop options:

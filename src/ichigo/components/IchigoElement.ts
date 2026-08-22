@@ -3,8 +3,6 @@
 import { VApplication } from '../VApplication';
 import { VApplicationOptions } from '../VApplicationOptions';
 import { VDOM } from '../VDOM';
-import { StandardDirectiveName } from '../directives/StandardDirectiveName';
-import { IchigoElementRegistry } from './IchigoElementRegistry';
 import { PropOptions } from './IchigoComponentOptions';
 import type { VNode } from '../VNode';
 
@@ -21,6 +19,19 @@ export interface ScopedSlotEntry {
 
 /**
  * Base class for ichigo.js-backed Web Components (Light DOM, no Shadow DOM).
+ *
+ * Expansion — cloning the template into this element — is driven by the
+ * application that owns the element, not by connectedCallback: VNode compiles
+ * the element first (installing the host context, delivering the prop values
+ * and compiling the authored slot content in the owner's scope) and only then
+ * calls {@link _ichigoExpand}. That leaves connectedCallback a single job,
+ * re-attachment; see there.
+ *
+ * The component's <template> must be present in the document, and
+ * defineComponent() must have run, before the owning application is mounted.
+ * That is the application's responsibility. A missing template is reported as
+ * a warning and the element is left empty — it is never silently retried,
+ * because an app that renders anyway is an app whose bug cannot be found.
  *
  * Mount timing:
  *  - If the component declares no props, the VApplication is mounted synchronously
@@ -84,20 +95,6 @@ export class IchigoElement extends HTMLElement {
     _ichigoExpanded: boolean = false;
 
     /**
-     * True when this element came from an enclosing component's template clone
-     * (marked by that component while it expands). Such an element connects
-     * while the enclosing component is attaching its template — before that
-     * component's VApplication exists — so it must wait to be compiled by the
-     * owning application before expanding itself (see connectedCallback guard
-     * 0a2 and {@link _ichigoTryExpand}).
-     *
-     * Declared with `declare` for the same reason as {@link _ichigoHost}: the
-     * mark is set before the element is upgraded, and a real class field would
-     * be re-defined as undefined by the upgrade.
-     */
-    declare _ichigoTemplateOwned?: boolean;
-
-    /**
      * Host context installed by the parent application's VNode when it
      * compiles this element. Gives component-boundary features (e.g. scoped
      * slot outlets) access to the parent scope. Undefined when the element is
@@ -122,40 +119,43 @@ export class IchigoElement extends HTMLElement {
         return this.#slotCache?.scopedSlots;
     }
 
+    /**
+     * Handles RE-attachment, and nothing else.
+     *
+     * A first connection is not what expands this element: the owning
+     * application does that from {@link _ichigoExpand} once it has compiled the
+     * element. So a connection event on a not-yet-expanded element means the
+     * owner has not reached it yet, and the right thing to do is nothing. That
+     * covers every case the old guards enumerated one by one — a v-if / v-for
+     * template source, an element inside an enclosing component's template
+     * clone, a clone inserted before its directive expands it.
+     *
+     * An expanded element whose mount root has been torn down, on the other
+     * hand, was disconnected and is now coming back: v-for reorders relocate
+     * the host element, which disconnects and reconnects it. Its children are
+     * the previous expansion, not authored slot content, so it re-expands from
+     * the cached slot nodes. Testing the mount root rather than the expansion
+     * flag alone keeps this from firing on an element that was expanded while
+     * detached and is being inserted for the first time.
+     */
     connectedCallback(): void {
-        // --- 0a. Guard: do not expand a template-source element ---
-        // An element still carrying a templatizing directive attribute (v-if
-        // family / v-for) is a template source: the owning application clones it
-        // and inserts the clones (whose directive attributes are stripped during
-        // clone compilation, so the clones expand normally). Expanding the source
-        // here would bake the expansion into every clone, and the clone's
-        // internals would then be compiled in the parent scope.
-        if (this.hasAttribute(StandardDirectiveName.V_IF) ||
-            this.hasAttribute(StandardDirectiveName.V_ELSE_IF) ||
-            this.hasAttribute(StandardDirectiveName.V_ELSE) ||
-            this.hasAttribute(StandardDirectiveName.V_FOR)) {
-            return;
+        if (this._ichigoExpanded && !this.#mountRoot) {
+            this._ichigoExpand();
         }
+    }
 
-        // --- 0a2. Guard: wait to be compiled by the owning application ---
-        // This element came from an enclosing component's template clone and no
-        // application has compiled it yet: the enclosing component's appendChild
-        // connected it before that component's VApplication existed. Expanding
-        // now would capture the slot content and mount before the owning
-        // application installs the host context (_ichigoHost) and delivers the
-        // prop values — scoped slot outlets would find no parent scope and
-        // silently fall back to their default content. The owning application
-        // expands this element while it compiles it (VNode ->
-        // _ichigoTryExpand()), by which time both are in place.
-        //
-        // Only template-owned elements defer: authored slot content placed
-        // inside a component by an application is not part of the template, so
-        // it keeps expanding immediately (and is redistributed by the enclosing
-        // component on every re-expansion).
-        if (this._ichigoTemplateOwned === true && !this._ichigoHost) {
-            return;
-        }
-
+    /**
+     * Expands this element's template. Called by the application that owns the
+     * element, right after it compiled it (VNode.expandComponents): the host
+     * context is installed, the prop bindings have delivered their values and
+     * the authored slot content has been compiled in the owner's scope, so the
+     * capture below sees owner-compiled nodes and the component's own
+     * application starts with its props already in hand.
+     *
+     * Also called by {@link connectedCallback} to rebuild the expansion after a
+     * move.
+     */
+    _ichigoExpand(): void {
         // --- 0b. Reclaim prop values assigned before upgrade ---
         // A plain property set on the instance (e.g. by a binding delivered
         // while the element was detached or not yet upgraded) is an own data
@@ -172,13 +172,16 @@ export class IchigoElement extends HTMLElement {
             }
         }
 
-        // --- 0c. Guard: skip if template not yet loaded ---
-        // customElements.define() may run before loadComponent() completes (e.g. when
-        // dynamic imports are inlined by the bundler). The static placeholder element
-        // in the HTML will be removed and replaced by v-for once the template is ready,
-        // so it is safe to do nothing here.
+        // --- 0c. Resolve the template ---
+        // Having the <template> in the document by now is the application's
+        // contract (see the class doc). Report the breach and leave the element
+        // empty: rendering something plausible here would hide the bug at the
+        // one moment it is still cheap to find.
         const templateEl = document.querySelector(ctor._template);
         if (!templateEl || !(templateEl instanceof HTMLTemplateElement)) {
+            IchigoElement.#warnOncePerTag(this.tagName,
+                `template '${ctor._template}' was not found in the document. `
+                + 'Inject the <template> and call defineComponent() before mounting the application.');
             return;
         }
 
@@ -236,19 +239,6 @@ export class IchigoElement extends HTMLElement {
         const fragment = templateEl.content.cloneNode(true) as DocumentFragment;
         const root = this.#findRootElement(fragment);
 
-        // Mark the component elements the template brought in, so they let this
-        // component's application compile them before they expand (guard 0a2).
-        // Marked before slot distribution, so authored slot content — which is
-        // not part of the template — keeps expanding under the application that
-        // authored it. Elements inside a nested <template> are not marked: they
-        // are inert until a directive clones them, and the clone is compiled
-        // before it is inserted.
-        for (const element of Array.from(fragment.querySelectorAll('*'))) {
-            if (IchigoElementRegistry.has(element.tagName)) {
-                (element as IchigoElement)._ichigoTemplateOwned = true;
-            }
-        }
-
         // --- 3. Distribute named slot content ---
         for (const [name, nodes] of namedNodes) {
             const slot = root.querySelector(`slot[name="${name}"]`);
@@ -288,22 +278,6 @@ export class IchigoElement extends HTMLElement {
             this.#app.unmount();
             this.#app = undefined;
         }
-    }
-
-    /**
-     * Expands this element's template on behalf of the application that owns
-     * it. Called by VNode right after it compiled this element — the host
-     * context is installed and the prop bindings have delivered their values,
-     * so a component that deferred its expansion (guard 0a2, or a template
-     * that was not loaded when it connected) can now expand in the right
-     * order. A no-op when the element is already expanded or not connected
-     * (a template-source clone expands when it is inserted).
-     */
-    _ichigoTryExpand(): void {
-        if (this._ichigoExpanded || !this.isConnected) {
-            return;
-        }
-        this.connectedCallback();
     }
 
     /**
@@ -549,5 +523,24 @@ export class IchigoElement extends HTMLElement {
 
     #warn(message: string): void {
         console.warn(`[ichigo] <${this.tagName.toLowerCase()}>: ${message}`);
+    }
+
+    /**
+     * Tags already reported by {@link #warnOncePerTag}.
+     */
+    static #warnedTags: Set<string> = new Set();
+
+    /**
+     * Reports a per-component-type problem once. A missing template breaks
+     * every instance, and a v-for over a hundred rows would otherwise print a
+     * hundred identical lines and bury the first one.
+     */
+    static #warnOncePerTag(tagName: string, message: string): void {
+        const tag = tagName.toLowerCase();
+        if (IchigoElement.#warnedTags.has(tag)) {
+            return;
+        }
+        IchigoElement.#warnedTags.add(tag);
+        console.warn(`[ichigo] <${tag}>: ${message}`);
     }
 }

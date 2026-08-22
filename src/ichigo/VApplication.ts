@@ -282,6 +282,11 @@ export class VApplication {
         // Initial rendering
         this.#vNode.update();
 
+        // Expand the components in the tree. Last, so every component element
+        // has been compiled and has had its prop values delivered before its
+        // template is cloned in. See VNode.expandComponents.
+        this.#vNode.expandComponents();
+
         // Remove v-cloak attributes after mounting
         // v-cloak is used to hide un-compiled template until the app is ready
         // Usage: Add CSS rule "[v-cloak] { display: none; }" to hide elements with v-cloak

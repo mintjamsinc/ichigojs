@@ -298,8 +298,9 @@ export class VSlotOutletDirective implements VDirective {
         }
 
         // Clone the scoped template's content and create its VNode tree BEFORE
-        // inserting into the DOM, so components inside the slot content are
-        // compiled before their connectedCallback can expand them.
+        // inserting into the DOM, so its directives run against a subtree
+        // nothing else can observe yet. Components inside are expanded
+        // afterwards, once the content is in the document.
         // (Created through the parent application to keep the VNode import
         // type-only; a direct `new VNode` here would close a module cycle
         // VNode -> VDirectiveManager -> VSlotOutletDirective -> VNode.)
@@ -320,6 +321,8 @@ export class VSlotOutletDirective implements VDirective {
 
         // Initial rendering
         this.#contentVNode.forceUpdate();
+        // Components in the slot content expand once it is in the document.
+        this.#contentVNode.expandComponents();
     }
 
     /**
