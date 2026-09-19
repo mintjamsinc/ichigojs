@@ -121,9 +121,9 @@ export class VNode {
     #fragmentRange?: VFragmentRange;
 
     /**
-     * Set by {@link destroy}. A destroyed clone stays in its parent's child
-     * list (v-if / v-for render new clones under the same parent), so walks
-     * over the children must skip it.
+     * Set by {@link destroy}. A destroyed node also leaves its parent's child
+     * list, but a walk that took its copy of the list before the node was
+     * destroyed may still reach it, and must skip it.
      */
     #destroyed: boolean = false;
 
@@ -314,7 +314,8 @@ export class VNode {
         // cannot know when it renders inside a detached v-if / v-for clone.
         this.#directiveManager?.directives?.forEach(d => d.expandComponents?.());
 
-        this.#childVNodes?.forEach(child => child.expandComponents());
+        // A copy: expanding can render and destroy clones under this node.
+        this.#childVNodes?.slice().forEach(child => child.expandComponents());
     }
 
     /**
@@ -685,8 +686,9 @@ export class VNode {
                 }
             }
 
-            // Recursively update child virtual nodes
-            this.#childVNodes?.forEach(childVNode => {
+            // Recursively update child virtual nodes. A copy: an update can
+            // destroy a v-if / v-for clone, which removes it from this list.
+            this.#childVNodes?.slice().forEach(childVNode => {
                 childVNode.forceUpdate();
             });
 
@@ -698,7 +700,7 @@ export class VNode {
             }
         } else if (this.#nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
             // For document fragments, recursively force update child VNodes
-            this.#childVNodes?.forEach(childVNode => {
+            this.#childVNodes?.slice().forEach(childVNode => {
                 childVNode.forceUpdate();
             });
         }
@@ -793,6 +795,7 @@ export class VNode {
      * 4. Unregister dependencies
      * 5. Clean up directive manager
      * 6. Call onUnmounted lifecycle hooks
+     * 7. Leave the parent's child list
      */
     destroy(): void {
         this.#destroyed = true;
@@ -821,9 +824,9 @@ export class VNode {
             this.#userData.clear();
         }
 
-        // Recursively destroy child nodes
+        // Recursively destroy child nodes (a copy: each one leaves this list)
         if (this.#childVNodes) {
-            for (const childVNode of this.#childVNodes) {
+            for (const childVNode of this.#childVNodes.slice()) {
                 try {
                     childVNode.destroy();
                 } catch (error) {
@@ -851,6 +854,16 @@ export class VNode {
             this.#directiveManager?.directives?.forEach(d => {
                 d.onUnmounted?.();
             });
+        }
+
+        // Leave the parent's child list. v-if and v-for render every new clone
+        // under the same parent VNode, so a destroyed clone left in the list
+        // would keep its whole subtree — VNodes, DOM nodes, bindings — alive
+        // for as long as the parent, growing with each toggle or row change.
+        const siblings = this.#parentVNode ? this.#parentVNode.#childVNodes : undefined;
+        const index = siblings ? siblings.indexOf(this) : -1;
+        if (index !== -1) {
+            siblings!.splice(index, 1);
         }
     }
 }
