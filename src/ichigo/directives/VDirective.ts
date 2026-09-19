@@ -105,6 +105,15 @@ export interface VDirective {
     get onUnmounted(): (() => void) | undefined;
 
     /**
+     * Expands the components in a subtree this directive rendered but that is
+     * not reachable through the VNode's children — the scoped slot content of
+     * a `<slot>` outlet, whose VNodes belong to the parent application.
+     * Called by VNode.expandComponents() when it walks this directive's node.
+     * Optional; most directives render nothing outside their own VNode tree.
+     */
+    expandComponents?(): void;
+
+    /**
      * Cleans up any resources used by the directive.
      * This method is called when the directive is no longer needed.
      */

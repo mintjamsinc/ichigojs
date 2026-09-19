@@ -32,9 +32,9 @@ import type { IchigoElement, ScopedSlotEntry } from "../components/IchigoElement
  * ```
  *
  * This directive is created only when a scoped template for the slot's name
- * exists (see {@link VSlotOutletDirective.tryCreate}); otherwise `<slot>`
- * elements keep their existing behavior (static distribution at expansion,
- * or fallback content compiled in the component scope).
+ * exists (see {@link VSlotOutletDirective.tryCreate}); otherwise plain slot
+ * content is moved into place by VStaticSlotOutletDirective, and a `<slot>`
+ * with no content at all renders its fallback in the component scope.
  *
  * Rendering happens synchronously in onMount — before the component
  * application would compile the slot's fallback children — by replacing the
@@ -321,8 +321,18 @@ export class VSlotOutletDirective implements VDirective {
 
         // Initial rendering
         this.#contentVNode.forceUpdate();
-        // Components in the slot content expand once it is in the document.
+        // Components in the slot content expand once it is in the document:
+        // now, if the outlet is connected, or — when it renders inside a
+        // detached v-if / v-for clone — through expandComponents() below, when
+        // the directive that inserts the clone walks it.
         this.#contentVNode.expandComponents();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    expandComponents(): void {
+        this.#contentVNode?.expandComponents();
     }
 
     /**

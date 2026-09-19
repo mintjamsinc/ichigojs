@@ -42,9 +42,13 @@ export interface ScopedSlotEntry {
  *    microtask fires, so data() can read them. A component used without any prop
  *    binding still mounts — with its declared defaults — instead of waiting forever.
  *
- * Slot content is captured on the first connection and cached, so a component
- * that is moved in the DOM (e.g. reordered by v-for) re-expands its template
- * and redistributes the same slot nodes on reconnection.
+ * Slot content is captured on the first expansion and cached. The nodes are the
+ * parent application's compiled nodes and are only ever moved, never cloned:
+ * each `<slot>` outlet the component renders moves them into place
+ * (VStaticSlotOutletDirective; scoped `<template v-slot>` content is rendered
+ * per outlet by VSlotOutletDirective instead). A component that is moved in
+ * the DOM (e.g. reordered by v-for) re-expands its template, and its outlets
+ * move the same nodes into the fresh expansion.
  *
  * Subclasses must set the static fields _template, _props, _propOptions and
  * _buildOptions before calling customElements.define(). defineComponent()
@@ -73,12 +77,13 @@ export class IchigoElement extends HTMLElement {
     #mountScheduled: boolean = false;
 
     /**
-     * Slot content captured on the first connection. Reused on reconnection
+     * Slot content captured on the first expansion. Reused on reconnection
      * (v-for reorder moves the host element, which re-runs connectedCallback
      * with the previously expanded template as children — not authored slot
-     * content — so the original capture must be redistributed instead).
-     * `scopedSlots` holds `<template v-slot:...>` children by slot name; they
-     * are rendered per outlet by VSlotOutletDirective, not distributed here.
+     * content — so the original capture must be used instead).
+     * `defaultNodes` / `namedNodes` are moved into place by
+     * VStaticSlotOutletDirective; `scopedSlots` holds `<template v-slot:...>`
+     * children by slot name, rendered per outlet by VSlotOutletDirective.
      */
     #slotCache?: {
         defaultNodes: Node[];
@@ -117,6 +122,19 @@ export class IchigoElement extends HTMLElement {
      */
     get _ichigoScopedSlots(): Map<string, ScopedSlotEntry> | undefined {
         return this.#slotCache?.scopedSlots;
+    }
+
+    /**
+     * The static slot content captured for the given slot name ('default'
+     * for the unnamed slot): the parent application's nodes, moved into place
+     * by VStaticSlotOutletDirective. Undefined when nothing was provided for
+     * that name, in which case the outlet's fallback content renders.
+     */
+    _ichigoSlotNodes(name: string): Node[] | undefined {
+        const nodes = name === 'default'
+            ? this.#slotCache?.defaultNodes
+            : this.#slotCache?.namedNodes.get(name);
+        return nodes && nodes.length > 0 ? nodes : undefined;
     }
 
     /**
@@ -226,11 +244,17 @@ export class IchigoElement extends HTMLElement {
 
             this.#slotCache = { defaultNodes, namedNodes, scopedSlots };
         }
-        const { defaultNodes, namedNodes } = this.#slotCache;
 
         // Clear host element so we can append the cloned template.
         // (On reconnection this discards the previous expansion; the cached slot
-        // nodes are still referenced and are moved into the fresh clone below.)
+        // nodes are still referenced and are moved into the fresh expansion by
+        // its outlets.)
+        // The slot nodes are NOT distributed into the template here: they are
+        // the parent application's live, compiled nodes, and a <slot> behind a
+        // v-if / v-for in the template is cloned with its surroundings — which
+        // would render dead copies without their bindings, listeners or props.
+        // They stay parked in the cache until a <slot> outlet is rendered, and
+        // VStaticSlotOutletDirective then moves them into place.
         while (this.firstChild) {
             this.removeChild(this.firstChild);
         }
@@ -239,21 +263,7 @@ export class IchigoElement extends HTMLElement {
         const fragment = templateEl.content.cloneNode(true) as DocumentFragment;
         const root = this.#findRootElement(fragment);
 
-        // --- 3. Distribute named slot content ---
-        for (const [name, nodes] of namedNodes) {
-            const slot = root.querySelector(`slot[name="${name}"]`);
-            if (slot) {
-                slot.replaceWith(...nodes);
-            }
-        }
-
-        // --- 4. Distribute default slot content ---
-        const defaultSlot = root.querySelector('slot:not([name])');
-        if (defaultSlot && defaultNodes.length > 0) {
-            defaultSlot.replaceWith(...defaultNodes);
-        }
-
-        // Attach the populated template to the host element
+        // Attach the template to the host element
         this.appendChild(root);
         this.#mountRoot = root;
         this._ichigoExpanded = true;

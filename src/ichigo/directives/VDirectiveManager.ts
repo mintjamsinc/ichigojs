@@ -8,6 +8,7 @@ import { VBindingsPreparer } from "../VBindingsPreparer";
 import { VDOMUpdater } from "../VDOMUpdater";
 import { VBindDirective } from "./VBindDirective";
 import { VSlotOutletDirective } from "./VSlotOutletDirective";
+import { VStaticSlotOutletDirective } from "./VStaticSlotOutletDirective";
 
 /**
  * Manages directives associated with a virtual node (VNode).
@@ -202,10 +203,12 @@ export class VDirectiveManager {
         // Parse directives from attributes
         const directives: VDirective[] = [];
 
-        // Scoped slot outlet: a <slot> element (without structural directives)
-        // inside a component whose host received a matching <template v-slot:...>.
-        // This is an element-based directive, created before the generic
-        // attribute parsing so it can consume the slot-prop bindings (:x).
+        // Slot outlet: a <slot> element (without structural directives) inside a
+        // component whose host received content for it — a matching
+        // <template v-slot:...> (rendered per outlet), or else plain slot
+        // content (moved into place). This is an element-based directive,
+        // created before the generic attribute parsing so it can consume the
+        // slot-prop bindings (:x).
         // A <slot> carrying v-if / v-for is handled structurally first; the
         // outlet is then created when the clone is compiled.
         if (element.tagName === 'SLOT' &&
@@ -213,7 +216,8 @@ export class VDirectiveManager {
             !element.hasAttribute(StandardDirectiveName.V_IF) &&
             !element.hasAttribute(StandardDirectiveName.V_ELSE_IF) &&
             !element.hasAttribute(StandardDirectiveName.V_ELSE)) {
-            const outlet = VSlotOutletDirective.tryCreate(this.#vNode);
+            const outlet = VSlotOutletDirective.tryCreate(this.#vNode)
+                ?? VStaticSlotOutletDirective.tryCreate(this.#vNode);
             if (outlet) {
                 directives.push(outlet);
             }

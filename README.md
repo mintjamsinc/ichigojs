@@ -1019,6 +1019,20 @@ defineComponent('my-badge', {
 Use the native `<slot>` element in the component template to project content
 from the parent. ichigo.js components use Light DOM.
 
+- Slot content is compiled in the **parent scope** and stays the parent's:
+  its bindings, event handlers and the props of components inside it keep
+  working wherever the component places it.
+- The content is **moved** to the `<slot>`, never copied, so a `<slot>` may sit
+  behind a `v-if` / `v-for` in the component template (e.g. a dialog body shown
+  only while open). Hiding the outlet takes the content out of view; showing it
+  again brings back the same nodes.
+- Nodes can be in one place only: when the same slot is rendered more than
+  once (a `<slot>` inside a `v-for`), the content goes to the outlet rendered
+  last, and if that outlet goes away it moves to the last one remaining. For
+  content per row, use a scoped slot (below), which renders once per outlet.
+- A `<slot>` that receives no content renders its own children as fallback, in
+  the component scope.
+
 ### Scoped slots
 
 A scoped slot lets the parent supply a template for content that the component

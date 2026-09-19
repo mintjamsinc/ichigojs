@@ -121,6 +121,13 @@ export class VNode {
     #fragmentRange?: VFragmentRange;
 
     /**
+     * Set by {@link destroy}. A destroyed clone stays in its parent's child
+     * list (v-if / v-for render new clones under the same parent), so walks
+     * over the children must skip it.
+     */
+    #destroyed: boolean = false;
+
+    /**
      * Custom element tags already reported by
      * {@link VNode.#warnIfUnknownCustomElement}.
      */
@@ -267,23 +274,45 @@ export class VNode {
      * Walking only {@link childVNodes} keeps the traversal inside this
      * application: the internals of an expanded component were never compiled
      * here, so they are not reachable and are left to their own application.
-     * A templatized node is skipped whole — it is a template source, and its
-     * clones expand when they are inserted.
+     * The one exception is content a directive rendered outside its own
+     * children — scoped slot content — reached through
+     * {@link VDirective.expandComponents}.
+     *
+     * Only connected elements are expanded. v-if / v-for call this right after
+     * inserting a clone, but when that clone sits inside another clone that is
+     * still detached (nested directives, or slot content rendered by an outlet
+     * inside a component's v-if), the insertion is not into the document yet;
+     * the outer inserter's walk reaches the same nodes once it is. A
+     * templatized node (a v-if / v-for source) is not expanded itself, but its
+     * rendered clones are its children and are walked.
      */
     expandComponents(): void {
-        if (this.#templatized) {
+        if (this.#destroyed) {
             return;
         }
 
-        if (this.#nodeType === Node.ELEMENT_NODE && IchigoElementRegistry.has(this.#nodeName)) {
+        // Expand only a connected element. A subtree compiled and inserted
+        // into a still-detached clone (a v-if / v-for nested in another
+        // clone, or in scoped slot content rendered inside one) is reached
+        // again by the walk of whoever inserts that clone into the document —
+        // and by then its elements are upgraded and ready to expand.
+        // A templatized node is a template source: never expanded itself,
+        // but its rendered clones are its child VNodes and are walked below.
+        if (!this.#templatized && this.#nodeType === Node.ELEMENT_NODE && IchigoElementRegistry.has(this.#nodeName)) {
             const element = this.#node as HTMLElement & {
                 _ichigoExpanded?: boolean;
                 _ichigoExpand?: () => void;
             };
-            if (element._ichigoExpanded !== true) {
+            if (element._ichigoExpanded !== true && element.isConnected) {
                 element._ichigoExpand?.();
             }
         }
+
+        // Subtrees a directive rendered outside this VNode's children (the
+        // scoped slot content of a <slot> outlet) are expanded here too: this
+        // walk runs once the subtree is in the document, which the outlet
+        // cannot know when it renders inside a detached v-if / v-for clone.
+        this.#directiveManager?.directives?.forEach(d => d.expandComponents?.());
 
         this.#childVNodes?.forEach(child => child.expandComponents());
     }
@@ -766,6 +795,8 @@ export class VNode {
      * 6. Call onUnmounted lifecycle hooks
      */
     destroy(): void {
+        this.#destroyed = true;
+
         // If no directive requires template preservation, call onUnmount for directives that do not templatize
         if (!this.#templatized) {
             this.#directiveManager?.directives?.forEach(d => {
