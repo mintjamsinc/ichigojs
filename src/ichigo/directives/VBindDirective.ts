@@ -482,12 +482,19 @@ export class VBindDirective implements VDirective {
 
     /**
      * Updates a regular attribute.
+     * An attribute that already holds the value is left alone: setting `src` on
+     * an <iframe>, even to the same URL, loads its page again.
      */
     #updateAttribute(element: HTMLElement, name: string, value: any): void {
         if (value == null || value === false) {
-            element.removeAttribute(name);
+            if (element.hasAttribute(name)) {
+                element.removeAttribute(name);
+            }
         } else {
-            element.setAttribute(name, String(value));
+            const text = String(value);
+            if (element.getAttribute(name) !== text) {
+                element.setAttribute(name, text);
+            }
         }
     }
 

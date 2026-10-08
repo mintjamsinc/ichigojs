@@ -30,6 +30,12 @@ export class VHtmlDirective implements VDirective {
     #evaluator: ExpressionEvaluator;
 
     /**
+     * The HTML last set on the element. The same HTML is not set again: that
+     * would replace the elements inside, and load their frames and images again.
+     */
+    #html?: any;
+
+    /**
      * @param context The context for parsing the directive.
      */
     constructor(context: VDirectiveParseContext) {
@@ -91,10 +97,14 @@ export class VHtmlDirective implements VDirective {
             get dependentIdentifiers(): string[] {
                 return identifiers;
             },
-            applyToDOM(): void {
+            applyToDOM: (): void => {
                 const element = vNode.node as HTMLElement;
-                const htmlContent = evaluator.evaluate();
-                element.innerHTML = htmlContent ?? '';
+                const htmlContent = evaluator.evaluate() ?? '';
+                if (htmlContent === this.#html) {
+                    return;
+                }
+                this.#html = htmlContent;
+                element.innerHTML = htmlContent;
             }
         };
         return updater;
