@@ -538,18 +538,15 @@ export class VBindings {
 	 * global aliases (computed properties etc.).
 	 */
 	doesChangeMatchIdentifier(changePath: string, identifier: string): boolean {
-		// Direct match
-		if (changePath === identifier) {
+		// Direct match (an index "[*]" in the identifier matches any index)
+		if (ReactiveProxy.pathMatches(changePath, identifier)) {
 			return true;
 		}
 		// Resolve via local (scoped) alias chain
 		const resolved = this.resolveAlias(identifier);
 		if (resolved) {
-			if (changePath === resolved) {
-				return true;
-			}
-			// changePath is a descendant of resolved (e.g. "files[0].isModified" for resolved "files[0]")
-			if (changePath.startsWith(resolved + '.') || changePath.startsWith(resolved + '[')) {
+			// changePath is resolved itself or a descendant of it (e.g. "files[0].isModified" for resolved "files[0]")
+			if (ReactiveProxy.pathMatches(changePath, resolved, true)) {
 				return true;
 			}
 			// changePath is an ancestor of resolved (e.g. "files" for resolved "files[0].isModified")

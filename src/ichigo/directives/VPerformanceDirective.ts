@@ -150,7 +150,7 @@ export class VPerformanceDirective implements VDirective {
                 const identifiers = optionsDirective.dependentIdentifiers;
                 const baseArgs: string[] = [];
                 for (const id of identifiers) {
-                    const base = id.split('.')[0];
+                    const base = ExpressionUtils.baseIdentifier(id);
                     if (!baseArgs.includes(base)) baseArgs.push(base);
                 }
                 const values = baseArgs.map(name => this.#vNode.bindings?.get(name));
@@ -250,7 +250,7 @@ export class VPerformanceDirective implements VDirective {
             // Note: inline expressions receive entries, observer, options, and $ctx as parameters
             const baseArgs: string[] = [];
             for (const id of identifiers) {
-                const base = id.split('.')[0];
+                const base = ExpressionUtils.baseIdentifier(id);
                 if (!baseArgs.includes(base)) baseArgs.push(base);
             }
             const values = baseArgs.map(name => vNode.bindings?.get(name));

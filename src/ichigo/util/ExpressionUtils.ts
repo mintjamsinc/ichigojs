@@ -41,27 +41,28 @@ export class ExpressionUtils {
                     }
                 }
             } else if (node.type === 'MemberExpression') {
-                // Reconstruct chain parts from a MemberExpression (e.g. a.b.c)
+                // Reconstruct chain parts from a MemberExpression (e.g. a.b.c). Each part
+                // carries its own separator so that the chain is spelled the way the reactive
+                // proxy reports changes: array indices in brackets, properties after a dot
+                // (e.g. "items[0].name").
                 const parts: string[] = [];
 
                 let cur: any = node;
-                let stop = false;
 
-                while (cur && !stop) {
+                while (cur) {
                     // property part (right side)
                     if (cur.property) {
                         if (!cur.computed && cur.property.type === 'Identifier') {
-                            parts.unshift(cur.property.name);
+                            parts.unshift(`.${cur.property.name}`);
+                        } else if (cur.computed && cur.property.type === 'Literal' && typeof cur.property.value === 'number') {
+                            parts.unshift(`[${cur.property.value}]`);
                         } else if (cur.computed && cur.property.type === 'Literal') {
-                            parts.unshift(String(cur.property.value));
-                        } else if (cur.computed && cur.property.type === 'Identifier') {
-                            // e.g. obj[prop] -> include the prop identifier (it will also be added separately)
-                            parts.unshift(cur.property.name);
-                        } else {
-                            // unknown property shape (e.g. expression) — stop adding chain here
-                            // inner expressions will be visited separately by walk.full
-                            stop = true;
-                            break;
+                            parts.unshift(`.${String(cur.property.value)}`);
+                        } else if (cur.computed) {
+                            // e.g. items[i] or items[i + 1]: the index is only known when the
+                            // expression runs, so "[*]" stands for any index or key. Identifiers
+                            // inside the index expression are visited separately by walk.full.
+                            parts.unshift('[*]');
                         }
                     }
 
@@ -79,7 +80,6 @@ export class ExpressionUtils {
                             cur = cur.object;
                         } else {
                             // other object types (CallExpression, etc.) — stop here
-                            stop = true;
                             break;
                         }
                     } else {
@@ -87,10 +87,16 @@ export class ExpressionUtils {
                     }
                 }
 
-                if (parts.length > 0) {
-                    // Add progressive chains: 'a', 'a.b', 'a.b.c'
+                // A chain that does not start at a name (e.g. `this.a.b` or `f().b`) begins
+                // with its first property; one that begins with an index names no binding.
+                if (parts.length > 0 && parts[0].startsWith('.')) {
+                    parts[0] = parts[0].substring(1);
+                }
+
+                if (parts.length > 0 && !parts[0].startsWith('[')) {
+                    // Add progressive chains: 'a', 'a.b', 'a.b[0]', 'a.b[0].c'
                     for (let i = 0; i < parts.length; i++) {
-                        const chain = parts.slice(0, i + 1).join('.');
+                        const chain = parts.slice(0, i + 1).join('');
                         identifiers.add(chain);
 
                         // Also apply functionDependencies lookup for the chain key
@@ -105,6 +111,17 @@ export class ExpressionUtils {
         });
 
         return Array.from(identifiers);
+    }
+
+    /**
+     * Returns the binding name an identifier chain starts with
+     * (e.g. "items" for "items[0].name" or "user.name").
+     * @param identifier An identifier or member chain returned by extractIdentifiers.
+     * @returns The left-most name of the chain.
+     */
+    static baseIdentifier(identifier: string): string {
+        const end = identifier.search(/[.[]/);
+        return end === -1 ? identifier : identifier.substring(0, end);
     }
 
     /**

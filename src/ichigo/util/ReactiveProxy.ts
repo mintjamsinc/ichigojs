@@ -59,6 +59,12 @@ export class ReactiveProxy {
     private static pathAliases = new Map<string, string>();
 
     /**
+     * Compiled patterns for identifiers that contain a "[*]" index, keyed by the
+     * identifier and whether descendants of the path also match.
+     */
+    private static pathPatterns = new Map<string, RegExp>();
+
+    /**
      * The `Object.prototype.toString` tags of the *only* value types we deeply
      * proxy. Everything else is returned untouched (raw).
      *
@@ -470,25 +476,50 @@ export class ReactiveProxy {
      */
     static doesChangeMatchIdentifier(changePath: string, identifier: string): boolean {
         // Direct match
+        if (this.pathMatches(changePath, identifier)) {
+            return true;
+        }
+
+        // Check if the change path is the resolved identifier or lies below it
+        // (handles cases like array item changes)
+        const resolvedIdentifier = this.resolvePathAlias(identifier);
+        if (resolvedIdentifier && this.pathMatches(changePath, resolvedIdentifier, true)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Checks whether a change path names the location an identifier refers to.
+     * A "[*]" index in the identifier (e.g. "items[*].name" for `items[i].name`)
+     * stands for an index known only when the expression runs and matches any
+     * one index or key.
+     *
+     * @param changePath The path that was changed (e.g., "items[2].name")
+     * @param identifier The identifier to check (e.g., "items[*].name")
+     * @param descendants Whether a change below the identifier also matches
+     * @returns True if the change path matches the identifier
+     */
+    static pathMatches(changePath: string, identifier: string, descendants: boolean = false): boolean {
         if (changePath === identifier) {
             return true;
         }
 
-        // Check if the identifier has an alias that matches
-        const resolvedIdentifier = this.resolvePathAlias(identifier);
-        if (resolvedIdentifier && changePath === resolvedIdentifier) {
-            return true;
+        if (!identifier.includes('[*]')) {
+            return descendants && (changePath.startsWith(identifier + '.') || changePath.startsWith(identifier + '['));
         }
 
-        // Check if change path starts with the resolved identifier
-        // (handles cases like array item changes)
-        if (resolvedIdentifier) {
-            if (changePath.startsWith(resolvedIdentifier + '.') ||
-                changePath.startsWith(resolvedIdentifier + '[')) {
-                return true;
-            }
+        const cacheKey = descendants ? identifier + ' ' : identifier;
+        let pattern = this.pathPatterns.get(cacheKey);
+        if (!pattern) {
+            const source = identifier
+                .split('[*]')
+                .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                .join('(?:\\[[^\\]]*\\]|\\.[^.[]+)');
+            pattern = new RegExp(`^${source}${descendants ? '(?:[.[].*)?' : ''}$`);
+            this.pathPatterns.set(cacheKey, pattern);
         }
-
-        return false;
+        return pattern.test(changePath);
     }
 }

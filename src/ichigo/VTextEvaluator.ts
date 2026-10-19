@@ -104,7 +104,7 @@ export class VTextEvaluator {
             // Build base parameter names (no dots), preserving order of first appearance
             const baseArgs: string[] = [];
             for (const id of ids) {
-                const base = id.split('.')[0];
+                const base = ExpressionUtils.baseIdentifier(id);
                 if (!baseArgs.includes(base)) {
                     baseArgs.push(base);
                 }

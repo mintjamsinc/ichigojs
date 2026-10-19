@@ -123,7 +123,7 @@ export class ExpressionEvaluator {
         // Use the base (left-most) segment of member chains and preserve order.
         const baseIdentifiers: string[] = [];
         for (const id of extractedIdentifiers) {
-            const base = id.split('.')[0];
+            const base = ExpressionUtils.baseIdentifier(id);
             if (!baseIdentifiers.includes(base)) {
                 baseIdentifiers.push(base);
             }
