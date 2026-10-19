@@ -65,6 +65,60 @@ export class ReactiveProxy {
     private static pathPatterns = new Map<string, RegExp>();
 
     /**
+     * The set collecting the paths read through any proxy while track() runs, or
+     * undefined when no expression is being tracked.
+     */
+    private static tracker?: Set<string>;
+
+    /**
+     * Whether a property key is spelled as an array index ("0", "12") rather than a
+     * property name. Both the proxy and the expression analyzer decide between
+     * "items[0]" and "items.name" with this test alone, so a numeric key on a plain
+     * object and a numeric key on an array get the same spelling.
+     *
+     * @param key The property key as a string.
+     * @returns True if the key is a canonical non-negative integer.
+     */
+    static isIndexKey(key: string): boolean {
+        return /^(?:0|[1-9]\d*)$/.test(key);
+    }
+
+    /**
+     * Appends a property key to a source path the way change paths are reported:
+     * an index in brackets ("items[0]"), a name after a dot ("user.name").
+     *
+     * @param path The path of the containing object, or "" for a root binding.
+     * @param key The property key being appended.
+     * @returns The joined path.
+     */
+    static joinPath(path: string, key: string | symbol): string {
+        const keyStr = String(key);
+        if (!path) {
+            return keyStr;
+        }
+        return this.isIndexKey(keyStr) ? `${path}[${keyStr}]` : `${path}.${keyStr}`;
+    }
+
+    /**
+     * Runs fn while recording, into paths, the source path of every property read
+     * through a reactive proxy. Nested calls record into the innermost set only;
+     * the previous set is restored when fn returns or throws.
+     *
+     * @param paths The set that receives the paths read.
+     * @param fn The function to run.
+     * @returns The value fn returns.
+     */
+    static track<T>(paths: Set<string>, fn: () => T): T {
+        const previous = this.tracker;
+        this.tracker = paths;
+        try {
+            return fn();
+        } finally {
+            this.tracker = previous;
+        }
+    }
+
+    /**
      * The `Object.prototype.toString` tags of the *only* value types we deeply
      * proxy. Everything else is returned untouched (raw).
      *
@@ -164,6 +218,13 @@ export class ReactiveProxy {
             get(obj, key, receiver) {
                 const value = Reflect.get(obj, key);
 
+                // Record the read for an expression being tracked (see track()).
+                // Function-valued members (push, Map#get, …) are accesses to behaviour,
+                // not data, so they are left out.
+                if (ReactiveProxy.tracker && typeof key !== 'symbol' && typeof value !== 'function') {
+                    ReactiveProxy.tracker.add(ReactiveProxy.joinPath(path, key));
+                }
+
                 // If the value is an object or array, make it reactive too
                 if (typeof value === 'object' && value !== null) {
                     // Don't wrap objects marked as raw (non-reactive)
@@ -179,8 +240,7 @@ export class ReactiveProxy {
                     }
 
                     // Build the nested path
-                    const keyStr = String(key);
-                    const nestedPath = path ? (Array.isArray(obj) ? `${path}[${keyStr}]` : `${path}.${keyStr}`) : keyStr;
+                    const nestedPath = ReactiveProxy.joinPath(path, key);
                     return ReactiveProxy.create(value, undefined, nestedPath, dispatcher);
                 }
 
@@ -234,9 +294,7 @@ export class ReactiveProxy {
 
                 // Only trigger onChange if the value actually changed
                 if (oldValue !== value) {
-                    const keyStr = String(key);
-                    const fullPath = path ? (Array.isArray(obj) ? `${path}[${keyStr}]` : `${path}.${keyStr}`) : keyStr;
-                    ReactiveProxy.dispatch(dispatcher, fullPath);
+                    ReactiveProxy.dispatch(dispatcher, ReactiveProxy.joinPath(path, key));
                 }
 
                 return result;
@@ -244,9 +302,7 @@ export class ReactiveProxy {
 
             deleteProperty(obj, key) {
                 const result = Reflect.deleteProperty(obj, key);
-                const keyStr = String(key);
-                const fullPath = path ? (Array.isArray(obj) ? `${path}[${keyStr}]` : `${path}.${keyStr}`) : keyStr;
-                ReactiveProxy.dispatch(dispatcher, fullPath);
+                ReactiveProxy.dispatch(dispatcher, ReactiveProxy.joinPath(path, key));
                 return result;
             }
         });

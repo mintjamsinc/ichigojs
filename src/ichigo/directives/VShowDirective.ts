@@ -101,6 +101,9 @@ export class VShowDirective implements VDirective {
             get dependentIdentifiers(): string[] {
                 return identifiers;
             },
+            get trackedPaths(): ReadonlySet<string> | undefined {
+                return evaluator.trackedPaths;
+            },
             applyToDOM(): void {
                 const shouldRender = evaluator.evaluateAsBoolean();
                 if (shouldRender) {

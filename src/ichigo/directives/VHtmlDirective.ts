@@ -97,6 +97,9 @@ export class VHtmlDirective implements VDirective {
             get dependentIdentifiers(): string[] {
                 return identifiers;
             },
+            get trackedPaths(): ReadonlySet<string> | undefined {
+                return evaluator.trackedPaths;
+            },
             applyToDOM: (): void => {
                 const element = vNode.node as HTMLElement;
                 const htmlContent = evaluator.evaluate() ?? '';

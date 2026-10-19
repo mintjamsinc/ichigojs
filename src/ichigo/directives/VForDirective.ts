@@ -158,11 +158,15 @@ export class VForDirective implements VDirective {
      */
     get domUpdater(): VDOMUpdater | undefined {
         const identifiers = this.#sourceEvaluator?.dependentIdentifiers ?? [];
+        const sourceEvaluator = this.#sourceEvaluator;
 
         // Create and return the DOM updater
         const updater: VDOMUpdater = {
             get dependentIdentifiers(): string[] {
                 return identifiers;
+            },
+            get trackedPaths(): ReadonlySet<string> | undefined {
+                return sourceEvaluator?.trackedPaths;
             },
             applyToDOM: () => {
                 this.#render();

@@ -148,6 +148,9 @@ export class VModelDirective implements VDirective {
             get dependentIdentifiers(): string[] {
                 return self.#collectDependentIdentifiers();
             },
+            get trackedPaths(): ReadonlySet<string> | undefined {
+                return self.#evaluator?.trackedPaths;
+            },
             applyToDOM: () => {
                 self.#render();
             }

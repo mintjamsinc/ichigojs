@@ -92,11 +92,15 @@ export abstract class VConditionalDirective implements VDirective {
      */
     get domUpdater(): VDOMUpdater | undefined {
         const identifiers = this.#conditionalContext.allDependentIdentifiers;
+        const conditionalContext = this.#conditionalContext;
 
         // Create an updater that handles the conditional rendering
         const updater: VDOMUpdater = {
             get dependentIdentifiers(): string[] {
                 return identifiers;
+            },
+            get trackedPaths(): ReadonlySet<string> | undefined {
+                return conditionalContext.trackedPaths;
             },
             applyToDOM: () => {
                 this.#render();
@@ -117,6 +121,14 @@ export abstract class VConditionalDirective implements VDirective {
      */
     get dependentIdentifiers(): string[] {
         return this.#evaluator?.dependentIdentifiers ?? [];
+    }
+
+    /**
+     * The paths the condition read during its last evaluation, when it has an index
+     * known only at run time (see ExpressionEvaluator.trackedPaths).
+     */
+    get trackedPaths(): ReadonlySet<string> | undefined {
+        return this.#evaluator?.trackedPaths;
     }
 
     /**

@@ -565,9 +565,7 @@ export class VNode {
             // If this is a text node with a text evaluator, update its content if needed
 
             // Check if any of the identifiers are in the changed identifiers (considering path aliases)
-            const changed = this.#textEvaluator.identifiers.some(id =>
-                changes.some(change => this.bindings.doesChangeMatchIdentifier(change, id))
-            );
+            const changed = this.bindings.isAffected(changes, this.#textEvaluator.identifiers, this.#textEvaluator.trackedPaths);
 
             // If the text node has changed, update its content
             if (changed) {
@@ -593,9 +591,7 @@ export class VNode {
 
                 // Prepare bindings for each preparer if relevant identifiers have changed
                 for (const preparer of this.#directiveManager.bindingsPreparers) {
-                    const changed = preparer.dependentIdentifiers.some(id =>
-                        changes.some(change => this.bindings.doesChangeMatchIdentifier(change, id))
-                    );
+                    const changed = this.bindings.isAffected(changes, preparer.dependentIdentifiers, preparer.trackedPaths);
                     if (changed) {
                         preparer.prepareBindings();
                     }
@@ -605,9 +601,7 @@ export class VNode {
             // Apply DOM updaters from directives, if any
             if (this.#directiveManager?.domUpdaters) {
                 for (const updater of this.#directiveManager.domUpdaters) {
-                    const changed = updater.dependentIdentifiers.some(id =>
-                        changes.some(change => this.bindings.doesChangeMatchIdentifier(change, id))
-                    );
+                    const changed = this.bindings.isAffected(changes, updater.dependentIdentifiers, updater.trackedPaths);
                     if (changed) {
                         updater.applyToDOM();
                     }

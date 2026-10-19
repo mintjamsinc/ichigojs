@@ -25,6 +25,22 @@ export class VConditionalDirectiveContext {
     }
 
     /**
+     * The paths the conditions of the chain read during their last evaluation, united
+     * across directives, or undefined when no condition has a run-time index.
+     */
+    get trackedPaths(): ReadonlySet<string> | undefined {
+        let paths: Set<string> | undefined;
+        for (const directive of this.#directives) {
+            const tracked = directive.trackedPaths;
+            if (tracked) {
+                paths ??= new Set<string>();
+                tracked.forEach(path => paths!.add(path));
+            }
+        }
+        return paths;
+    }
+
+    /**
      * Adds a directive (v-else-if or v-else) to the conditional context.
      * @param directive The directive to add.
      */

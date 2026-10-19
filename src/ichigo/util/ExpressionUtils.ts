@@ -2,6 +2,7 @@
 
 import * as acorn from "acorn";
 import * as walk from "acorn-walk";
+import { ReactiveProxy } from "./ReactiveProxy";
 
 /**
  * Utility class for analyzing JavaScript expressions to extract variable and function dependencies.
@@ -54,10 +55,10 @@ export class ExpressionUtils {
                     if (cur.property) {
                         if (!cur.computed && cur.property.type === 'Identifier') {
                             parts.unshift(`.${cur.property.name}`);
-                        } else if (cur.computed && cur.property.type === 'Literal' && typeof cur.property.value === 'number') {
-                            parts.unshift(`[${cur.property.value}]`);
                         } else if (cur.computed && cur.property.type === 'Literal') {
-                            parts.unshift(`.${String(cur.property.value)}`);
+                            // items[0] and items["0"] both name an index; labels['a-b'] names a key.
+                            const key = String(cur.property.value);
+                            parts.unshift(ReactiveProxy.isIndexKey(key) ? `[${key}]` : `.${key}`);
                         } else if (cur.computed) {
                             // e.g. items[i] or items[i + 1]: the index is only known when the
                             // expression runs, so "[*]" stands for any index or key. Identifiers

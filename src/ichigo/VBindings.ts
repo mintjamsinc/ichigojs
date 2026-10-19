@@ -36,6 +36,14 @@ export class VBindings {
 	#changes: Set<string> = new Set();
 
 	/**
+	 * On the root bindings: every descendant scope (a v-for row, a component) that
+	 * recorded a change since the last clearChanges(). The root clears their change
+	 * sets together with its own at the end of the update cycle, so a loop variable
+	 * set when a row was created does not count as changed in every later cycle.
+	 */
+	#dirtyScopes?: Set<VBindings>;
+
+	/**
 	 * Cache for array lengths to detect length changes when the same object reference is used.
 	 */
 	#lengthCache: Map<string, number> = new Map();
@@ -190,7 +198,7 @@ export class VBindings {
 							for (const part of changedPath?.split('.') || []) {
 								path = path ? `${path}.${part}` : part;
 								this.#logger?.debug(`Binding changed: ${path}`);
-								this.#changes.add(path);
+								this.#addChange(path);
 							}
 							if (!this.#suppressOnChange) {
 								this.#onChange?.(changedPath as string);
@@ -231,7 +239,7 @@ export class VBindings {
 						for (const part of changedPath.split('.')) {
 							path = path ? `${path}.${part}` : part;
 							this.#logger?.debug(`Binding changed (external): ${path}`);
-							this.#changes.add(path);
+							this.#addChange(path);
 						}
 						if (!this.#suppressOnChange) {
 							this.#onChange?.(changedPath);
@@ -261,7 +269,7 @@ export class VBindings {
 						const newValuePreview = newValueString.length > 100 ? `${newValueString.substring(0, 100)}...` : newValueString;
 						this.#logger.debug(`Binding set on ${target === obj ? 'local' : 'parent'}: ${key as string}: ${oldValuePreview} -> ${newValuePreview}`);
 					}
-					this.#changes.add(key as string);
+					this.#addChange(key as string);
 					if (!this.#suppressOnChange) {
 						this.#onChange?.(key as string);
 					}
@@ -276,7 +284,7 @@ export class VBindings {
 					this.#externalSubscriptions.delete(key as string);
 				}
 				this.#logger?.debug(`Binding deleted: ${key as string}`);
-				this.#changes.add(key as string);
+				this.#addChange(key as string);
 				this.#onChange?.(key as string);
 				return result;
 			}
@@ -322,6 +330,28 @@ export class VBindings {
 	 */
 	clearChanges(): void {
 		this.#changes.clear();
+		if (this.#dirtyScopes) {
+			for (const scope of this.#dirtyScopes) {
+				scope.#changes.clear();
+			}
+			this.#dirtyScopes.clear();
+		}
+	}
+
+	/**
+	 * Records a changed identifier on this scope and, for a non-root scope, registers the
+	 * scope with the root so that the change is cleared at the end of the update cycle.
+	 */
+	#addChange(key: string): void {
+		this.#changes.add(key);
+		if (!this.#parent) {
+			return;
+		}
+		let root: VBindings = this;
+		while (root.#parent) {
+			root = root.#parent;
+		}
+		(root.#dirtyScopes ??= new Set()).add(this);
 	}
 
 	/**
@@ -510,7 +540,7 @@ export class VBindings {
 	 * @param key The identifier to mark as changed.
 	 */
 	markChanged(key: string): void {
-		this.#changes.add(key);
+		this.#addChange(key);
 	}
 
 	/**
@@ -558,5 +588,55 @@ export class VBindings {
 		}
 		// Fall back to global alias resolution (computed properties, etc.)
 		return ReactiveProxy.doesChangeMatchIdentifier(changePath, identifier);
+	}
+
+	/**
+	 * Checks whether any of the changes affects an expression with the given identifiers.
+	 *
+	 * An identifier with a run-time index ("frames[*].url" for frames[i].url) normally
+	 * matches a change at any index. When trackedPaths holds the paths the expression read
+	 * during its last evaluation, the identifier is narrowed to the concrete paths among
+	 * them ("frames[0].url"), so a write to another element is ignored. When no recorded
+	 * path fits the identifier (not evaluated yet, a raw object, a short-circuited read),
+	 * the identifier keeps matching every index.
+	 *
+	 * @param changes The change paths of the current update cycle.
+	 * @param identifiers The identifiers the expression depends on.
+	 * @param trackedPaths The paths read during the expression's last evaluation, if recorded.
+	 * @returns True if some change matches some identifier.
+	 */
+	isAffected(changes: string[], identifiers: string[], trackedPaths?: ReadonlySet<string>): boolean {
+		if (changes.length === 0) {
+			return false;
+		}
+		for (const identifier of identifiers) {
+			const candidates = this.#concretePaths(identifier, trackedPaths) ?? [identifier];
+			for (const candidate of candidates) {
+				if (changes.some(change => this.doesChangeMatchIdentifier(change, candidate))) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Returns the recorded paths that an identifier with a run-time index stood for during
+	 * the last evaluation, or undefined when the identifier has no such index or nothing
+	 * recorded fits it. The identifier is tried both as spelled and resolved through path
+	 * aliases, since recorded paths are source paths.
+	 */
+	#concretePaths(identifier: string, trackedPaths?: ReadonlySet<string>): string[] | undefined {
+		if (!trackedPaths || trackedPaths.size === 0 || !identifier.includes('[*]')) {
+			return undefined;
+		}
+		const resolved = this.resolveAlias(identifier);
+		const paths: string[] = [];
+		for (const path of trackedPaths) {
+			if (ReactiveProxy.pathMatches(path, identifier) || (resolved !== undefined && ReactiveProxy.pathMatches(path, resolved))) {
+				paths.push(path);
+			}
+		}
+		return paths.length > 0 ? paths : undefined;
 	}
 }

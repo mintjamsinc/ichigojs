@@ -1,6 +1,7 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
 import { ExpressionUtils } from "./util/ExpressionUtils";
+import { ReactiveProxy } from "./util/ReactiveProxy";
 import { toDisplayString } from "./util/DisplayString";
 import { VBindings } from "./VBindings";
 
@@ -74,6 +75,12 @@ export class VTextEvaluator {
     #evaluate: (bindings: VBindings) => string;
 
     /**
+     * The source paths read through reactive proxies during the last evaluation,
+     * recorded only when some expression has a run-time index ("items[i].name").
+     */
+    #trackedPaths?: Set<string>;
+
+    /**
      * Constructs a VTextEvaluator instance.
      * @param text The text containing embedded expressions in the form of {{...}}.
      * @param functionDependencies A dictionary mapping function names to their dependencies.
@@ -119,8 +126,11 @@ export class VTextEvaluator {
             };
         });
 
+        // Only an expression with an index known at run time needs its reads recorded
+        const hasDynamicIndex = this.#identifiers.some(id => id.includes('[*]'));
+
         // Create a function to reconstruct the text with evaluated expressions
-        this.#evaluate = (bindings: VBindings) => {
+        const evaluateText = (bindings: VBindings) => {
             let result = text;
             evaluators.forEach((evaluator, i) => {
                 // Build values for baseArgs (no dots) in the same order as function parameters
@@ -137,6 +147,15 @@ export class VTextEvaluator {
             });
             return result;
         };
+        this.#evaluate = hasDynamicIndex
+            ? (bindings: VBindings) => {
+                const paths = new Set<string>();
+                this.#trackedPaths = undefined;
+                const result = ReactiveProxy.track(paths, () => evaluateText(bindings));
+                this.#trackedPaths = paths;
+                return result;
+            }
+            : evaluateText;
     }
 
     /**
@@ -154,6 +173,15 @@ export class VTextEvaluator {
      */
     get identifiers(): string[] {
         return this.#identifiers;
+    }
+
+    /**
+     * The source paths read through reactive proxies during the last evaluation.
+     * Recorded only when an expression has a run-time index ("items[i].name");
+     * undefined before the first evaluation and for texts without such an index.
+     */
+    get trackedPaths(): ReadonlySet<string> | undefined {
+        return this.#trackedPaths;
     }
 
     /**

@@ -11,6 +11,13 @@ export interface VBindingsPreparer {
     get dependentIdentifiers(): string[];
 
     /**
+     * The source paths the preparer's expressions read during their last evaluation,
+     * when a dependent identifier has an index known only at run time ("items[*].name").
+     * A change is then matched against these concrete paths instead of every index.
+     */
+    readonly trackedPaths?: ReadonlySet<string>;
+
+    /**
      * The list of identifiers that can be prepared by this preparer.
      * This is a subset of the identifiers property.
      */
