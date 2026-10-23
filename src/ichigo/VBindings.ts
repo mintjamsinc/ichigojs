@@ -330,6 +330,7 @@ export class VBindings {
 	 */
 	clearChanges(): void {
 		this.#changes.clear();
+		this.#changeLog.length = 0;
 		if (this.#dirtyScopes) {
 			for (const scope of this.#dirtyScopes) {
 				scope.#changes.clear();
@@ -344,14 +345,43 @@ export class VBindings {
 	 */
 	#addChange(key: string): void {
 		this.#changes.add(key);
-		if (!this.#parent) {
-			return;
-		}
 		let root: VBindings = this;
 		while (root.#parent) {
 			root = root.#parent;
 		}
-		(root.#dirtyScopes ??= new Set()).add(this);
+		root.#changeLog.push(key);
+		if (root !== this) {
+			(root.#dirtyScopes ??= new Set()).add(this);
+		}
+	}
+
+	/**
+	 * Every change recorded since the last clearChanges(), in order and with repeats, on the
+	 * root; the change set itself cannot tell a write made during an update cycle from the one
+	 * the cycle was scheduled for when both touch the same identifier.
+	 */
+	#changeLog: string[] = [];
+
+	/**
+	 * A marker for {@link changesSince}: the number of changes recorded so far.
+	 */
+	get changeLogLength(): number {
+		return this.#root.#changeLog.length;
+	}
+
+	/**
+	 * The distinct identifiers recorded after the marker was taken.
+	 */
+	changesSince(marker: number): string[] {
+		return Array.from(new Set(this.#root.#changeLog.slice(marker)));
+	}
+
+	get #root(): VBindings {
+		let root: VBindings = this;
+		while (root.#parent) {
+			root = root.#parent;
+		}
+		return root;
 	}
 
 	/**

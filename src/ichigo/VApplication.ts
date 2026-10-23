@@ -99,6 +99,16 @@ export class VApplication {
     #updateScheduled: boolean = false;
 
     /**
+     * How many update cycles in a row ended with changes made during the cycle (by a watcher
+     * or a lifecycle hook), each of which runs another cycle. Reset when a cycle ends clean;
+     * past MAX_CASCADED_UPDATES the late changes are dropped, so a watcher that writes on every
+     * cycle cannot keep the application updating forever.
+     */
+    #cascadedUpdates: number = 0;
+
+    static readonly #MAX_CASCADED_UPDATES = 100;
+
+    /**
      * The custom element hosting this application when it powers a component
      * defined via defineComponent(). Set by IchigoElement before mounting.
      * Used by component-boundary features (e.g. scoped slot outlets) to reach
@@ -595,8 +605,10 @@ export class VApplication {
 
         this.#updateScheduled = true;
         queueMicrotask(() => {
-            this.#update();
+            // Cleared before the update runs, not after: a change made during the update (by a
+            // watcher or a lifecycle hook) then schedules the next cycle instead of being dropped.
             this.#updateScheduled = false;
+            this.#update();
         });
     }
 
@@ -613,20 +625,53 @@ export class VApplication {
         // to "selectedElement.executionListeners" when selectedElement points to model.elements[0]
         this.#applyComputedPathMappings();
 
+        // The changes this cycle was scheduled for. Whatever is recorded after this point was
+        // written during the cycle itself (see below); the marker tells the two apart even when
+        // a watcher writes the very identifier it watches.
+        const scheduledChanges = this.#bindings ? this.#bindings.changes : [];
+        const lateMarker = this.#bindings ? this.#bindings.changeLogLength : 0;
+
         // Notify watchers before DOM update
         if (this.#bindings) {
             this.#watcher.notify(
-                this.#bindings.changes,
+                scheduledChanges,
                 (p) => this.#getValueByPath(p),
                 this.#bindings.raw
             );
+
+            // A watcher may have written data. The computed properties that depend on it were
+            // only marked dirty, which the DOM diff below does not see; resolve them now, so this
+            // render already shows what the watcher did, and so the computed names are in the
+            // change set when the diff runs.
+            this.#flushDirtyComputeds();
+            this.#applyComputedPathMappings();
         }
 
         // Update the DOM
         this.#vNode?.update();
 
-        // Clear the set of changed identifiers after the update
-        this.#bindings?.clearChanges();
+        // Clear the set of changed identifiers after the update. Changes recorded during the
+        // cycle (by watchers or lifecycle hooks) are carried into the next cycle instead: the DOM
+        // diff above has seen them, but watchers that depend on them have not, since watcher
+        // notification ran before they were written.
+        if (this.#bindings) {
+            const late = this.#bindings.changesSince(lateMarker);
+            this.#bindings.clearChanges();
+            if (late.length > 0) {
+                this.#cascadedUpdates++;
+                if (this.#cascadedUpdates > VApplication.#MAX_CASCADED_UPDATES) {
+                    this.#logger.warn(`Update cycle did not settle after ${VApplication.#MAX_CASCADED_UPDATES} cascaded updates; dropping changes: ${late.join(', ')}`);
+                    this.#cascadedUpdates = 0;
+                    return;
+                }
+                for (const change of late) {
+                    this.#bindings.markChanged(change);
+                }
+                this.#scheduleUpdate();
+            } else {
+                this.#cascadedUpdates = 0;
+            }
+        }
     }
 
     /**
