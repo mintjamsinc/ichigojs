@@ -104,6 +104,13 @@ export class ReactiveProxy {
      * through a reactive proxy. Nested calls record into the innermost set only;
      * the previous set is restored when fn returns or throws.
      *
+     * The set is kept closed under ancestors: whenever a path is recorded, every
+     * path above it ("items" and "items[2]" for "items[2].name") is in the set as
+     * well. A read reached through a proxy records them on its way down; a read
+     * that starts partway (a proxy a computed returned, a v-for item) has them
+     * added when it is recorded. changeAffectsRead relies on this to answer with
+     * one lookup.
+     *
      * @param paths The set that receives the paths read.
      * @param fn The function to run.
      * @returns The value fn returns.
@@ -130,26 +137,46 @@ export class ReactiveProxy {
     }
 
     /**
+     * Records a read made through a proxy while track() runs: the member `key` of
+     * the object at `containerPath`. The container's own path and its ancestors are
+     * added first when they are missing, which happens when the proxy was not
+     * reached from a root binding during this run (see track()). A container that
+     * is already recorded has its ancestors recorded too, so the common case is one
+     * lookup.
+     *
+     * @param containerPath The source path of the object read from ("" for a root).
+     * @param key The property key read.
+     */
+    private static recordProxyRead(containerPath: string, key: string): void {
+        const tracker = this.tracker!;
+        if (containerPath && !tracker.has(containerPath)) {
+            for (let i = 1; i < containerPath.length; i++) {
+                const c = containerPath[i];
+                if (c === '.' || c === '[') {
+                    tracker.add(containerPath.substring(0, i));
+                }
+            }
+            tracker.add(containerPath);
+        }
+        tracker.add(this.joinPath(containerPath, key));
+    }
+
+    /**
      * Checks whether a change touches something read during a tracked run (see
      * track()): the path read was written, or an object or array holding it was
      * replaced. A change below a path read does not count, since a read of the
      * changed member itself would have been recorded too; this keeps a read of a
      * whole collection ("items") from matching a write to one element.
      *
+     * The set holds the ancestors of every path read, so a replaced container is
+     * found by the same lookup as the path itself.
+     *
      * @param changePath The path that was changed (e.g., "items[2].name")
      * @param readPaths The paths read during the tracked run
      * @returns True if the change touches a path read
      */
     static changeAffectsRead(changePath: string, readPaths: ReadonlySet<string>): boolean {
-        if (readPaths.has(changePath)) {
-            return true;
-        }
-        for (const path of readPaths) {
-            if (path.startsWith(changePath + '.') || path.startsWith(changePath + '[')) {
-                return true;
-            }
-        }
-        return false;
+        return readPaths.has(changePath);
     }
 
     /**
@@ -256,7 +283,7 @@ export class ReactiveProxy {
                 // Function-valued members (push, Map#get, …) are accesses to behaviour,
                 // not data, so they are left out.
                 if (ReactiveProxy.tracker && typeof key !== 'symbol' && typeof value !== 'function') {
-                    ReactiveProxy.tracker.add(ReactiveProxy.joinPath(path, key));
+                    ReactiveProxy.recordProxyRead(path, key);
                 }
 
                 // If the value is an object or array, make it reactive too

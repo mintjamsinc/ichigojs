@@ -662,6 +662,59 @@ export class VNode {
      * This is useful when an immediate update is needed, bypassing the usual change detection.
      */
     forceUpdate(): void {
+        // One pass per outermost call; a call made while a pass runs (a directive rendering
+        // a fresh clone, a component mounting) joins it. The node is stamped with the pass,
+        // so that the recursion over the children below skips a child a directive has
+        // already rendered in this pass (see #forceChildren).
+        const outermost = VNode.#forcePass === 0;
+        if (outermost) {
+            VNode.#forcePass = ++VNode.#forcePassCounter;
+        }
+        this.#forcedInPass = VNode.#forcePass;
+        try {
+            this.#forceUpdate();
+        } finally {
+            if (outermost) {
+                VNode.#forcePass = 0;
+            }
+        }
+    }
+
+    /**
+     * The pass counter behind {@link forceUpdate}: the last pass number handed out.
+     */
+    static #forcePassCounter = 0;
+
+    /**
+     * The pass that is running, or 0 between passes.
+     */
+    static #forcePass = 0;
+
+    /**
+     * The pass this node was last forced in, or 0 if never.
+     */
+    #forcedInPass = 0;
+
+    /**
+     * Forces the children that have not been forced in the running pass. A v-if / v-for /
+     * slot clone is a child of its host, and the host's directive renders it with its own
+     * forceUpdate() call as soon as it is created, so recursing into it here would render it a
+     * second time. A clone that already existed, and that the directive updated with
+     * update(), has not been forced in this pass and is still forced here.
+     */
+    #forceChildren(): void {
+        // A copy: an update can destroy a v-if / v-for clone, which removes it from this list.
+        this.#childVNodes?.slice().forEach(childVNode => {
+            if (childVNode.#forcedInPass !== VNode.#forcePass) {
+                childVNode.forceUpdate();
+            }
+        });
+    }
+
+    /**
+     * The body of {@link forceUpdate}, run within a pass.
+     */
+    #forceUpdate(): void {
         if (this.#nodeType === Node.TEXT_NODE && this.#textEvaluator) {
             // If this is a text node with a text evaluator, update its content if needed
             this.#renderText();
@@ -695,11 +748,8 @@ export class VNode {
                 }
             }
 
-            // Recursively update child virtual nodes. A copy: an update can
-            // destroy a v-if / v-for clone, which removes it from this list.
-            this.#childVNodes?.slice().forEach(childVNode => {
-                childVNode.forceUpdate();
-            });
+            // Recursively update child virtual nodes
+            this.#forceChildren();
 
             // If no directive requires template preservation, call onUpdated for directives that do not templatize
             if (!this.#templatized) {
@@ -709,9 +759,7 @@ export class VNode {
             }
         } else if (this.#nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
             // For document fragments, recursively force update child VNodes
-            this.#childVNodes?.slice().forEach(childVNode => {
-                childVNode.forceUpdate();
-            });
+            this.#forceChildren();
         }
     }
 
