@@ -569,8 +569,7 @@ export class VNode {
 
             // If the text node has changed, update its content
             if (changed) {
-                const text = this.#node as Text;
-                text.data = this.#textEvaluator.evaluate(this.bindings);
+                this.#renderText();
             }
         } else if (this.#nodeType === Node.ELEMENT_NODE) {
             // If this is an element node, update directives and child nodes
@@ -593,7 +592,7 @@ export class VNode {
                 for (const preparer of this.#directiveManager.bindingsPreparers) {
                     const changed = this.bindings.isAffected(changes, preparer.dependentIdentifiers, preparer.trackedPaths);
                     if (changed) {
-                        preparer.prepareBindings();
+                        this.#renderSafely(() => preparer.prepareBindings());
                     }
                 }
             }
@@ -603,7 +602,7 @@ export class VNode {
                 for (const updater of this.#directiveManager.domUpdaters) {
                     const changed = this.bindings.isAffected(changes, updater.dependentIdentifiers, updater.trackedPaths);
                     if (changed) {
-                        updater.applyToDOM();
+                        this.#renderSafely(() => updater.applyToDOM());
                     }
                 }
             }
@@ -647,9 +646,7 @@ export class VNode {
     forceUpdate(): void {
         if (this.#nodeType === Node.TEXT_NODE && this.#textEvaluator) {
             // If this is a text node with a text evaluator, update its content if needed
-
-            const text = this.#node as Text;
-            text.data = this.#textEvaluator.evaluate(this.bindings);
+            this.#renderText();
         } else if (this.#nodeType === Node.ELEMENT_NODE) {
             // If this is an element node, update directives and child nodes
 
@@ -669,14 +666,14 @@ export class VNode {
 
                 // Prepare bindings for each preparer if relevant identifiers have changed
                 for (const preparer of this.#directiveManager.bindingsPreparers) {
-                    preparer.prepareBindings();
+                    this.#renderSafely(() => preparer.prepareBindings());
                 }
             }
 
             // Apply DOM updaters from directives, if any
             if (this.#directiveManager?.domUpdaters) {
                 for (const updater of this.#directiveManager.domUpdaters) {
-                    updater.applyToDOM();
+                    this.#renderSafely(() => updater.applyToDOM());
                 }
             }
 
@@ -698,6 +695,40 @@ export class VNode {
                 childVNode.forceUpdate();
             });
         }
+    }
+
+    /**
+     * Evaluates this text node's expressions into its content.
+     */
+    #renderText(): void {
+        const text = this.#node as Text;
+        this.#renderSafely(() => {
+            text.data = this.#textEvaluator!.evaluate(this.bindings);
+        });
+    }
+
+    /**
+     * Runs one binding's render step. A binding whose expression throws (for example one that
+     * reads a member of a value that is still undefined) is logged and left as it was, so that
+     * it does not stop the rest of the tree from rendering.
+     * @param render The render step.
+     */
+    #renderSafely(render: () => void): void {
+        try {
+            render();
+        } catch (error) {
+            this.#vApplication.logManager.getLogger(this.constructor.name).error(`Error rendering ${this.#describe()}: ${error}`);
+        }
+    }
+
+    /**
+     * Describes this node for a log message: a text node by its text, an element by its tag.
+     */
+    #describe(): string {
+        if (this.#nodeType === Node.TEXT_NODE) {
+            return `text "${(this.#node.textContent ?? '').trim()}"`;
+        }
+        return `<${this.#nodeName.toLowerCase()}>`;
     }
 
     /**

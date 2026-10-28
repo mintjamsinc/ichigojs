@@ -289,8 +289,11 @@ export class VApplication {
             bindings: this.#bindings
         });
 
-        // Initial rendering
-        this.#vNode.update();
+        // Initial rendering. Every binding is applied, not only those whose identifiers were
+        // recorded as changed while the data was set up: a value that starts undefined is never
+        // recorded (undefined -> undefined is no change), and an expression over globals only
+        // has no identifier to record at all.
+        this.#vNode.forceUpdate();
 
         // Expand the components in the tree. Last, so every component element
         // has been compiled and has had its prop values delivered before its
