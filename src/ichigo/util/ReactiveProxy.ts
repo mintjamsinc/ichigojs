@@ -119,6 +119,40 @@ export class ReactiveProxy {
     }
 
     /**
+     * Records a read made outside any proxy while track() runs: a binding read by
+     * name (`this.flag`, `this[key]`), which the bindings report here. Reads below
+     * a binding are recorded by the proxy itself.
+     *
+     * @param path The binding name read.
+     */
+    static recordRead(path: string): void {
+        this.tracker?.add(path);
+    }
+
+    /**
+     * Checks whether a change touches something read during a tracked run (see
+     * track()): the path read was written, or an object or array holding it was
+     * replaced. A change below a path read does not count, since a read of the
+     * changed member itself would have been recorded too; this keeps a read of a
+     * whole collection ("items") from matching a write to one element.
+     *
+     * @param changePath The path that was changed (e.g., "items[2].name")
+     * @param readPaths The paths read during the tracked run
+     * @returns True if the change touches a path read
+     */
+    static changeAffectsRead(changePath: string, readPaths: ReadonlySet<string>): boolean {
+        if (readPaths.has(changePath)) {
+            return true;
+        }
+        for (const path of readPaths) {
+            if (path.startsWith(changePath + '.') || path.startsWith(changePath + '[')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * The `Object.prototype.toString` tags of the *only* value types we deeply
      * proxy. Everything else is returned untouched (raw).
      *

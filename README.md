@@ -219,6 +219,27 @@ first), and a computed whose recomputed value is unchanged does not trigger DOM
 updates or watchers that depend on it. Computed→computed chains resolve
 automatically and independently of declaration order.
 
+**Dependencies:**
+
+A computed property depends on the properties its source names (`this.firstName`,
+including those read by the methods it calls) and on everything it actually read
+the last time it ran. Reads that only happen at run time, such as a property
+looked up by a key, are therefore followed too, and the record is replaced on
+every run, so a computed that switches between branches follows the branch it
+took:
+
+```javascript
+computed: {
+  selected() {
+    // `this[key]` names no property in the source; the reads are recorded when it runs
+    return ['upper', 'lower', 'digit'].filter(key => this[key]);
+  }
+}
+```
+
+The same holds for template bindings that call a method, such as
+`:disabled="isLast('upper')"` where `isLast` reads `this[key]`.
+
 A computed property can also be defined as an object with both a `get` and a
 `set` function. This makes it writable, so it can be used as a `v-model` target
 or assigned to directly. Reads go through `get`, while assignments are routed

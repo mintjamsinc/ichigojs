@@ -480,6 +480,30 @@ export class VNode {
         return this.#dependentIdentifiers;
     }
 
+    /**
+     * Whether a change of the current update cycle concerns this node, so that a node it
+     * depends on should update it: a change matches one of its identifiers, or touches a
+     * path one of its bindings read the last time it ran. The recorded reads cover what a
+     * called method read, such as `this[key]`, which the identifiers cannot name. Each
+     * binding decides again for itself when the node updates.
+     * @param changes The change paths of the current update cycle.
+     */
+    isAffectedBy(changes: string[]): boolean {
+        if (changes.length === 0) {
+            return false;
+        }
+        if (this.dependentIdentifiers.some(id => changes.some(change => this.bindings.doesChangeMatchIdentifier(change, id)))) {
+            return true;
+        }
+        const recorded = [
+            this.#textEvaluator?.trackedPaths,
+            ...(this.#directiveManager?.bindingsPreparers ?? []).map(preparer => preparer.trackedPaths),
+            ...(this.#directiveManager?.domUpdaters ?? []).map(updater => updater.trackedPaths),
+        ];
+        return recorded.some(paths => paths !== undefined && paths.size > 0 &&
+            changes.some(change => ReactiveProxy.changeAffectsRead(change, paths)));
+    }
+
     get preparableIdentifiers(): string[] {
         // If already computed, return the cached preparable identifiers
         if (this.#preparableIdentifiers) {
@@ -609,10 +633,7 @@ export class VNode {
 
             // Recursively update dependent virtual nodes
             this.#dependents?.forEach(dependentNode => {
-                const changed = dependentNode.dependentIdentifiers.some(id =>
-                    changes.some(change => dependentNode.bindings.doesChangeMatchIdentifier(change, id))
-                );
-                if (changed) {
+                if (dependentNode.isAffectedBy(changes)) {
                     dependentNode.update();
                 }
             });
@@ -627,10 +648,7 @@ export class VNode {
             // For document fragments (e.g. from <template v-if>), propagate updates
             // to dependent virtual nodes so that child bindings stay reactive.
             this.#dependents?.forEach(dependentNode => {
-                const changed = dependentNode.dependentIdentifiers.some(id =>
-                    changes.some(change => dependentNode.bindings.doesChangeMatchIdentifier(change, id))
-                );
-                if (changed) {
+                if (dependentNode.isAffectedBy(changes)) {
                     dependentNode.update();
                 }
             });

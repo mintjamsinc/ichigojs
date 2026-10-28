@@ -70,6 +70,14 @@ export class VApplication {
     #computedDependencies: Record<string, string[]>;
 
     /**
+     * The paths each computed property read the last time it was evaluated (see
+     * ReactiveProxy.track). A change to one of them marks the computed dirty as well as
+     * a change to the dependencies found in its source, since a read the source does not
+     * spell out, such as `this[key]`, is seen only here.
+     */
+    #computedReads: Map<string, ReadonlySet<string>> = new Map();
+
+    /**
      * A map tracking source paths for computed property values.
      * Maps source path (e.g., "model.elements[0]") to computed property name (e.g., "selectedElement").
      * This allows changes to source paths to be mapped to computed property changes.
@@ -712,10 +720,13 @@ export class VApplication {
 
     /**
      * Marks computed properties as dirty (pull-based invalidation) when a dependency changes.
-     * Uses the statically analyzed dependency graph; because computed→computed and computed→method
-     * dependencies are flattened to their underlying reactive paths during analysis, a single change
-     * marks every transitively dependent computed dirty in one pass. The actual recomputation is
-     * deferred until the value is read (see #recomputeOne).
+     * A computed depends on what its source names (statically analyzed, with computed→computed and
+     * computed→method dependencies flattened to their underlying reactive paths) and on what it read
+     * the last time it ran (#computedReads). A computed marked dirty is itself a change for the
+     * computeds that read it, so marking follows those reads too. A computed already dirty is
+     * skipped: the computeds that read it were marked when it was, and a computed cannot be
+     * recomputed without reading — and so resolving — the dirty ones it depends on. The actual
+     * recomputation is deferred until the value is read (see #recomputeOne).
      * @param identifier The changed identifier reported by the bindings change tracker.
      */
     #markDirtyComputeds(identifier: string): void {
@@ -723,10 +734,20 @@ export class VApplication {
             return;
         }
 
-        for (const key of Object.keys(this.#computedDependencies)) {
-            const deps = this.#computedDependencies[key] || [];
-            if (deps.some(dep => this.#dependencyAffectedBy(dep, identifier))) {
-                this.#bindings.markComputedDirty(key);
+        const pending = [identifier];
+        while (pending.length > 0) {
+            const changed = pending.pop()!;
+            for (const key of Object.keys(this.#computedDependencies)) {
+                if (this.#bindings.isComputedDirty(key)) {
+                    continue;
+                }
+                const deps = this.#computedDependencies[key] || [];
+                const reads = this.#computedReads.get(key);
+                if (deps.some(dep => this.#dependencyAffectedBy(dep, changed)) ||
+                    (reads !== undefined && ReactiveProxy.changeAffectsRead(changed, reads))) {
+                    this.#bindings.markComputedDirty(key);
+                    pending.push(key);
+                }
             }
         }
     }
@@ -791,10 +812,21 @@ export class VApplication {
         }
 
         const computedFn = VApplication.#getComputedGetter(def);
+        const bindings = this.#bindings;
         try {
             // Read the previous value without triggering re-resolution, for change detection.
-            const oldValue = this.#bindings.peekComputed(key);
-            const newValue = computedFn.call(this.#bindings.raw);
+            const oldValue = bindings.peekComputed(key);
+
+            // Record what the getter reads, replacing the previous record: the reads can differ
+            // from run to run (a branch, a dynamic key). Kept even when the getter throws, so a
+            // change to what it read before failing retries it.
+            const reads = new Set<string>();
+            let newValue: unknown;
+            try {
+                newValue = ReactiveProxy.track(reads, () => computedFn.call(bindings.raw));
+            } finally {
+                this.#computedReads.set(key, reads);
+            }
 
             // Check if the value actually changed.
             let hasChanged = oldValue !== newValue;

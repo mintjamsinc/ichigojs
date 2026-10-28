@@ -134,7 +134,14 @@ export class VBindings {
 					this.#resolveComputedIfDirty(key);
 				}
 				if (Reflect.has(obj, key)) {
-					return Reflect.get(obj, key);
+					const value = Reflect.get(obj, key);
+					// Record the read for a computed property or expression being tracked
+					// (see ReactiveProxy.track). Methods are behaviour, not data; a binding of a
+					// parent scope is recorded by the parent's own trap.
+					if (typeof key === 'string' && typeof value !== 'function') {
+						ReactiveProxy.recordRead(key);
+					}
+					return value;
 				}
 				return this.#parent?.raw[key as string];
 			},
@@ -507,6 +514,14 @@ export class VBindings {
 	}
 
 	/**
+	 * Indicates whether a computed property is marked dirty and not yet recomputed.
+	 * @param key The computed property name.
+	 */
+	isComputedDirty(key: string): boolean {
+		return this.#dirtyComputeds.has(key);
+	}
+
+	/**
 	 * Reads the currently cached value of a computed property without triggering pull-based
 	 * re-evaluation. Used by the recompute routine to obtain the previous value for change
 	 * detection. Falls back to the parent bindings when the key is not stored locally.
@@ -630,10 +645,14 @@ export class VBindings {
 	 * path fits the identifier (not evaluated yet, a raw object, a short-circuited read),
 	 * the identifier keeps matching every index.
 	 *
+	 * The recorded paths also count as dependencies of their own: they include what a
+	 * method called by the expression read, such as `this[key]`, which the identifiers
+	 * found in the source cannot name.
+	 *
 	 * @param changes The change paths of the current update cycle.
 	 * @param identifiers The identifiers the expression depends on.
 	 * @param trackedPaths The paths read during the expression's last evaluation, if recorded.
-	 * @returns True if some change matches some identifier.
+	 * @returns True if some change matches some identifier or recorded path.
 	 */
 	isAffected(changes: string[], identifiers: string[], trackedPaths?: ReadonlySet<string>): boolean {
 		if (changes.length === 0) {
@@ -646,6 +665,9 @@ export class VBindings {
 					return true;
 				}
 			}
+		}
+		if (trackedPaths && trackedPaths.size > 0) {
+			return changes.some(change => ReactiveProxy.changeAffectsRead(change, trackedPaths));
 		}
 		return false;
 	}

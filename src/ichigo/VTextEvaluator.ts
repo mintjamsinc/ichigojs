@@ -75,8 +75,8 @@ export class VTextEvaluator {
     #evaluate: (bindings: VBindings) => string;
 
     /**
-     * The source paths read through reactive proxies during the last evaluation,
-     * recorded only when some expression has a run-time index ("items[i].name").
+     * The source paths read during the last evaluation, recorded only when some
+     * expression has a run-time index ("items[i].name") or calls a method.
      */
     #trackedPaths?: Set<string>;
 
@@ -126,11 +126,16 @@ export class VTextEvaluator {
             };
         });
 
-        // Only an expression with an index known at run time needs its reads recorded
-        const hasDynamicIndex = this.#identifiers.some(id => id.includes('[*]'));
+        // Only an expression with an index known at run time, or one that calls a method
+        // (whose reads, such as `this[key]`, the source analysis may not see), needs its
+        // reads recorded
+        const tracksReads = this.#identifiers.some(id => id.includes('[*]')) ||
+            ExpressionUtils.callsFunction(this.#identifiers, functionDependencies);
 
-        // Create a function to reconstruct the text with evaluated expressions
-        const evaluateText = (bindings: VBindings) => {
+        // Create a function to reconstruct the text with evaluated expressions. The values
+        // are gathered outside the tracked call: a binding passed in by name is already
+        // among the identifiers.
+        const evaluateText = (bindings: VBindings, paths?: Set<string>) => {
             let result = text;
             evaluators.forEach((evaluator, i) => {
                 // Build values for baseArgs (no dots) in the same order as function parameters
@@ -143,15 +148,16 @@ export class VTextEvaluator {
 
                 // Evaluate the expression and replace {{...}} in the text.
                 // A function replacement keeps `$`-patterns in the value literal.
-                result = result.replace(matches[i][0], () => toDisplayString(evaluator.func(...values)));
+                const value = paths ? ReactiveProxy.track(paths, () => evaluator.func(...values)) : evaluator.func(...values);
+                result = result.replace(matches[i][0], () => toDisplayString(value));
             });
             return result;
         };
-        this.#evaluate = hasDynamicIndex
+        this.#evaluate = tracksReads
             ? (bindings: VBindings) => {
                 const paths = new Set<string>();
                 this.#trackedPaths = undefined;
-                const result = ReactiveProxy.track(paths, () => evaluateText(bindings));
+                const result = evaluateText(bindings, paths);
                 this.#trackedPaths = paths;
                 return result;
             }
@@ -176,9 +182,9 @@ export class VTextEvaluator {
     }
 
     /**
-     * The source paths read through reactive proxies during the last evaluation.
-     * Recorded only when an expression has a run-time index ("items[i].name");
-     * undefined before the first evaluation and for texts without such an index.
+     * The source paths read during the last evaluation. Recorded only when an
+     * expression has a run-time index ("items[i].name") or calls a method;
+     * undefined before the first evaluation and for other texts.
      */
     get trackedPaths(): ReadonlySet<string> | undefined {
         return this.#trackedPaths;
