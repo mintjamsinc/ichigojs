@@ -1,5 +1,6 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
+import { ReactiveEffect } from "./util/ReactiveEffect";
 import { VLogger } from "./util/VLogger";
 import { WatchCallback, WatcherDefinition, WatcherOptions } from "./VWatcherOptions";
 
@@ -26,6 +27,21 @@ interface WatcherEntry {
      * The cached previous value for comparison.
      */
     oldValue: any;
+
+    /**
+     * The value read by the last run of the effect.
+     */
+    value: any;
+
+    /**
+     * The value to keep as the next old value: a deep clone for a deep watcher.
+     */
+    clone?: any;
+
+    /**
+     * Reads the watched value, which is what the watcher depends on.
+     */
+    effect: ReactiveEffect;
 }
 
 /**
@@ -39,15 +55,27 @@ export class VWatcher {
     #watchers: WatcherEntry[] = [];
 
     /**
+     * The watchers notified and not yet processed.
+     */
+    #pending: Set<WatcherEntry> = new Set();
+
+    /**
+     * Called when a watcher has been notified.
+     */
+    #schedule: () => void;
+
+    /**
      * The logger instance.
      */
     #logger?: VLogger;
 
     /**
      * Creates a new VWatcher instance.
+     * @param schedule Called when a watcher has been notified.
      * @param logger Optional logger instance for debugging.
      */
-    constructor(logger?: VLogger) {
+    constructor(schedule: () => void, logger?: VLogger) {
+        this.#schedule = schedule;
         this.#logger = logger;
     }
 
@@ -63,14 +91,27 @@ export class VWatcher {
         getCurrentValue: (path: string) => any
     ): void {
         const options = this.#normalizeDefinition(definition);
-        const currentValue = getCurrentValue(path);
+        const deep = options.deep || false;
 
         const entry: WatcherEntry = {
             path,
             handler: options.handler,
-            deep: options.deep || false,
-            oldValue: options.deep ? this.#deepClone(currentValue) : currentValue
+            deep,
+            oldValue: undefined,
+            value: undefined,
+            effect: new ReactiveEffect(() => {
+                entry.value = getCurrentValue(path);
+                // A deep clone reads every member, so that all of them are dependencies
+                entry.clone = deep ? this.#deepClone(entry.value) : entry.value;
+            }, () => {
+                this.#pending.add(entry);
+                this.#schedule();
+            })
         };
+
+        entry.effect.run();
+        const currentValue = entry.value;
+        entry.oldValue = entry.clone;
 
         this.#watchers.push(entry);
         this.#logger?.debug(`Watcher registered for path: ${path}, deep: ${entry.deep}`);
@@ -87,50 +128,55 @@ export class VWatcher {
     }
 
     /**
-     * Checks all watchers against the current changes and triggers callbacks as needed.
-     * @param changes The list of changed property paths.
-     * @param getValue A function that returns the current value of a property.
-     * @param context The context object to use as 'this' when calling handlers.
+     * Whether a watcher has been notified and not processed yet.
      */
-    notify(
-        changes: string[],
-        getValue: (path: string) => any,
-        context: any
-    ): void {
-        for (const entry of this.#watchers) {
-            if (this.#shouldTrigger(entry, changes)) {
-                const newValue = getValue(entry.path);
-                const oldValue = entry.oldValue;
-
-                // Check if value actually changed
-                if (!this.#hasChanged(newValue, oldValue, entry.deep)) {
-                    continue;
-                }
-
-                this.#logger?.debug(`Watcher triggered for path: ${entry.path}`);
-
-                // Update cached old value before calling handler
-                entry.oldValue = entry.deep ? this.#deepClone(newValue) : newValue;
-
-                // Call the handler
-                try {
-                    entry.handler.call(context, newValue, oldValue);
-                } catch (error) {
-                    this.#logger?.error(`Error in watcher for '${entry.path}': ${error}`);
-                }
-            }
-        }
+    get hasPending(): boolean {
+        return this.#pending.size > 0;
     }
 
     /**
-     * Updates the cached old values for all watchers.
-     * This should be called after processing to ensure old values are current.
-     * @param getValue A function that returns the current value of a property.
+     * The paths of the watchers notified and not processed yet.
      */
-    updateCachedValues(getValue: (path: string) => any): void {
-        for (const entry of this.#watchers) {
-            const currentValue = getValue(entry.path);
-            entry.oldValue = entry.deep ? this.#deepClone(currentValue) : currentValue;
+    get pendingPaths(): string[] {
+        return [...this.#pending].map(entry => entry.path);
+    }
+
+    /**
+     * Drops the watchers notified and not processed yet.
+     */
+    dropPending(): void {
+        this.#pending.clear();
+    }
+
+    /**
+     * Calls the handlers of the watchers notified whose value has changed.
+     * @param context The context object to use as 'this' when calling handlers.
+     */
+    notify(context: any): void {
+        const pending = [...this.#pending];
+        this.#pending.clear();
+
+        for (const entry of pending) {
+            entry.effect.run();
+            const newValue = entry.value;
+            const oldValue = entry.oldValue;
+
+            // Check if value actually changed
+            if (!this.#hasChanged(newValue, oldValue, entry.deep)) {
+                continue;
+            }
+
+            this.#logger?.debug(`Watcher triggered for path: ${entry.path}`);
+
+            // Update cached old value before calling handler
+            entry.oldValue = entry.clone;
+
+            // Call the handler
+            try {
+                entry.handler.call(context, newValue, oldValue);
+            } catch (error) {
+                this.#logger?.error(`Error in watcher for '${entry.path}': ${error}`);
+            }
         }
     }
 
@@ -138,7 +184,11 @@ export class VWatcher {
      * Clears all registered watchers.
      */
     clear(): void {
+        for (const entry of this.#watchers) {
+            entry.effect.stop();
+        }
         this.#watchers = [];
+        this.#pending.clear();
         this.#logger?.debug('All watchers cleared');
     }
 
@@ -163,38 +213,6 @@ export class VWatcher {
             };
         }
         return definition;
-    }
-
-    /**
-     * Determines if a watcher should be triggered based on the changed paths.
-     * @param entry The watcher entry to check.
-     * @param changes The list of changed property paths.
-     * @returns True if the watcher should be triggered.
-     */
-    #shouldTrigger(entry: WatcherEntry, changes: string[]): boolean {
-        for (const changedPath of changes) {
-            // Exact match
-            if (changedPath === entry.path) {
-                return true;
-            }
-
-            // Deep watcher: trigger if a nested property changed
-            if (entry.deep && changedPath.startsWith(entry.path + '.')) {
-                return true;
-            }
-            if (entry.deep && changedPath.startsWith(entry.path + '[')) {
-                return true;
-            }
-
-            // Watch path is nested in the changed path (parent changed)
-            if (entry.path.startsWith(changedPath + '.')) {
-                return true;
-            }
-            if (entry.path.startsWith(changedPath + '[')) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**

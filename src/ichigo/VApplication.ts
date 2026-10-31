@@ -11,6 +11,7 @@ import { VNodeInit } from "./VNodeInit";
 import { VDirectiveParserRegistry } from "./directives/VDirectiveParserRegistry";
 import { IchigoElementRegistry } from "./components/IchigoElementRegistry";
 import { VComponentRegistry } from "./components/VComponentRegistry";
+import { ReactiveEffect } from "./util/ReactiveEffect";
 import { ReactiveProxy } from "./util/ReactiveProxy";
 import { VApplicationInit } from "./VApplicationInit";
 import { VWatcher } from "./VWatcher";
@@ -65,24 +66,15 @@ export class VApplication {
     #functionDependencies: Record<string, string[]>;
 
     /**
-     * A dictionary mapping computed property names to their dependencies.
+     * The effect of each computed property. What the getter reads the last time it runs is
+     * what makes the property stale.
      */
-    #computedDependencies: Record<string, string[]>;
+    #computedEffects: Map<string, ReactiveEffect> = new Map();
 
     /**
-     * The paths each computed property read the last time it was evaluated (see
-     * ReactiveProxy.track). A change to one of them marks the computed dirty as well as
-     * a change to the dependencies found in its source, since a read the source does not
-     * spell out, such as `this[key]`, is seen only here.
+     * The value of the computed property whose effect ran last.
      */
-    #computedReads: Map<string, ReadonlySet<string>> = new Map();
-
-    /**
-     * A map tracking source paths for computed property values.
-     * Maps source path (e.g., "model.elements[0]") to computed property name (e.g., "selectedElement").
-     * This allows changes to source paths to be mapped to computed property changes.
-     */
-    #computedSourcePaths: Map<string, string> = new Map();
+    #computedResult: unknown;
 
     /**
      * The watcher manager for this application.
@@ -105,6 +97,21 @@ export class VApplication {
      * Flag to indicate if an update is already scheduled.
      */
     #updateScheduled: boolean = false;
+
+    /**
+     * The nodes with something to render in the next update.
+     */
+    #staleNodes: Set<VNode> = new Set();
+
+    /**
+     * Whether an update is running: a node notified meanwhile joins its flush.
+     */
+    #updating: boolean = false;
+
+    /**
+     * What runs when the pass of the flush in progress has rendered every node in it.
+     */
+    #afterFlush: Array<() => void> = [];
 
     /**
      * How many update cycles in a row ended with changes made during the cycle (by a watcher
@@ -145,34 +152,8 @@ export class VApplication {
         const methods: Record<string, Function> = (options.methods || {}) as Record<string, Function>;
         this.#functionDependencies = ExpressionUtils.analyzeFunctionDependencies(methods);
 
-        // Analyze computed dependencies based on getter functions only.
-        // Writable computeds (defined as { get, set }) contribute their getter for dependency analysis.
-        const computedGetters: Record<string, Function> = {};
-        if (options.computed) {
-            for (const [key, def] of Object.entries(options.computed)) {
-                computedGetters[key] = VApplication.#getComputedGetter(def);
-            }
-        }
-        // Resolve computed dependencies against BOTH the computed getters AND the methods, so a
-        // computed that delegates to a method inherits that method's reactive dependencies. A
-        // computed whose only reactive reads happen inside a called method (e.g. a reactive i18n
-        // `t()` helper that reads `this.localization`) would otherwise never be invalidated, leaving
-        // its binding stale on a dependency change. Analyzing the combined set flattens every
-        // computed→method (and computed→computed, method→method) edge down to the underlying
-        // reactive paths — the same expansion that template-expression analysis already performs for
-        // method calls (see ExpressionUtils.extractIdentifiers). We then keep only the computed
-        // entries, since #computedDependencies must be keyed by computed name alone.
-        const combinedDependencies = ExpressionUtils.analyzeFunctionDependencies({
-            ...methods,
-            ...computedGetters,
-        });
-        this.#computedDependencies = {};
-        for (const key of Object.keys(computedGetters)) {
-            this.#computedDependencies[key] = combinedDependencies[key] || [];
-        }
-
         // Initialize watcher manager
-        this.#watcher = new VWatcher(this.#logger);
+        this.#watcher = new VWatcher(() => this.#scheduleUpdate(), this.#logger);
 
         // Initialize bindings from data, computed, and methods
         this.#initializeBindings();
@@ -297,10 +278,8 @@ export class VApplication {
             bindings: this.#bindings
         });
 
-        // Initial rendering. Every binding is applied, not only those whose identifiers were
-        // recorded as changed while the data was set up: a value that starts undefined is never
-        // recorded (undefined -> undefined is no change), and an expression over globals only
-        // has no identifier to record at all.
+        // Initial rendering. Every binding is applied, and what each one reads becomes what it
+        // depends on.
         this.#vNode.forceUpdate();
 
         // Expand the components in the tree. Last, so every component element
@@ -329,7 +308,10 @@ export class VApplication {
             this.#vNode.destroy();
             this.#vNode = undefined;
         }
-        this.#bindings?.destroy();
+        this.#staleNodes.clear();
+        this.#computedEffects.forEach(effect => effect.stop());
+        this.#computedEffects.clear();
+        this.#watcher.clear();
         this.#logger.info('Application unmounted.');
     }
 
@@ -407,27 +389,6 @@ export class VApplication {
     }
 
     /**
-     * Computes dependent identifiers for a given computed property and value.
-     * This is used to track dependencies in directives like v-for.
-     * @param computedName The name of the computed property.
-     * @param value The value to check for dependencies.
-     * @returns An array of dependent identifiers.
-     */
-    resolveDependentIdentifiers(computedName: string, value: any): string[] {
-        const identifiers: string[] = [];
-        for (const dep of this.#computedDependencies[computedName] || []) {
-            const depValue = this.#bindings?.get(dep);
-            if (Array.isArray(depValue)) {
-                const idx = depValue.indexOf(value);
-                if (idx !== -1) {
-                    identifiers.push(`${dep}[${idx}]`);
-                }
-            }
-        }
-        return identifiers;
-    }
-
-    /**
      * Registers a template reference under the given name. Called by the `ref` directive during the
      * mount phase. When {@param asArray} is true (the element lives inside a `v-for`), references
      * accumulate into an array in registration order; otherwise the name holds a single element.
@@ -485,13 +446,6 @@ export class VApplication {
     #initializeBindings(): void {
         // Create bindings with change tracking
         this.#bindings = new VBindings({
-            onChange: (identifier: string) => {
-                // Pull-based invalidation: mark dependent computed properties dirty synchronously
-                // so a subsequent synchronous read returns a fresh value, then schedule the
-                // batched DOM update for the next microtask.
-                this.#markDirtyComputeds(identifier);
-                this.#scheduleUpdate();
-            },
             vApplication: this
         });
 
@@ -624,164 +578,92 @@ export class VApplication {
     }
 
     /**
+     * Adds a node to the next update.
+     * @param vNode The node with something to render.
+     */
+    enqueue(vNode: VNode): void {
+        this.#staleNodes.add(vNode);
+        if (!this.#updating) {
+            this.#scheduleUpdate();
+        }
+    }
+
+    /**
+     * Runs a function when the current pass of the flush has rendered every node in it.
+     * @param callback The function to run.
+     */
+    afterFlush(callback: () => void): void {
+        this.#afterFlush.push(callback);
+    }
+
+    /**
      * Executes an immediate DOM update.
      */
     #update(): void {
-        // Resolve any computed properties still marked dirty (those not already pulled by a
-        // synchronous read) so that the set of changed identifiers is complete before the DOM diff.
-        this.#flushDirtyComputeds();
-
-        // Apply computed source path mappings to changes
-        // This converts paths like "model.elements[0].executionListeners"
-        // to "selectedElement.executionListeners" when selectedElement points to model.elements[0]
-        this.#applyComputedPathMappings();
-
-        // The changes this cycle was scheduled for. Whatever is recorded after this point was
-        // written during the cycle itself (see below); the marker tells the two apart even when
-        // a watcher writes the very identifier it watches.
-        const scheduledChanges = this.#bindings ? this.#bindings.changes : [];
-        const lateMarker = this.#bindings ? this.#bindings.changeLogLength : 0;
-
-        // Notify watchers before DOM update
-        if (this.#bindings) {
-            this.#watcher.notify(
-                scheduledChanges,
-                (p) => this.#getValueByPath(p),
-                this.#bindings.raw
-            );
-
-            // A watcher may have written data. The computed properties that depend on it were
-            // only marked dirty, which the DOM diff below does not see; resolve them now, so this
-            // render already shows what the watcher did, and so the computed names are in the
-            // change set when the diff runs.
+        this.#updating = true;
+        try {
+            // Resolve any computed properties still marked dirty (those not already pulled by a
+            // synchronous read) so that what they notify is complete before watchers run.
             this.#flushDirtyComputeds();
-            this.#applyComputedPathMappings();
-        }
 
-        // Update the DOM
-        this.#vNode?.update();
+            if (this.#bindings) {
+                this.#watcher.notify(this.#bindings.raw);
 
-        // Clear the set of changed identifiers after the update. Changes recorded during the
-        // cycle (by watchers or lifecycle hooks) are carried into the next cycle instead: the DOM
-        // diff above has seen them, but watchers that depend on them have not, since watcher
-        // notification ran before they were written.
-        if (this.#bindings) {
-            const late = this.#bindings.changesSince(lateMarker);
-            this.#bindings.clearChanges();
-            if (late.length > 0) {
-                this.#cascadedUpdates++;
-                if (this.#cascadedUpdates > VApplication.#MAX_CASCADED_UPDATES) {
-                    this.#logger.warn(`Update cycle did not settle after ${VApplication.#MAX_CASCADED_UPDATES} cascaded updates; dropping changes: ${late.join(', ')}`);
-                    this.#cascadedUpdates = 0;
-                    return;
-                }
-                for (const change of late) {
-                    this.#bindings.markChanged(change);
-                }
-                this.#scheduleUpdate();
-            } else {
-                this.#cascadedUpdates = 0;
+                // A watcher may have written data. Resolve the computed properties that depend
+                // on it now, so this render already shows what the watcher did.
+                this.#flushDirtyComputeds();
             }
-        }
-    }
 
-    /**
-     * Applies computed source path mappings to the current changes.
-     * For each changed path, if it starts with a source path that maps to a computed property,
-     * adds the corresponding computed property path to the changes.
-     */
-    #applyComputedPathMappings(): void {
-        if (this.#computedSourcePaths.size === 0 || !this.#bindings) {
+            // Update the DOM
+            this.#flushStaleNodes();
+        } finally {
+            this.#updating = false;
+        }
+
+        // A watcher or a lifecycle hook that wrote during the cycle has scheduled the next
+        // one. Past the limit the late work is dropped, so a watcher that writes on every
+        // cycle cannot keep the application updating forever.
+        if (!this.#updateScheduled) {
+            this.#cascadedUpdates = 0;
             return;
         }
-
-        const changes = this.#bindings.changes;
-        const mappedPaths: string[] = [];
-
-        for (const changedPath of changes) {
-            for (const [sourcePath, computedName] of this.#computedSourcePaths) {
-                // Check if the changed path starts with or equals the source path
-                if (changedPath === sourcePath) {
-                    // Exact match: mark the computed property itself as changed
-                    mappedPaths.push(computedName);
-                } else if (changedPath.startsWith(sourcePath + '.') || changedPath.startsWith(sourcePath + '[')) {
-                    // Subpath match: convert "model.elements[0].x" to "selectedElement.x"
-                    const suffix = changedPath.slice(sourcePath.length);
-                    mappedPaths.push(computedName + suffix);
-                }
-            }
-        }
-
-        // Add all mapped paths to the changes
-        for (const path of mappedPaths) {
-            this.#bindings.markChanged(path);
+        this.#cascadedUpdates++;
+        if (this.#cascadedUpdates > VApplication.#MAX_CASCADED_UPDATES) {
+            this.#logger.warn(`Update cycle did not settle after ${VApplication.#MAX_CASCADED_UPDATES} cascaded updates; dropping changes: ${this.#watcher.pendingPaths.join(', ')}`);
+            this.#watcher.dropPending();
+            this.#staleNodes.clear();
+            this.#cascadedUpdates = 0;
         }
     }
 
     /**
-     * Marks computed properties as dirty (pull-based invalidation) when a dependency changes.
-     * A computed depends on what its source names (statically analyzed, with computed→computed and
-     * computed→method dependencies flattened to their underlying reactive paths) and on what it read
-     * the last time it ran (#computedReads). A computed marked dirty is itself a change for the
-     * computeds that read it, so marking follows those reads too. A computed already dirty is
-     * skipped: the computeds that read it were marked when it was, and a computed cannot be
-     * recomputed without reading — and so resolving — the dirty ones it depends on. The actual
-     * recomputation is deferred until the value is read (see #recomputeOne).
-     * @param identifier The changed identifier reported by the bindings change tracker.
+     * Renders the stale nodes in creation order, parents before what they contain. Rendering
+     * can make more nodes stale (a v-for rebinding a row): they are rendered in the same
+     * update, up to a limit against bindings that keep writing what each other reads.
      */
-    #markDirtyComputeds(identifier: string): void {
-        if (!this.#options.computed || !this.#bindings) {
-            return;
-        }
-
-        const pending = [identifier];
-        while (pending.length > 0) {
-            const changed = pending.pop()!;
-            for (const key of Object.keys(this.#computedDependencies)) {
-                if (this.#bindings.isComputedDirty(key)) {
-                    continue;
-                }
-                const deps = this.#computedDependencies[key] || [];
-                const reads = this.#computedReads.get(key);
-                if (deps.some(dep => this.#dependencyAffectedBy(dep, changed)) ||
-                    (reads !== undefined && ReactiveProxy.changeAffectsRead(changed, reads))) {
-                    this.#bindings.markComputedDirty(key);
-                    pending.push(key);
-                }
+    #flushStaleNodes(): void {
+        for (let pass = 0; this.#staleNodes.size > 0; pass++) {
+            if (pass === VApplication.#MAX_CASCADED_UPDATES) {
+                this.#logger.warn(`Rendering did not settle after ${pass} passes.`);
+                this.#staleNodes.clear();
+                break;
+            }
+            const nodes = [...this.#staleNodes].sort((a, b) => a.order - b.order);
+            this.#staleNodes.clear();
+            for (const vNode of nodes) {
+                vNode.flush();
+            }
+            const callbacks = this.#afterFlush;
+            this.#afterFlush = [];
+            for (const callback of callbacks) {
+                callback();
             }
         }
     }
 
     /**
-     * Determines whether a change to `changePath` affects a computed dependency `dep`, taking both
-     * path directions into account:
-     *  - an exact match;
-     *  - `changePath` is a descendant of `dep` (e.g. dep "cartItems", change "cartItems.0.quantity")
-     *    — a nested mutation of the dependency;
-     *  - `dep` is a descendant of `changePath` (e.g. dep "user.name", change "user") — the container
-     *    holding the dependency was replaced wholesale.
-     * Local and global path aliases (e.g. computed source paths) are also honored via the bindings'
-     * own alias-aware matcher.
-     * @param dep The dependency path declared by a computed property.
-     * @param changePath The identifier reported by the bindings change tracker.
-     */
-    #dependencyAffectedBy(dep: string, changePath: string): boolean {
-        if (changePath === dep) {
-            return true;
-        }
-        if (changePath.startsWith(dep + '.') || changePath.startsWith(dep + '[')) {
-            return true;
-        }
-        if (dep.startsWith(changePath + '.') || dep.startsWith(changePath + '[')) {
-            return true;
-        }
-        // Fall back to alias-aware matching for aliased paths (computed source paths, props, etc.).
-        return this.#bindings!.doesChangeMatchIdentifier(changePath, dep);
-    }
-
-    /**
-     * Forces resolution of all computed properties currently marked dirty so that the set of
-     * changed identifiers is complete before watcher notification and the DOM diff. Computeds that
+     * Forces resolution of all computed properties currently marked dirty, so that the ones whose
+     * value changed have notified what reads them before watchers run and the DOM renders. Computeds that
      * were already pulled by a synchronous read earlier in the cycle are no longer dirty and are
      * skipped, so each computed is recomputed at most once per update cycle.
      */
@@ -817,53 +699,43 @@ export class VApplication {
             // Read the previous value without triggering re-resolution, for change detection.
             const oldValue = bindings.peekComputed(key);
 
-            // Record what the getter reads, replacing the previous record: the reads can differ
-            // from run to run (a branch, a dynamic key). Kept even when the getter throws, so a
-            // change to what it read before failing retries it.
-            const reads = new Set<string>();
-            let newValue: unknown;
-            try {
-                newValue = ReactiveProxy.track(reads, () => computedFn.call(bindings.raw));
-            } finally {
-                this.#computedReads.set(key, reads);
+            // What the getter reads replaces what it read before: the reads can differ from
+            // run to run (a branch, a dynamic key). A getter that throws keeps what it read
+            // before failing, so a change to that retries it.
+            let effect = this.#computedEffects.get(key);
+            if (!effect) {
+                effect = new ReactiveEffect(() => {
+                    this.#computedResult = computedFn.call(bindings.raw);
+                }, () => this.#invalidateComputed(key), true);
+                this.#computedEffects.set(key, effect);
             }
-
-            // Check if the value actually changed.
-            let hasChanged = oldValue !== newValue;
-
-            // For arrays, always treat as changed (VBindings detects length changes via its length
-            // cache). This preserves the precise-update behavior of the previous eager implementation.
-            if (!hasChanged && Array.isArray(newValue)) {
-                hasChanged = true;
-            }
+            effect.run();
+            const newValue = this.#computedResult;
 
             // Cache the value silently so the read returns it without re-triggering reactivity.
-            this.#bindings.setSilent(key, newValue);
+            bindings.setSilent(key, newValue);
 
-            if (hasChanged) {
-                // Mark the computed property as changed so UI and watchers depending on it update.
-                this.#bindings.markChanged(key);
-
-                // Track source path mapping for computed property values.
-                // This allows changes like "model.elements[0].x" to be mapped to "selectedElement.x".
-                if (typeof newValue === 'object' && newValue !== null) {
-                    const sourcePath = ReactiveProxy.getPath(newValue);
-                    if (sourcePath) {
-                        // Remove old mapping for this computed property
-                        for (const [path, name] of this.#computedSourcePaths) {
-                            if (name === key) {
-                                this.#computedSourcePaths.delete(path);
-                                break;
-                            }
-                        }
-                        // Add new mapping
-                        this.#computedSourcePaths.set(sourcePath, key);
-                    }
-                }
+            // Only a value that changed reaches what renders the property. Compared as cached,
+            // where an object is its reactive proxy.
+            if (bindings.peekComputed(key) !== oldValue) {
+                bindings.markChanged(key);
             }
         } catch (error) {
             this.#logger.error(`Error evaluating computed property '${key}': ${error}`);
         }
+    }
+
+    /**
+     * Marks a computed property stale when something its getter read has changed. The actual
+     * recomputation is deferred until the value is read, or to the next update.
+     * @param key The computed property name.
+     */
+    #invalidateComputed(key: string): void {
+        if (!this.#bindings || this.#bindings.isComputedDirty(key)) {
+            return;
+        }
+        this.#bindings.markComputedDirty(key);
+        this.#scheduleUpdate();
     }
 
     /**

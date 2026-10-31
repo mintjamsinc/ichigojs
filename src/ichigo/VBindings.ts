@@ -1,5 +1,6 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
+import { ReactiveEffect } from "./util/ReactiveEffect";
 import { ReactiveProxy } from "./util/ReactiveProxy";
 import { VLogger } from "./util/VLogger";
 import { VBindingsInit } from "./VBindingsInit";
@@ -21,27 +22,9 @@ export class VBindings {
 	#local: Record<string, any>;
 
 	/**
-	 * The change tracker, if any.
-	 */
-	#onChange?: (identifier: string) => void;
-
-	/**
 	 * The logger instance.
 	 */
 	#logger?: VLogger;
-
-	/**
-	 * The set of changed identifiers.
-	 */
-	#changes: Set<string> = new Set();
-
-	/**
-	 * On the root bindings: every descendant scope (a v-for row, a component) that
-	 * recorded a change since the last clearChanges(). The root clears their change
-	 * sets together with its own at the end of the update cycle, so a loop variable
-	 * set when a row was created does not count as changed in every later cycle.
-	 */
-	#dirtyScopes?: Set<VBindings>;
 
 	/**
 	 * Cache for array lengths to detect length changes when the same object reference is used.
@@ -49,9 +32,10 @@ export class VBindings {
 	#lengthCache: Map<string, number> = new Map();
 
 	/**
-	 * Flag to suppress onChange callbacks temporarily.
+	 * Flag marking a write that must not notify anything: the cached value of a computed
+	 * property, which notifies by itself if the value changed.
 	 */
-	#suppressOnChange: boolean = false;
+	#silent: boolean = false;
 
 	/**
 	 * Flag forcing the next write through the `set` trap to stay in THIS scope's own
@@ -62,28 +46,12 @@ export class VBindings {
 	#localWrite: boolean = false;
 
 	/**
-	 * Per-instance path aliases. Maps local variable names to their reactive source paths.
-	 * Scoped here instead of the global ReactiveProxy map so that v-for items each maintain
-	 * their own alias (e.g. "file" -> "files[0]") without overwriting each other.
-	 */
-	#localAliases: Map<string, string> = new Map();
-
-	/**
 	 * Setters for writable computed properties. When a key registered here is assigned
 	 * through the bindings proxy (e.g. via v-model or `bindings.set`), the setter is invoked
 	 * instead of writing directly to the local store. The cached value of the computed property
 	 * is updated by the recompute cycle through `setSilent`, which bypasses this routing.
 	 */
 	#writableComputeds: Map<string, (value: any) => void> = new Map();
-
-	/**
-	 * Unsubscribe handles for external reactive proxies received as binding values
-	 * (typically component props). Each entry keeps the child bindings notified when
-	 * nested properties of a shared object change even though the prop reference itself
-	 * stays the same. The previous subscription is released whenever the binding value
-	 * is replaced, the binding is set to null/undefined, or the bindings are destroyed.
-	 */
-	#externalSubscriptions: Map<string, () => void> = new Map();
 
 	/**
 	 * Recompute callbacks for computed properties registered on these bindings.
@@ -120,7 +88,6 @@ export class VBindings {
 	 */
 	constructor(args: VBindingsInit = {}) {
 		this.#parent = args.parent;
-		this.#onChange = args.onChange;
 		this.#logger = args.vApplication?.logManager.getLogger('VBindings');
 		if (this.#logger?.isDebugEnabled) {
 			this.#logger.debug(`VBindings created. Parent: ${this.#parent ? 'yes' : 'no'}`);
@@ -135,21 +102,27 @@ export class VBindings {
 				}
 				if (Reflect.has(obj, key)) {
 					const value = Reflect.get(obj, key);
-					// Record the read for a computed property or expression being tracked
-					// (see ReactiveProxy.track). Methods are behaviour, not data; a binding of a
-					// parent scope is recorded by the parent's own trap.
+					// A read of data is a dependency. Methods are behaviour, not data; a binding
+					// of a parent scope is recorded by the parent's own trap.
 					if (typeof key === 'string' && typeof value !== 'function') {
-						ReactiveProxy.recordRead(key);
+						ReactiveEffect.track(obj, key);
 					}
 					return value;
 				}
-				return this.#parent?.raw[key as string];
+				if (this.#parent) {
+					return this.#parent.raw[key as string];
+				}
+				// A read of a binding that does not exist yet depends on its being created
+				if (typeof key === 'string') {
+					ReactiveEffect.track(obj, key);
+				}
+				return undefined;
 			},
 			set: (obj, key, value) => {
 				// If this key is a writable computed, route the assignment through its setter.
-				// `setSilent` (used to update the cached value during recompute) sets `suppressOnChange`,
-				// which bypasses this routing so the cached value can be written directly.
-				if (!this.#suppressOnChange && this.#writableComputeds.has(key as string)) {
+				// `setSilent` (used to update the cached value during recompute) bypasses this
+				// routing so the cached value can be written directly.
+				if (!this.#silent && this.#writableComputeds.has(key as string)) {
 					const setter = this.#writableComputeds.get(key as string)!;
 					setter(value);
 					return true;
@@ -170,90 +143,12 @@ export class VBindings {
 					}
 				}
 
-				let newValue = value;
-				let receivedExternalProxy = false;
-				if (typeof value === 'object' && value !== null) {
-					// Check if the value already has a path (it's an existing reactive proxy reference)
-					const existingPath = ReactiveProxy.getPath(value);
-					if (existingPath) {
-						// Register a path alias so changes to the source path will match this identifier
-						this.#localAliases.set(key as string, existingPath);
-						this.#logger?.debug(`Path alias registered: ${key as string} -> ${existingPath}`);
-						// Keep the existing proxy as-is to preserve reactivity chain
-						newValue = value;
-						receivedExternalProxy = true;
-					} else {
-						// Before wrapping, check if any properties are existing ReactiveProxies
-						// and register path aliases for them
-						if (!Array.isArray(value)) {
-							for (const propKey of Object.keys(value)) {
-								const propValue = value[propKey];
-								if (typeof propValue === 'object' && propValue !== null) {
-									const propPath = ReactiveProxy.getPath(propValue);
-									if (propPath) {
-										// Register alias: key.propKey -> propPath
-										this.#localAliases.set(`${key as string}.${propKey}`, propPath);
-										this.#logger?.debug(`Property path alias registered: ${key as string}.${propKey} -> ${propPath}`);
-									}
-								}
-							}
-						}
-
-						// Wrap objects/arrays with reactive proxy, tracking the root key
-						newValue = ReactiveProxy.create(value, (changedPath) => {
-							let path = '';
-							for (const part of changedPath?.split('.') || []) {
-								path = path ? `${path}.${part}` : part;
-								this.#logger?.debug(`Binding changed: ${path}`);
-								this.#addChange(path);
-							}
-							if (!this.#suppressOnChange) {
-								this.#onChange?.(changedPath as string);
-							}
-						}, key as string);
-					}
-				} else if (value === null || value === undefined) {
-					// When setting to null/undefined, remove local aliases for this key and nested paths
-					for (const aliasKey of [...this.#localAliases.keys()]) {
-						if (aliasKey === (key as string) ||
-							aliasKey.startsWith((key as string) + ".") ||
-							aliasKey.startsWith((key as string) + "[")) {
-							this.#localAliases.delete(aliasKey);
-						}
-					}
-				}
+				// Objects and arrays are reactive; a reactive proxy received as the value stays
+				// the proxy it is
+				const newValue = typeof value === 'object' && value !== null ? ReactiveProxy.create(value) : value;
 
 				const oldValue = Reflect.get(target, key);
 				const result = Reflect.set(target, key, newValue);
-
-				// Manage external subscription to a reactive proxy received as the value.
-				// When the reference changes, drop the previous subscription. When a new
-				// reactive proxy is installed, subscribe so nested changes propagate to
-				// this bindings instance even though the proxy reference itself is stable.
-				if (oldValue !== newValue) {
-					const prevUnsubscribe = this.#externalSubscriptions.get(key as string);
-					if (prevUnsubscribe) {
-						prevUnsubscribe();
-						this.#externalSubscriptions.delete(key as string);
-					}
-				}
-				if (receivedExternalProxy && !this.#externalSubscriptions.has(key as string)) {
-					const unsubscribe = ReactiveProxy.subscribe(newValue, (changedPath?: string) => {
-						if (!changedPath) {
-							return;
-						}
-						let path = '';
-						for (const part of changedPath.split('.')) {
-							path = path ? `${path}.${part}` : part;
-							this.#logger?.debug(`Binding changed (external): ${path}`);
-							this.#addChange(path);
-						}
-						if (!this.#suppressOnChange) {
-							this.#onChange?.(changedPath);
-						}
-					});
-					this.#externalSubscriptions.set(key as string, unsubscribe);
-				}
 
 				// Detect changes
 				let hasChanged = oldValue !== newValue;
@@ -276,23 +171,16 @@ export class VBindings {
 						const newValuePreview = newValueString.length > 100 ? `${newValueString.substring(0, 100)}...` : newValueString;
 						this.#logger.debug(`Binding set on ${target === obj ? 'local' : 'parent'}: ${key as string}: ${oldValuePreview} -> ${newValuePreview}`);
 					}
-					this.#addChange(key as string);
-					if (!this.#suppressOnChange) {
-						this.#onChange?.(key as string);
+					if (target === obj && !this.#silent) {
+						ReactiveEffect.trigger(obj, key);
 					}
 				}
 				return result;
 			},
 			deleteProperty: (obj, key) => {
 				const result = Reflect.deleteProperty(obj, key);
-				const prevUnsubscribe = this.#externalSubscriptions.get(key as string);
-				if (prevUnsubscribe) {
-					prevUnsubscribe();
-					this.#externalSubscriptions.delete(key as string);
-				}
+				ReactiveEffect.trigger(obj, key);
 				this.#logger?.debug(`Binding deleted: ${key as string}`);
-				this.#addChange(key as string);
-				this.#onChange?.(key as string);
 				return result;
 			}
 		});
@@ -307,88 +195,10 @@ export class VBindings {
 	}
 
 	/**
-	 * Indicates whether there are any changed identifiers.
-	 */
-	get hasChanges(): boolean {
-		if (this.#parent?.hasChanges) {
-			return true;
-		}
-		return this.#changes.size > 0;
-	}
-
-	/**
-	 * Gets the list of changed identifiers.
-	 */
-	get changes(): string[] {
-		const changes = new Set(this.#parent?.changes || []);
-		this.#changes.forEach(id => changes.add(id));
-		return Array.from(changes);
-	}
-
-	/**
 	 * Indicates whether this is the root bindings (i.e., has no parent).
 	 */
 	get isRoot(): boolean {
 		return !this.#parent;
-	}
-
-	/**
-	 * Clears the set of changed identifiers.
-	 */
-	clearChanges(): void {
-		this.#changes.clear();
-		this.#changeLog.length = 0;
-		if (this.#dirtyScopes) {
-			for (const scope of this.#dirtyScopes) {
-				scope.#changes.clear();
-			}
-			this.#dirtyScopes.clear();
-		}
-	}
-
-	/**
-	 * Records a changed identifier on this scope and, for a non-root scope, registers the
-	 * scope with the root so that the change is cleared at the end of the update cycle.
-	 */
-	#addChange(key: string): void {
-		this.#changes.add(key);
-		let root: VBindings = this;
-		while (root.#parent) {
-			root = root.#parent;
-		}
-		root.#changeLog.push(key);
-		if (root !== this) {
-			(root.#dirtyScopes ??= new Set()).add(this);
-		}
-	}
-
-	/**
-	 * Every change recorded since the last clearChanges(), in order and with repeats, on the
-	 * root; the change set itself cannot tell a write made during an update cycle from the one
-	 * the cycle was scheduled for when both touch the same identifier.
-	 */
-	#changeLog: string[] = [];
-
-	/**
-	 * A marker for {@link changesSince}: the number of changes recorded so far.
-	 */
-	get changeLogLength(): number {
-		return this.#root.#changeLog.length;
-	}
-
-	/**
-	 * The distinct identifiers recorded after the marker was taken.
-	 */
-	changesSince(marker: number): string[] {
-		return Array.from(new Set(this.#root.#changeLog.slice(marker)));
-	}
-
-	get #root(): VBindings {
-		let root: VBindings = this;
-		while (root.#parent) {
-			root = root.#parent;
-		}
-		return root;
 	}
 
 	/**
@@ -455,30 +265,17 @@ export class VBindings {
 	}
 
 	/**
-	 * Releases all external proxy subscriptions held by these bindings.
-	 * Should be called when the owning application is unmounted so the parent
-	 * application's reactive objects do not keep references to listener closures
-	 * (and through them, this bindings instance) alive.
-	 */
-	destroy(): void {
-		for (const unsubscribe of this.#externalSubscriptions.values()) {
-			unsubscribe();
-		}
-		this.#externalSubscriptions.clear();
-	}
-
-	/**
-	 * Sets a binding value without triggering onChange callback.
+	 * Sets a binding value without notifying anything.
 	 * This is useful for internal updates that shouldn't trigger reactivity.
 	 * @param key The binding name.
 	 * @param value The binding value.
 	 */
 	setSilent(key: string, value: any): void {
-		this.#suppressOnChange = true;
+		this.#silent = true;
 		try {
 			this.#local[key] = value;
 		} finally {
-			this.#suppressOnChange = false;
+			this.#silent = false;
 		}
 	}
 
@@ -511,6 +308,7 @@ export class VBindings {
 	 */
 	markComputedDirty(key: string): void {
 		this.#dirtyComputeds.add(key);
+		ReactiveEffect.invalidate(this.#store, key);
 	}
 
 	/**
@@ -536,8 +334,8 @@ export class VBindings {
 	}
 
 	/**
-	 * Forces resolution of every computed property currently marked dirty. Called before the DOM
-	 * diff and watcher notification so that the set of changed identifiers is complete.
+	 * Forces resolution of every computed property currently marked dirty. Called before watchers
+	 * run and the DOM renders, so that a computed whose value changed has notified what reads it.
 	 */
 	flushDirtyComputeds(): void {
 		for (const key of [...this.#dirtyComputeds]) {
@@ -579,116 +377,11 @@ export class VBindings {
 	}
 
 	/**
-	 * Manually adds an identifier to the set of changed identifiers.
-	 * This is useful for computed properties that need to mark themselves as changed
-	 * without triggering a new update cycle.
-	 * @param key The identifier to mark as changed.
+	 * Notifies what reads a binding that it has changed. This is for a computed property,
+	 * whose cached value is written silently and which reports a change by itself.
+	 * @param key The binding name.
 	 */
 	markChanged(key: string): void {
-		this.#addChange(key);
-	}
-
-	/**
-	 * Resolves a local path alias for the given identifier by walking up the bindings chain.
-	 * Returns the resolved source path, or undefined if no alias is found.
-	 */
-	resolveAlias(identifier: string): string | undefined {
-		// Direct match in local aliases
-		if (this.#localAliases.has(identifier)) {
-			return this.#localAliases.get(identifier);
-		}
-		// Check if this is a nested path of a locally aliased variable (e.g. "file.isModified")
-		for (const [alias, source] of this.#localAliases.entries()) {
-			if (identifier.startsWith(alias + '.') || identifier.startsWith(alias + '[')) {
-				return source + identifier.substring(alias.length);
-			}
-		}
-		// Walk up the parent chain
-		return this.#parent?.resolveAlias(identifier);
-	}
-
-	/**
-	 * Checks whether a reactive change path matches a given identifier, taking local path
-	 * aliases into account. Falls back to ReactiveProxy.doesChangeMatchIdentifier for
-	 * global aliases (computed properties etc.).
-	 */
-	doesChangeMatchIdentifier(changePath: string, identifier: string): boolean {
-		// Direct match (an index "[*]" in the identifier matches any index)
-		if (ReactiveProxy.pathMatches(changePath, identifier)) {
-			return true;
-		}
-		// Resolve via local (scoped) alias chain
-		const resolved = this.resolveAlias(identifier);
-		if (resolved) {
-			// changePath is resolved itself or a descendant of it (e.g. "files[0].isModified" for resolved "files[0]")
-			if (ReactiveProxy.pathMatches(changePath, resolved, true)) {
-				return true;
-			}
-			// changePath is an ancestor of resolved (e.g. "files" for resolved "files[0].isModified")
-			// This handles raw objects: when the parent collection is replaced/spliced, all item
-			// properties are considered changed.
-			if (resolved.startsWith(changePath + '.') || resolved.startsWith(changePath + '[')) {
-				return true;
-			}
-		}
-		// Fall back to global alias resolution (computed properties, etc.)
-		return ReactiveProxy.doesChangeMatchIdentifier(changePath, identifier);
-	}
-
-	/**
-	 * Checks whether any of the changes affects an expression with the given identifiers.
-	 *
-	 * An identifier with a run-time index ("frames[*].url" for frames[i].url) normally
-	 * matches a change at any index. When trackedPaths holds the paths the expression read
-	 * during its last evaluation, the identifier is narrowed to the concrete paths among
-	 * them ("frames[0].url"), so a write to another element is ignored. When no recorded
-	 * path fits the identifier (not evaluated yet, a raw object, a short-circuited read),
-	 * the identifier keeps matching every index.
-	 *
-	 * The recorded paths also count as dependencies of their own: they include what a
-	 * method called by the expression read, such as `this[key]`, which the identifiers
-	 * found in the source cannot name.
-	 *
-	 * @param changes The change paths of the current update cycle.
-	 * @param identifiers The identifiers the expression depends on.
-	 * @param trackedPaths The paths read during the expression's last evaluation, if recorded.
-	 * @returns True if some change matches some identifier or recorded path.
-	 */
-	isAffected(changes: string[], identifiers: string[], trackedPaths?: ReadonlySet<string>): boolean {
-		if (changes.length === 0) {
-			return false;
-		}
-		for (const identifier of identifiers) {
-			const candidates = this.#concretePaths(identifier, trackedPaths) ?? [identifier];
-			for (const candidate of candidates) {
-				if (changes.some(change => this.doesChangeMatchIdentifier(change, candidate))) {
-					return true;
-				}
-			}
-		}
-		if (trackedPaths && trackedPaths.size > 0) {
-			return changes.some(change => ReactiveProxy.changeAffectsRead(change, trackedPaths));
-		}
-		return false;
-	}
-
-	/**
-	 * Returns the recorded paths that an identifier with a run-time index stood for during
-	 * the last evaluation, or undefined when the identifier has no such index or nothing
-	 * recorded fits it. The identifier is tried both as spelled and resolved through path
-	 * aliases, since recorded paths are source paths.
-	 */
-	#concretePaths(identifier: string, trackedPaths?: ReadonlySet<string>): string[] | undefined {
-		if (!trackedPaths || trackedPaths.size === 0 || !identifier.includes('[*]')) {
-			return undefined;
-		}
-		const resolved = this.resolveAlias(identifier);
-		const paths: string[] = [];
-		for (const path of trackedPaths) {
-			if (ReactiveProxy.pathMatches(path, identifier) || (resolved !== undefined && ReactiveProxy.pathMatches(path, resolved))) {
-				paths.push(path);
-			}
-		}
-		return paths.length > 0 ? paths : undefined;
+		ReactiveEffect.trigger(this.#store, key);
 	}
 }

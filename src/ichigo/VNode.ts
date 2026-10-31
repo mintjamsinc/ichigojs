@@ -2,12 +2,11 @@
 
 import { VApplication } from "./VApplication";
 import { VBindings } from "./VBindings";
-import { VCloser } from "./VCloser";
 import { IchigoElementRegistry } from "./components/IchigoElementRegistry";
 import { VDirectiveManager } from "./directives/VDirectiveManager";
 import { VNodeInit } from "./VNodeInit";
 import { VTextEvaluator } from "./VTextEvaluator";
-import { ReactiveProxy } from "./util/ReactiveProxy";
+import { ReactiveEffect } from "./util/ReactiveEffect";
 import { VFragmentRange } from "./util/VFragmentRange";
 
 /**
@@ -54,12 +53,6 @@ export class VNode {
     #bindings?: VBindings;
 
     /**
-     * The initial set of identifiers that this node depends on.
-     * This is optional and may be undefined if there are no dependent identifiers.
-     */
-    #initDependentIdentifiers?: string[];
-
-    /**
      * An evaluator for text nodes that contain expressions in {{...}}.
      * This is used to dynamically update the text content based on data bindings.
      * This is optional and may be undefined if the node is not a text node or does not contain expressions.
@@ -73,36 +66,40 @@ export class VNode {
     #directiveManager?: VDirectiveManager;
 
     /**
-     * The list of dependents for this virtual node.
-     * This is optional and may be undefined if there are no dependents.
+     * The effects that render this node, one per binding: its text, or each of its
+     * directives' bindings preparers and DOM updaters. Created when a binding first renders.
      */
-    #dependents?: VNode[];
+    #effects?: Map<object, ReactiveEffect>;
 
     /**
-     * The list of identifiers for this virtual node.
-     * This includes variable and function names used in expressions.
-     * This is optional and may be undefined if there are no identifiers.
+     * The effects notified since this node last flushed.
      */
-    #dependentIdentifiers?: string[];
+    #staleEffects?: Set<ReactiveEffect>;
 
     /**
-     * The list of preparable identifiers for this virtual node.
-     * This includes variable and function names used in directive bindings preparers.
-     * This is optional and may be undefined if there are no preparers.
+     * Whether a directive of this node has an update hook.
      */
-    #preparableIdentifiers?: string[];
+    #hasUpdateHooks: boolean = false;
 
     /**
-     * The list of closers to unregister dependencies.
-     * This is optional and may be undefined if there are no dependencies.
+     * The nearest node, this one included, whose update hooks follow what is rendered
+     * inside it (see VNodeInit.updateHooksFollowContent).
      */
-    #closers?: VCloser[];
+    #updateHookHost?: VNode;
 
     /**
      * Indicates whether this node has been templatized by a directive.
      * This is optional and may be undefined if the node has not been templatized.
      */
     #templatized?: boolean;
+
+    static #lastOrder = 0;
+
+    /**
+     * The position of this node in the order nodes were created: a parent comes before its
+     * children, and a v-if or v-for before the clones it creates.
+     */
+    readonly order: number = ++VNode.#lastOrder;
 
     /**
      * User data storage for lifecycle directives.
@@ -165,8 +162,18 @@ export class VNode {
         this.#nodeName = args.node.nodeName;
         this.#parentVNode = args.parentVNode;
         this.#bindings = args.bindings;
-        this.#initDependentIdentifiers = args.dependentIdentifiers;
+        this.#updateHookHost = args.parentVNode ? args.parentVNode.#updateHookHost : undefined;
 
+        // A node compiled while a directive renders (a v-if or v-for clone) is not part of
+        // what that directive depends on
+        ReactiveEffect.untracked(() => this.#compile(args.updateHooksFollowContent ?? false));
+    }
+
+    /**
+     * Compiles the node and its children.
+     * @param updateHooksFollowContent See VNodeInit.updateHooksFollowContent.
+     */
+    #compile(updateHooksFollowContent: boolean): void {
         this.#parentVNode?.addChild(this);
 
         if (this.#nodeType === Node.TEXT_NODE) {
@@ -201,6 +208,12 @@ export class VNode {
 
             // Determine if any directive requires template preservation
             this.#templatized = this.#directiveManager.directives?.some(d => d.templatize) ?? false;
+
+            // Determine if a directive has an update hook
+            this.#hasUpdateHooks = !this.#templatized && (this.#directiveManager.directives?.some(d => d.onUpdate || d.onUpdated) ?? false);
+            if (updateHooksFollowContent && this.#hasUpdateHooks) {
+                this.#updateHookHost = this;
+            }
 
             // If no directive requires template preservation, call onMount for directives that do not templatize
             if (!this.#templatized) {
@@ -253,9 +266,6 @@ export class VNode {
                 });
             }
         }
-
-        // Register this node as a dependent of the parent node, if any
-        this.#closers = this.#parentVNode?.addDependent(this);
     }
 
     /**
@@ -287,6 +297,11 @@ export class VNode {
      * rendered clones are its children and are walked.
      */
     expandComponents(): void {
+        // A component mounting while a directive renders is not part of what it depends on
+        ReactiveEffect.untracked(() => this.#expandComponents());
+    }
+
+    #expandComponents(): void {
         if (this.#destroyed) {
             return;
         }
@@ -315,7 +330,7 @@ export class VNode {
         this.#directiveManager?.directives?.forEach(d => d.expandComponents?.());
 
         // A copy: expanding can render and destroy clones under this node.
-        this.#childVNodes?.slice().forEach(child => child.expandComponents());
+        this.#childVNodes?.slice().forEach(child => child.#expandComponents());
     }
 
     /**
@@ -444,87 +459,6 @@ export class VNode {
     }
 
     /**
-     * The list of identifiers for this virtual node.
-     * This includes variable and function names used in expressions.
-     */
-    get dependentIdentifiers(): string[] {
-        // If already computed, return the cached dependent identifiers
-        if (this.#dependentIdentifiers) {
-            return this.#dependentIdentifiers;
-        }
-
-        // Collect identifiers from text evaluator and directives
-        const ids: string[] = [];
-
-        // Include initial dependent identifiers, if any
-        ids.push(...this.#initDependentIdentifiers ?? []);
-
-        // If this is a text node with a text evaluator, include its identifiers
-        if (this.#textEvaluator) {
-            ids.push(...this.#textEvaluator.identifiers);
-        }
-
-        // Include identifiers from directive bindings preparers
-        this.#directiveManager?.bindingsPreparers?.forEach(preparer => {
-            ids.push(...preparer.dependentIdentifiers);
-        });
-
-        // Include identifiers from directive DOM updaters
-        this.#directiveManager?.domUpdaters?.forEach(updater => {
-            ids.push(...updater.dependentIdentifiers);
-        });
-
-        // Remove duplicates by converting to a Set and back to an array
-        this.#dependentIdentifiers = [...new Set(ids)];
-
-        return this.#dependentIdentifiers;
-    }
-
-    /**
-     * Whether a change of the current update cycle concerns this node, so that a node it
-     * depends on should update it: a change matches one of its identifiers, or touches a
-     * path one of its bindings read the last time it ran. The recorded reads cover what a
-     * called method read, such as `this[key]`, which the identifiers cannot name. Each
-     * binding decides again for itself when the node updates.
-     * @param changes The change paths of the current update cycle.
-     */
-    isAffectedBy(changes: string[]): boolean {
-        if (changes.length === 0) {
-            return false;
-        }
-        if (this.dependentIdentifiers.some(id => changes.some(change => this.bindings.doesChangeMatchIdentifier(change, id)))) {
-            return true;
-        }
-        const recorded = [
-            this.#textEvaluator?.trackedPaths,
-            ...(this.#directiveManager?.bindingsPreparers ?? []).map(preparer => preparer.trackedPaths),
-            ...(this.#directiveManager?.domUpdaters ?? []).map(updater => updater.trackedPaths),
-        ];
-        return recorded.some(paths => paths !== undefined && paths.size > 0 &&
-            changes.some(change => ReactiveProxy.changeAffectsRead(change, paths)));
-    }
-
-    get preparableIdentifiers(): string[] {
-        // If already computed, return the cached preparable identifiers
-        if (this.#preparableIdentifiers) {
-            return this.#preparableIdentifiers;
-        }
-
-        // Collect preparable identifiers from directive bindings preparers
-        const preparableIdentifiers: string[] = [];
-
-        // Include preparable identifiers from directive bindings preparers
-        this.#directiveManager?.bindingsPreparers?.forEach(preparer => {
-            preparableIdentifiers.push(...preparer.preparableIdentifiers);
-        });
-
-        // Remove duplicates by converting to a Set and back to an array
-        this.#preparableIdentifiers = preparableIdentifiers.length === 0 ? [] : [...new Set(preparableIdentifiers)];
-
-        return this.#preparableIdentifiers;
-    }
-
-    /**
      * Gets the user data storage for this virtual node.
      * This is lazily initialized and provides a Proxy-free space for storing
      * arbitrary data associated with lifecycle directives.
@@ -576,90 +510,55 @@ export class VNode {
     }
 
     /**
-     * Updates the virtual node and its children based on the current bindings.
-     * This method evaluates any expressions in text nodes and applies effectors from directives.
-     * It also recursively updates child virtual nodes.
-     * @param context The context for the update operation.
-     * This includes the current bindings and a list of identifiers that have changed.
+     * Renders the bindings of this node that were notified since the last flush. The
+     * application calls this in creation order, so a parent's v-if or v-for has run, and
+     * destroyed whatever it removes, before the nodes under it.
      */
-    update(): void {
-        const changes = this.bindings?.changes || [];
+    flush(): void {
+        const stale = this.#staleEffects;
+        this.#staleEffects = undefined;
+        if (this.#destroyed) {
+            return;
+        }
 
-        if (this.#nodeType === Node.TEXT_NODE && this.#textEvaluator) {
-            // If this is a text node with a text evaluator, update its content if needed
-
-            // Check if any of the identifiers are in the changed identifiers (considering path aliases)
-            const changed = this.bindings.isAffected(changes, this.#textEvaluator.identifiers, this.#textEvaluator.trackedPaths);
-
-            // If the text node has changed, update its content
-            if (changed) {
-                this.#renderText();
-            }
-        } else if (this.#nodeType === Node.ELEMENT_NODE) {
-            // If this is an element node, update directives and child nodes
-
-            // If no directive requires template preservation, call onUpdate for directives that do not templatize
-            if (!this.#templatized) {
-                this.#directiveManager?.directives?.forEach(d => {
-                    d.onUpdate?.();
-                });
-            }
-
-            // Prepare new bindings using directive bindings preparers, if any
-            if (this.#directiveManager?.bindingsPreparers) {
-                // Ensure local bindings are initialized
-                if (!this.#bindings) {
-                    this.#bindings = new VBindings({ parent: this.bindings });
-                }
-
-                // Prepare bindings for each preparer if relevant identifiers have changed
-                for (const preparer of this.#directiveManager.bindingsPreparers) {
-                    const changed = this.bindings.isAffected(changes, preparer.dependentIdentifiers, preparer.trackedPaths);
-                    if (changed) {
-                        this.#renderSafely(() => preparer.prepareBindings());
-                    }
-                }
-            }
-
-            // Apply DOM updaters from directives, if any
-            if (this.#directiveManager?.domUpdaters) {
-                for (const updater of this.#directiveManager.domUpdaters) {
-                    const changed = this.bindings.isAffected(changes, updater.dependentIdentifiers, updater.trackedPaths);
-                    if (changed) {
-                        this.#renderSafely(() => updater.applyToDOM());
-                    }
-                }
-            }
-
-            // Recursively update dependent virtual nodes
-            this.#dependents?.forEach(dependentNode => {
-                if (dependentNode.isAffectedBy(changes)) {
-                    dependentNode.update();
+        // Call onUpdate before anything of this node renders, and onUpdated when the whole
+        // pass has: a node's content renders after it, as a node of its own.
+        if (this.#hasUpdateHooks) {
+            ReactiveEffect.untracked(() => this.#directiveManager?.directives?.forEach(d => {
+                d.onUpdate?.();
+            }));
+            this.#vApplication.afterFlush(() => {
+                if (!this.#destroyed) {
+                    ReactiveEffect.untracked(() => this.#directiveManager?.directives?.forEach(d => {
+                        d.onUpdated?.();
+                    }));
                 }
             });
+        }
 
-            // If no directive requires template preservation, call onUpdated for directives that do not templatize
-            if (!this.#templatized) {
-                this.#directiveManager?.directives?.forEach(d => {
-                    d.onUpdated?.();
-                });
+        // In creation order: a bindings preparer runs before the DOM updaters that use it
+        this.#effects?.forEach(effect => {
+            if (stale?.has(effect)) {
+                effect.run();
             }
-        } else if (this.#nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
-            // For document fragments (e.g. from <template v-if>), propagate updates
-            // to dependent virtual nodes so that child bindings stay reactive.
-            this.#dependents?.forEach(dependentNode => {
-                if (dependentNode.isAffectedBy(changes)) {
-                    dependentNode.update();
-                }
-            });
+        });
+    }
+
+    /**
+     * Schedules this node's update hooks without any of its bindings being stale: a v-for
+     * row rebound from the list counts as updated even when its item is the same.
+     */
+    requestUpdate(): void {
+        if (this.#hasUpdateHooks) {
+            this.#vApplication.enqueue(this);
         }
     }
 
     /**
-     * Forces an update of the virtual node and its children, regardless of changed identifiers.
+     * Forces an update of the virtual node and its children, whether or not anything changed.
      * This method evaluates any expressions in text nodes and applies effectors from directives.
      * It also recursively updates child virtual nodes.
-     * This is useful when an immediate update is needed, bypassing the usual change detection.
+     * This is how a node first renders, which is what records what its bindings depend on.
      */
     forceUpdate(): void {
         // One pass per outermost call; a call made while a pass runs (a directive rendering
@@ -699,8 +598,8 @@ export class VNode {
      * Forces the children that have not been forced in the running pass. A v-if / v-for /
      * slot clone is a child of its host, and the host's directive renders it with its own
      * forceUpdate() call as soon as it is created, so recursing into it here would render it a
-     * second time. A clone that already existed, and that the directive updated with
-     * update(), has not been forced in this pass and is still forced here.
+     * second time. A clone that already existed has not been forced in this pass and is
+     * still forced here.
      */
     #forceChildren(): void {
         // A copy: an update can destroy a v-if / v-for clone, which removes it from this list.
@@ -723,9 +622,9 @@ export class VNode {
 
             // If no directive requires template preservation, call onUpdate for directives that do not templatize
             if (!this.#templatized) {
-                this.#directiveManager?.directives?.forEach(d => {
+                ReactiveEffect.untracked(() => this.#directiveManager?.directives?.forEach(d => {
                     d.onUpdate?.();
-                });
+                }));
             }
 
             // Prepare new bindings using directive bindings preparers, if any
@@ -735,16 +634,16 @@ export class VNode {
                     this.#bindings = new VBindings({ parent: this.bindings });
                 }
 
-                // Prepare bindings for each preparer if relevant identifiers have changed
+                // Prepare bindings for each preparer
                 for (const preparer of this.#directiveManager.bindingsPreparers) {
-                    this.#renderSafely(() => preparer.prepareBindings());
+                    this.#runEffect(preparer, () => preparer.prepareBindings());
                 }
             }
 
             // Apply DOM updaters from directives, if any
             if (this.#directiveManager?.domUpdaters) {
                 for (const updater of this.#directiveManager.domUpdaters) {
-                    this.#renderSafely(() => updater.applyToDOM());
+                    this.#runEffect(updater, () => updater.applyToDOM());
                 }
             }
 
@@ -753,9 +652,9 @@ export class VNode {
 
             // If no directive requires template preservation, call onUpdated for directives that do not templatize
             if (!this.#templatized) {
-                this.#directiveManager?.directives?.forEach(d => {
+                ReactiveEffect.untracked(() => this.#directiveManager?.directives?.forEach(d => {
                     d.onUpdated?.();
-                });
+                }));
             }
         } else if (this.#nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
             // For document fragments, recursively force update child VNodes
@@ -768,9 +667,31 @@ export class VNode {
      */
     #renderText(): void {
         const text = this.#node as Text;
-        this.#renderSafely(() => {
+        this.#runEffect(this.#textEvaluator!, () => {
             text.data = this.#textEvaluator!.evaluate(this.bindings);
         });
+    }
+
+    /**
+     * Runs one binding's render step as an effect, so that what it reads decides when it
+     * renders again.
+     * @param unit What the step belongs to: the text evaluator, a preparer or an updater.
+     * @param render The render step.
+     */
+    #runEffect(unit: object, render: () => void): void {
+        this.#effects ??= new Map();
+        let effect = this.#effects.get(unit);
+        if (!effect) {
+            effect = new ReactiveEffect(() => this.#renderSafely(render), (stale) => {
+                (this.#staleEffects ??= new Set()).add(stale);
+                this.#vApplication.enqueue(this);
+                if (this.#updateHookHost) {
+                    this.#vApplication.enqueue(this.#updateHookHost);
+                }
+            });
+            this.#effects.set(unit, effect);
+        }
+        effect.run();
     }
 
     /**
@@ -806,76 +727,6 @@ export class VNode {
     }
 
     /**
-     * Adds a dependent virtual node that relies on this node's bindings.
-     * @param dependent The dependent virtual node to add.
-     * @param dependentIdentifiers The identifiers that the dependent node relies on.
-     * If not provided, the dependent node's own identifiers will be used.
-     * @returns A list of closers to unregister the dependency, or undefined if no dependency was added.
-     */
-    addDependent(dependent: VNode, dependentIdentifiers: string[] | undefined = undefined): VCloser[] | undefined {
-        // List of closers to unregister the dependency
-        const closers: VCloser[] = [];
-
-        // If dependent identifiers are not provided, use the dependent node's own identifiers
-        if (!dependentIdentifiers) {
-            dependentIdentifiers = [...dependent.dependentIdentifiers];
-        }
-
-        // Prepare alternative identifiers by stripping array indices (e.g., "items[0]" -> "items")
-        const allDeps = new Set<string>();
-        dependentIdentifiers.forEach(id => {
-            allDeps.add(id);
-
-            const idx = id.indexOf('[');
-            if (idx !== -1) {
-                allDeps.add(id.substring(0, idx));
-            }
-        });
-
-        // Get this node's identifiers
-        const thisIds = [...this.preparableIdentifiers];
-        if (this.#bindings) {
-            thisIds.push(...this.#bindings?.raw ? Object.keys(this.#bindings.raw) : []);
-        }
-
-        // If the dependent node has an identifier in this node's identifiers, add it as a dependency
-        if ([...allDeps].some(id => thisIds.includes(id))) {
-            // If the dependencies list is not initialized, create it
-            if (!this.#dependents) {
-                this.#dependents = [];
-            }
-
-            // Add the dependent node to the list
-            this.#dependents.push(dependent);
-
-            // Remove the matched identifiers from the dependent node's identifiers to avoid duplicate dependencies
-            thisIds.forEach(id => {
-                const idx = dependentIdentifiers.indexOf(id);
-                if (idx !== -1) {
-                    dependentIdentifiers.splice(idx, 1);
-                }
-            });
-
-            // Create a closer to unregister the dependency
-            closers.push({
-                close: () => {
-                    // Remove the dependent node from the dependencies list
-                    const index = this.#dependents?.indexOf(dependent) ?? -1;
-                    if (index !== -1) {
-                        this.#dependents?.splice(index, 1);
-                    }
-                }
-            });
-        }
-
-        // Recursively add the dependency to the parent node, if any
-        this.#parentVNode?.addDependent(dependent, dependentIdentifiers)?.forEach(closer => closers.push(closer));
-
-        // Return a closer to unregister the dependency
-        return closers.length > 0 ? closers : undefined;
-    }
-
-    /**
      * Cleans up any resources used by this virtual node.
      * This method is called when the virtual node is no longer needed.
      *
@@ -883,7 +734,7 @@ export class VNode {
      * 1. Call onUnmount lifecycle hooks
      * 2. Auto-cleanup userData (close() on Closeable objects)
      * 3. Recursively destroy child nodes
-     * 4. Unregister dependencies
+     * 4. Stop this node's effects
      * 5. Clean up directive manager
      * 6. Call onUnmounted lifecycle hooks
      * 7. Leave the parent's child list
@@ -926,16 +777,9 @@ export class VNode {
             }
         }
 
-        // Unregister dependencies
-        if (this.#closers) {
-            for (const closer of this.#closers) {
-                try {
-                    closer.close();
-                } catch (error) {
-                    this.#vApplication.logManager.getLogger(this.constructor.name).error(`Error closing dependency closer: ${error}`);
-                }
-            }
-        }
+        // Stop rendering: nothing this node read may reach it any more
+        this.#effects?.forEach(effect => effect.stop());
+        this.#effects = undefined;
 
         // Clean up directive handler
         this.#directiveManager?.destroy();

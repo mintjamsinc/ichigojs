@@ -30,8 +30,8 @@ export interface VNodeInit {
 	bindings?: VBindings;
 
 	/**
-	 * The set of identifiers that this node depends on.
-	 * This is optional and may be undefined if there are no dependent identifiers.
+	 * Whether the node's update hooks also follow what is rendered inside it: a v-for row,
+	 * whose bindings are usually on its children.
 	 */
-	dependentIdentifiers?: string[];
+	updateHooksFollowContent?: boolean;
 }

@@ -117,17 +117,9 @@ export class VBindDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#evaluator?.dependentIdentifiers ?? [];
-        const evaluator = this.#evaluator;
 
         // Create an updater that handles the attribute binding
         const updater: VDOMUpdater = {
-            get dependentIdentifiers(): string[] {
-                return identifiers;
-            },
-            get trackedPaths(): ReadonlySet<string> | undefined {
-                return evaluator?.trackedPaths;
-            },
             applyToDOM: () => {
                 this.#render();
             }

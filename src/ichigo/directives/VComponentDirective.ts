@@ -75,9 +75,6 @@ export class VComponentDirective implements VDirective {
     get domUpdater(): VDOMUpdater | undefined {
         // Create and return the DOM updater
         const updater: VDOMUpdater = {
-            get dependentIdentifiers(): string[] {
-                return [];
-            },
             applyToDOM: () => {
                 this.#render();
             }

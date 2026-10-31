@@ -13,12 +13,6 @@ export interface VBindingsInit {
 	parent?: VBindings;
 
 	/**
-	 * The change tracker, if any.
-	 * @param identifier The identifier that changed.
-	 */
-	onChange?: (identifier: string) => void;
-
-	/**
 	 * The virtual application instance, if any.
 	 */
 	vApplication?: VApplication;

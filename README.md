@@ -221,12 +221,11 @@ automatically and independently of declaration order.
 
 **Dependencies:**
 
-A computed property depends on the properties its source names (`this.firstName`,
-including those read by the methods it calls) and on everything it actually read
-the last time it ran. Reads that only happen at run time, such as a property
-looked up by a key, are therefore followed too, and the record is replaced on
-every run, so a computed that switches between branches follows the branch it
-took:
+A computed property depends on everything it actually read the last time it ran,
+including what the methods it calls read. Reads that only happen at run time, such
+as a property looked up by a key, are therefore followed too, and the record is
+replaced on every run, so a computed that switches between branches follows the
+branch it took:
 
 ```javascript
 computed: {
@@ -667,8 +666,8 @@ Lifecycle hooks allow you to run code at specific stages of an element's lifecyc
 
 - `@mount` - Called before the VNode is mounted to the DOM element
 - `@mounted` - Called after the VNode is mounted to the DOM element
-- `@update` - Called before the element is updated
-- `@updated` - Called after the element is updated
+- `@update` - Called before the element is updated. On a `v-for` row, this includes what is rendered inside the row
+- `@updated` - Called after the element is updated, when everything rendered in the same pass is in the DOM
 - `@unmount` - Called before VNode cleanup begins
 - `@unmounted` - Called after VNode cleanup is complete (element reference still available)
 

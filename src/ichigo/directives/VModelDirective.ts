@@ -145,12 +145,6 @@ export class VModelDirective implements VDirective {
     get domUpdater(): VDOMUpdater | undefined {
         const self = this;
         const updater: VDOMUpdater = {
-            get dependentIdentifiers(): string[] {
-                return self.#collectDependentIdentifiers();
-            },
-            get trackedPaths(): ReadonlySet<string> | undefined {
-                return self.#evaluator?.trackedPaths;
-            },
             applyToDOM: () => {
                 self.#render();
             }

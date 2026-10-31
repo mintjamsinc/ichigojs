@@ -73,27 +73,6 @@ export class VForDirective implements VDirective {
     #previousIterations: Array<{ key: any; item: any; index: number; objectKey?: string }> = [];
 
     /**
-     * The source array watched for writes made directly to it, and the function
-     * that stops watching it.
-     *
-     * A write such as `items[1] = x` is reported as a change of "items[1]", which
-     * does not match this directive's dependency on "items", and the row's loop
-     * variable holds the value it was rendered with. The directive therefore
-     * watches the array itself and refreshes the rows that were written.
-     */
-    #watchedSource?: object;
-    #unwatchSource?: () => void;
-
-    /**
-     * Positions written since the last refresh, and whether a write (such as one
-     * to `length`) needs the whole list rendered again.
-     */
-    #writtenIndexes: Set<number> = new Set();
-    #writtenWhole: boolean = false;
-    #refreshScheduled: boolean = false;
-    #destroyed: boolean = false;
-
-    /**
      * @param context The context for parsing the directive.
      */
     constructor(context: VDirectiveParseContext) {
@@ -157,17 +136,9 @@ export class VForDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#sourceEvaluator?.dependentIdentifiers ?? [];
-        const sourceEvaluator = this.#sourceEvaluator;
 
         // Create and return the DOM updater
         const updater: VDOMUpdater = {
-            get dependentIdentifiers(): string[] {
-                return identifiers;
-            },
-            get trackedPaths(): ReadonlySet<string> | undefined {
-                return sourceEvaluator?.trackedPaths;
-            },
             applyToDOM: () => {
                 this.#render();
             }
@@ -235,11 +206,6 @@ export class VForDirective implements VDirective {
      * @inheritdoc
      */
     destroy(): void {
-        this.#destroyed = true;
-        this.#unwatchSource?.();
-        this.#unwatchSource = undefined;
-        this.#watchedSource = undefined;
-
         // Clean up all rendered items
         // First destroy all VNodes (calls @unmount hooks), then remove from DOM
         for (const { vNode } of this.#renderedItems) {
@@ -275,11 +241,6 @@ export class VForDirective implements VDirective {
 
         // Evaluate the source expression to get the data
         const sourceData = this.#sourceEvaluator.evaluate();
-
-        // Every row is rendered from the source below, including those written in place
-        this.#watchSource(sourceData);
-        this.#writtenIndexes.clear();
-        this.#writtenWhole = false;
 
         // Get iterations from the source data
         let iterations = this.#getIterations(sourceData);
@@ -421,18 +382,12 @@ export class VForDirective implements VDirective {
                 // Create a new VNode for the cloned element
                 // Note: VNode creation must happen BEFORE DOM insertion because
                 // directives like v-if may modify the DOM structure (create anchors, remove template elements)
-                let depIds = [
-                        `${this.#sourceName}[${context.index}]`,
-                        ...this.#vNode.vApplication.resolveDependentIdentifiers(this.#sourceName!, context.item)];
-                if (this.#itemName) {
-                    depIds.push(this.#itemName);
-                }
                 vNode = new VNode({
                     node: clone,
                     vApplication: this.#vNode.vApplication,
                     parentVNode: this.#vNode,
                     bindings,
-                    dependentIdentifiers: depIds,
+                    updateHooksFollowContent: true,
                 });
 
                 // If clone is a DocumentFragment, wrap it in a VFragmentRange so the
@@ -720,108 +675,11 @@ export class VForDirective implements VDirective {
      * Update bindings for an existing item
      */
     #updateItemBindings(vNode: VNode, context: { key: any; item: any; index: number; objectKey?: string }): void {
-        // Trigger reactivity update by calling update with the new bindings
         if (vNode.bindings) {
             this.#setItemBindings(vNode.bindings, context);
         }
 
-        vNode.update();
-    }
-
-    /**
-     * Watches the source for writes made directly to its elements. Only a
-     * reactive array can be written that way; anything else is not watched.
-     */
-    #watchSource(source: any): void {
-        if (source === this.#watchedSource) {
-            return;
-        }
-
-        this.#unwatchSource?.();
-        this.#unwatchSource = undefined;
-        this.#watchedSource = source;
-
-        const path = Array.isArray(source) ? ReactiveProxy.getPath(source) : undefined;
-        if (!path) {
-            return;
-        }
-
-        this.#unwatchSource = ReactiveProxy.subscribe(source, (changedPath?: string) => {
-            this.#onSourceWritten(path, changedPath);
-        });
-    }
-
-    /**
-     * Notes a write made directly to the source array. A change below an
-     * element (e.g. "items[1].name") is followed by the row's own bindings, and
-     * a change of the whole array (e.g. by splice) by the usual dependency on it.
-     */
-    #onSourceWritten(path: string, changedPath?: string): void {
-        if (!changedPath || !changedPath.startsWith(path + '[') || !changedPath.endsWith(']')) {
-            return;
-        }
-
-        const property = changedPath.substring(path.length + 1, changedPath.length - 1);
-        if (property.includes(']')) {
-            return;
-        }
-
-        if (/^\d+$/.test(property)) {
-            this.#writtenIndexes.add(Number(property));
-        } else {
-            // e.g. `items.length = 0`
-            this.#writtenWhole = true;
-        }
-
-        // Writes made together are refreshed together, after the application's update
-        if (!this.#refreshScheduled) {
-            this.#refreshScheduled = true;
-            queueMicrotask(() => {
-                this.#refreshScheduled = false;
-                this.#refreshWritten();
-            });
-        }
-    }
-
-    /**
-     * Shows the elements written since the last refresh. A row whose position or
-     * key no longer holds is not patched; the whole list is rendered again.
-     */
-    #refreshWritten(): void {
-        if (this.#destroyed || (!this.#writtenWhole && this.#writtenIndexes.size === 0)) {
-            return;
-        }
-
-        const indexes = [...this.#writtenIndexes];
-        const whole = this.#writtenWhole;
-        this.#writtenIndexes.clear();
-        this.#writtenWhole = false;
-
-        const source = this.#sourceEvaluator?.evaluate();
-        if (whole || source !== this.#watchedSource || !Array.isArray(source) || source.length !== this.#renderedItems.length) {
-            this.#render();
-            return;
-        }
-
-        for (const index of indexes) {
-            const rendered = this.#renderedItems[index];
-            let context: { key: any; item: any; index: number } = { key: index, item: source[index], index };
-            if (this.#evaluateKey && (this.#itemName || this.#itemDestructure)) {
-                const itemBindings = new VBindings({
-                    parent: this.#vNode.bindings
-                });
-                this.#setItemBindings(itemBindings, context);
-                context = { ...context, key: this.#evaluateKey(itemBindings) };
-            }
-
-            if (!rendered || context.key !== rendered.key) {
-                this.#render();
-                return;
-            }
-
-            this.#updateItemBindings(rendered.vNode, context);
-            this.#previousIterations[index] = context;
-        }
+        vNode.requestUpdate();
     }
 
     /**

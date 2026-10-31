@@ -1,7 +1,6 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
 import { ExpressionUtils } from "./util/ExpressionUtils";
-import { ReactiveProxy } from "./util/ReactiveProxy";
 import { toDisplayString } from "./util/DisplayString";
 import { VBindings } from "./VBindings";
 
@@ -75,12 +74,6 @@ export class VTextEvaluator {
     #evaluate: (bindings: VBindings) => string;
 
     /**
-     * The source paths read during the last evaluation, recorded only when some
-     * expression has a run-time index ("items[i].name") or calls a method.
-     */
-    #trackedPaths?: Set<string>;
-
-    /**
      * Constructs a VTextEvaluator instance.
      * @param text The text containing embedded expressions in the form of {{...}}.
      * @param functionDependencies A dictionary mapping function names to their dependencies.
@@ -126,16 +119,8 @@ export class VTextEvaluator {
             };
         });
 
-        // Only an expression with an index known at run time, or one that calls a method
-        // (whose reads, such as `this[key]`, the source analysis may not see), needs its
-        // reads recorded
-        const tracksReads = this.#identifiers.some(id => id.includes('[*]')) ||
-            ExpressionUtils.callsFunction(this.#identifiers, functionDependencies);
-
-        // Create a function to reconstruct the text with evaluated expressions. The values
-        // are gathered outside the tracked call: a binding passed in by name is already
-        // among the identifiers.
-        const evaluateText = (bindings: VBindings, paths?: Set<string>) => {
+        // Create a function to reconstruct the text with evaluated expressions.
+        this.#evaluate = (bindings: VBindings) => {
             let result = text;
             evaluators.forEach((evaluator, i) => {
                 // Build values for baseArgs (no dots) in the same order as function parameters
@@ -148,20 +133,11 @@ export class VTextEvaluator {
 
                 // Evaluate the expression and replace {{...}} in the text.
                 // A function replacement keeps `$`-patterns in the value literal.
-                const value = paths ? ReactiveProxy.track(paths, () => evaluator.func(...values)) : evaluator.func(...values);
+                const value = evaluator.func(...values);
                 result = result.replace(matches[i][0], () => toDisplayString(value));
             });
             return result;
         };
-        this.#evaluate = tracksReads
-            ? (bindings: VBindings) => {
-                const paths = new Set<string>();
-                this.#trackedPaths = undefined;
-                const result = evaluateText(bindings, paths);
-                this.#trackedPaths = paths;
-                return result;
-            }
-            : evaluateText;
     }
 
     /**
@@ -179,15 +155,6 @@ export class VTextEvaluator {
      */
     get identifiers(): string[] {
         return this.#identifiers;
-    }
-
-    /**
-     * The source paths read during the last evaluation. Recorded only when an
-     * expression has a run-time index ("items[i].name") or calls a method;
-     * undefined before the first evaluation and for other texts.
-     */
-    get trackedPaths(): ReadonlySet<string> | undefined {
-        return this.#trackedPaths;
     }
 
     /**

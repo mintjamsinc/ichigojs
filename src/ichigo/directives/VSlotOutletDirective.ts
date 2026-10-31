@@ -186,15 +186,7 @@ export class VSlotOutletDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.dependentIdentifiers;
-        const directive = this;
         const updater: VDOMUpdater = {
-            get dependentIdentifiers(): string[] {
-                return identifiers;
-            },
-            get trackedPaths(): ReadonlySet<string> | undefined {
-                return directive.#collectTrackedPaths();
-            },
             applyToDOM: () => {
                 this.#refresh();
             }
@@ -218,22 +210,6 @@ export class VSlotOutletDirective implements VDirective {
             prop.evaluator?.dependentIdentifiers.forEach(id => ids.add(id));
         }
         return Array.from(ids);
-    }
-
-    /**
-     * The paths the prop expressions read during their last evaluation, united across
-     * props, or undefined when no prop expression has a run-time index.
-     */
-    #collectTrackedPaths(): ReadonlySet<string> | undefined {
-        let paths: Set<string> | undefined;
-        for (const prop of this.#props) {
-            const tracked = prop.evaluator?.trackedPaths;
-            if (tracked) {
-                paths ??= new Set<string>();
-                tracked.forEach(path => paths!.add(path));
-            }
-        }
-        return paths;
     }
 
     /**

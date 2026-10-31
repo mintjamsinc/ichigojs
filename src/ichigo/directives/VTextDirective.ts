@@ -83,18 +83,11 @@ export class VTextDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#evaluator.dependentIdentifiers;
         const evaluator = this.#evaluator;
         const vNode = this.#vNode;
 
         // Create an updater that sets the textContent
         const updater: VDOMUpdater = {
-            get dependentIdentifiers(): string[] {
-                return identifiers;
-            },
-            get trackedPaths(): ReadonlySet<string> | undefined {
-                return evaluator.trackedPaths;
-            },
             applyToDOM(): void {
                 const element = vNode.node as HTMLElement;
                 element.textContent = toDisplayString(evaluator.evaluate());

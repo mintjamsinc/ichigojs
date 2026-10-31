@@ -115,19 +115,6 @@ export class ExpressionUtils {
     }
 
     /**
-     * Whether an expression refers to one of the application's methods, judged by the
-     * identifiers extractIdentifiers returned for it. A called method may read bindings
-     * the source analysis cannot name (e.g. `this[key]`), so such an expression records
-     * its reads when it runs.
-     * @param identifiers The identifiers extracted from the expression.
-     * @param functionDependencies The application's methods and their dependencies.
-     * @returns True if an identifier names a method.
-     */
-    static callsFunction(identifiers: string[], functionDependencies: Record<string, string[]>): boolean {
-        return identifiers.some(id => Object.prototype.hasOwnProperty.call(functionDependencies, id));
-    }
-
-    /**
      * Returns the binding name an identifier chain starts with
      * (e.g. "items" for "items[0].name" or "user.name").
      * @param identifier An identifier or member chain returned by extractIdentifiers.

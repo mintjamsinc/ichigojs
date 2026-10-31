@@ -1,28 +1,22 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
+import { ReactiveEffect } from "./ReactiveEffect";
+
 /**
  * A listener notified when something changes inside a reactive subtree.
- * Receives the full source path of the changed property (e.g. "items[0].name").
  */
-type ReactiveListener = (changedPath?: string) => void;
+type ReactiveListener = () => void;
 
 /**
- * A dispatcher owns the set of listeners attached to a given proxy subtree.
- * The same dispatcher instance is shared by every nested proxy reached
- * through a single outermost create() call, so changes at any depth fan out
- * to every subscriber once.
- */
-type ReactiveDispatcher = { listeners: Set<ReactiveListener> };
-
-/**
- * Utility class for creating reactive proxies that automatically track changes.
+ * Utility class for creating reactive proxies. A proxy records the reads made through it
+ * against the running effect and notifies the effects that read a member when it is
+ * written (see ReactiveEffect). An object has one proxy, however many places hold it.
  */
 export class ReactiveProxy {
     /**
-     * A WeakMap to store the proxy for each target object and path combination.
-     * This prevents creating multiple proxies for the same object accessed from different paths.
+     * A WeakMap to store the proxy of each target object.
      */
-    private static proxyCache = new WeakMap<object, Map<string, any>>();
+    private static proxies = new WeakMap<object, object>();
 
     /**
      * A WeakMap to track which objects are proxies, mapping proxy -> original target.
@@ -37,146 +31,24 @@ export class ReactiveProxy {
     private static rawObjects = new WeakSet<object>();
 
     /**
-     * A WeakMap to store the path for each proxy object.
-     * This allows retrieving the source path of an object for computed property mapping.
+     * The listeners of each target: the groups passed to create(), which a nested object
+     * joins when it is reached through an object in the group.
      */
-    private static proxyPaths = new WeakMap<object, string>();
+    private static listeners = new WeakMap<object, Set<Set<ReactiveListener>>>();
 
-    /**
-     * Dispatchers per (target, path). Every target reached while walking a proxy
-     * subtree registers an entry pointing at the same dispatcher as the outermost
-     * proxy of that subtree, so callers can look up the dispatcher from any
-     * intermediate proxy when subscribing.
-     */
-    private static dispatchers = new WeakMap<object, Map<string, ReactiveDispatcher>>();
-
-    /**
-     * A Map to store path aliases.
-     * Key: alias path (e.g., "editingNestedStep.steps")
-     * Value: source path (e.g., "routes[0].steps[0].steps")
-     * This allows mapping variable names to their actual source paths for dependency tracking.
-     */
-    private static pathAliases = new Map<string, string>();
-
-    /**
-     * Compiled patterns for identifiers that contain a "[*]" index, keyed by the
-     * identifier and whether descendants of the path also match.
-     */
-    private static pathPatterns = new Map<string, RegExp>();
-
-    /**
-     * The set collecting the paths read through any proxy while track() runs, or
-     * undefined when no expression is being tracked.
-     */
-    private static tracker?: Set<string>;
+    private static readonly ARRAY_MUTATORS: ReadonlySet<string> = new Set(['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse']);
+    private static readonly MAP_MUTATORS: ReadonlySet<string> = new Set(['set', 'delete', 'clear']);
+    private static readonly SET_MUTATORS: ReadonlySet<string> = new Set(['add', 'delete', 'clear']);
 
     /**
      * Whether a property key is spelled as an array index ("0", "12") rather than a
-     * property name. Both the proxy and the expression analyzer decide between
-     * "items[0]" and "items.name" with this test alone, so a numeric key on a plain
-     * object and a numeric key on an array get the same spelling.
+     * property name.
      *
      * @param key The property key as a string.
      * @returns True if the key is a canonical non-negative integer.
      */
     static isIndexKey(key: string): boolean {
         return /^(?:0|[1-9]\d*)$/.test(key);
-    }
-
-    /**
-     * Appends a property key to a source path the way change paths are reported:
-     * an index in brackets ("items[0]"), a name after a dot ("user.name").
-     *
-     * @param path The path of the containing object, or "" for a root binding.
-     * @param key The property key being appended.
-     * @returns The joined path.
-     */
-    static joinPath(path: string, key: string | symbol): string {
-        const keyStr = String(key);
-        if (!path) {
-            return keyStr;
-        }
-        return this.isIndexKey(keyStr) ? `${path}[${keyStr}]` : `${path}.${keyStr}`;
-    }
-
-    /**
-     * Runs fn while recording, into paths, the source path of every property read
-     * through a reactive proxy. Nested calls record into the innermost set only;
-     * the previous set is restored when fn returns or throws.
-     *
-     * The set is kept closed under ancestors: whenever a path is recorded, every
-     * path above it ("items" and "items[2]" for "items[2].name") is in the set as
-     * well. A read reached through a proxy records them on its way down; a read
-     * that starts partway (a proxy a computed returned, a v-for item) has them
-     * added when it is recorded. changeAffectsRead relies on this to answer with
-     * one lookup.
-     *
-     * @param paths The set that receives the paths read.
-     * @param fn The function to run.
-     * @returns The value fn returns.
-     */
-    static track<T>(paths: Set<string>, fn: () => T): T {
-        const previous = this.tracker;
-        this.tracker = paths;
-        try {
-            return fn();
-        } finally {
-            this.tracker = previous;
-        }
-    }
-
-    /**
-     * Records a read made outside any proxy while track() runs: a binding read by
-     * name (`this.flag`, `this[key]`), which the bindings report here. Reads below
-     * a binding are recorded by the proxy itself.
-     *
-     * @param path The binding name read.
-     */
-    static recordRead(path: string): void {
-        this.tracker?.add(path);
-    }
-
-    /**
-     * Records a read made through a proxy while track() runs: the member `key` of
-     * the object at `containerPath`. The container's own path and its ancestors are
-     * added first when they are missing, which happens when the proxy was not
-     * reached from a root binding during this run (see track()). A container that
-     * is already recorded has its ancestors recorded too, so the common case is one
-     * lookup.
-     *
-     * @param containerPath The source path of the object read from ("" for a root).
-     * @param key The property key read.
-     */
-    private static recordProxyRead(containerPath: string, key: string): void {
-        const tracker = this.tracker!;
-        if (containerPath && !tracker.has(containerPath)) {
-            for (let i = 1; i < containerPath.length; i++) {
-                const c = containerPath[i];
-                if (c === '.' || c === '[') {
-                    tracker.add(containerPath.substring(0, i));
-                }
-            }
-            tracker.add(containerPath);
-        }
-        tracker.add(this.joinPath(containerPath, key));
-    }
-
-    /**
-     * Checks whether a change touches something read during a tracked run (see
-     * track()): the path read was written, or an object or array holding it was
-     * replaced. A change below a path read does not count, since a read of the
-     * changed member itself would have been recorded too; this keeps a read of a
-     * whole collection ("items") from matching a write to one element.
-     *
-     * The set holds the ancestors of every path read, so a replaced container is
-     * found by the same lookup as the path itself.
-     *
-     * @param changePath The path that was changed (e.g., "items[2].name")
-     * @param readPaths The paths read during the tracked run
-     * @returns True if the change touches a path read
-     */
-    static changeAffectsRead(changePath: string, readPaths: ReadonlySet<string>): boolean {
-        return readPaths.has(changePath);
     }
 
     /**
@@ -217,21 +89,130 @@ export class ReactiveProxy {
     }
 
     /**
-     * Creates a reactive proxy for the given object.
-     * The proxy will call the onChange callback whenever a property is modified.
+     * The traps shared by every proxy.
+     */
+    private static readonly handler: ProxyHandler<any> = {
+        get(obj, key, receiver) {
+            const value = Reflect.get(obj, key);
+
+            // A read of data is a dependency. Function-valued members (push, Map#get, …) are
+            // accesses to behaviour, not data, so they are left out.
+            if (typeof key !== 'symbol' && typeof value !== 'function') {
+                ReactiveEffect.track(obj, key);
+            }
+
+            // If the value is an object or array, make it reactive too
+            if (typeof value === 'object' && value !== null) {
+                ReactiveProxy.inheritListeners(obj, value);
+                return ReactiveProxy.create(value);
+            }
+
+            // If the value is a function, we need to wrap it to ensure that any mutations it performs are seen
+            if (typeof value === 'function') {
+                // For arrays, we only want to wrap mutation methods, not read methods like 'slice', 'concat', etc.
+                if (Array.isArray(obj)) {
+                    if (!ReactiveProxy.ARRAY_MUTATORS.has(key as string)) {
+                        return value;
+                    }
+
+                    return function (this: any, ...args: any[]) {
+                        const result = (value as Function).apply(this === receiver ? obj : this, args);
+                        ReactiveEffect.triggerAll(obj);
+                        ReactiveProxy.notify(obj);
+                        return result;
+                    };
+                }
+
+                // For Map and Set, a mutation method changes the collection and any other
+                // method reads it
+                const mutators = ReactiveProxy.mutatorsOf(obj);
+                if (mutators) {
+                    return function (this: any, ...args: any[]) {
+                        const result = (value as Function).apply(this === receiver ? obj : this, args);
+                        if (mutators.has(key as string)) {
+                            ReactiveEffect.triggerAll(obj);
+                            ReactiveProxy.notify(obj);
+                        } else {
+                            ReactiveEffect.track(obj, ReactiveEffect.ITERATE);
+                        }
+                        return result;
+                    };
+                }
+            }
+
+            return value;
+        },
+
+        set(obj, key, value) {
+            const stored = ReactiveProxy.unwrap(value);
+            const oldValue = Reflect.get(obj, key);
+            const hadKey = Reflect.has(obj, key);
+            const oldLength = Array.isArray(obj) ? obj.length : 0;
+            const result = Reflect.set(obj, key, stored);
+
+            // Only notify if the value actually changed
+            if (oldValue !== stored) {
+                if (key === 'length' && Array.isArray(obj)) {
+                    // Truncating removes elements no write names
+                    ReactiveEffect.triggerAll(obj);
+                } else {
+                    ReactiveEffect.trigger(obj, key);
+                    if (!hadKey) {
+                        ReactiveEffect.trigger(obj, ReactiveEffect.ITERATE);
+                    }
+                    if (Array.isArray(obj) && obj.length !== oldLength) {
+                        ReactiveEffect.trigger(obj, 'length');
+                    }
+                }
+                ReactiveProxy.notify(obj);
+            }
+
+            return result;
+        },
+
+        deleteProperty(obj, key) {
+            const result = Reflect.deleteProperty(obj, key);
+            ReactiveEffect.trigger(obj, key);
+            ReactiveEffect.trigger(obj, ReactiveEffect.ITERATE);
+            ReactiveProxy.notify(obj);
+            return result;
+        },
+
+        has(obj, key) {
+            if (typeof key !== 'symbol') {
+                ReactiveEffect.track(obj, key);
+            }
+            return Reflect.has(obj, key);
+        },
+
+        ownKeys(obj) {
+            ReactiveEffect.track(obj, ReactiveEffect.ITERATE);
+            return Reflect.ownKeys(obj);
+        }
+    };
+
+    /**
+     * The mutation methods of a Map or a Set, or undefined for any other object.
+     */
+    private static mutatorsOf(obj: object): ReadonlySet<string> | undefined {
+        switch (obj.constructor?.name) {
+            case 'Map':
+                return this.MAP_MUTATORS;
+            case 'Set':
+                return this.SET_MUTATORS;
+            default:
+                return undefined;
+        }
+    }
+
+    /**
+     * Creates a reactive proxy for the given object, or returns the one it already has.
      *
      * @param target The object to make reactive.
-     * @param onChange Callback function to call when the object changes. Receives the full path of the changed property.
-     * @param path The current path in the object tree (used internally for nested objects).
-     * @param inheritedDispatcher Internal: the dispatcher inherited from an enclosing create() call when wrapping a nested target. External callers must omit this.
+     * @param onChange Called whenever something inside the object is modified.
      * @returns A reactive proxy of the target object.
      */
-    static create<T extends object>(
-        target: T,
-        onChange?: (changedPath?: string) => void,
-        path: string = '',
-        inheritedDispatcher?: ReactiveDispatcher
-    ): T {
+    static create<T extends object>(target: T, onChange?: ReactiveListener): T {
         // If the target is not an object or is null, return it as-is
         if (typeof target !== 'object' || target === null) {
             return target;
@@ -249,216 +230,62 @@ export class ReactiveProxy {
             return target;
         }
 
+        const raw = this.unwrap(target);
+        if (onChange) {
+            let groups = this.listeners.get(raw);
+            if (!groups) {
+                groups = new Set();
+                this.listeners.set(raw, groups);
+            }
+            groups.add(new Set([onChange]));
+        }
+
         // Check if the target is already a proxy - if so, return it as-is to prevent double-wrapping
-        if (this.proxyToTarget.has(target)) {
+        if (raw !== target) {
             return target;
         }
 
-        // Resolve (and register) the dispatcher for this (target, path).
-        // Nested create() calls inherit the dispatcher from the enclosing call so
-        // that a single dispatcher fans out changes at any depth of the subtree.
-        const dispatcher = this.resolveDispatcher(target, path, inheritedDispatcher);
-        if (onChange) {
-            dispatcher.listeners.add(onChange);
+        const existing = this.proxies.get(target) as T | undefined;
+        if (existing) {
+            return existing;
         }
-
-        // Check if we already have a proxy for this target with this path
-        let pathMap = this.proxyCache.get(target);
-        if (pathMap) {
-            const existingProxy = pathMap.get(path);
-            if (existingProxy) {
-                return existingProxy;
-            }
-        } else {
-            pathMap = new Map();
-            this.proxyCache.set(target, pathMap);
-        }
-
-        // Create the proxy with path captured in closure
-        const proxy = new Proxy(target, {
-            get(obj, key, receiver) {
-                const value = Reflect.get(obj, key);
-
-                // Record the read for an expression being tracked (see track()).
-                // Function-valued members (push, Map#get, …) are accesses to behaviour,
-                // not data, so they are left out.
-                if (ReactiveProxy.tracker && typeof key !== 'symbol' && typeof value !== 'function') {
-                    ReactiveProxy.recordProxyRead(path, key);
-                }
-
-                // If the value is an object or array, make it reactive too
-                if (typeof value === 'object' && value !== null) {
-                    // Don't wrap objects marked as raw (non-reactive)
-                    if (ReactiveProxy.rawObjects.has(value)) {
-                        return value;
-                    }
-
-                    // Only deeply proxy plain data containers; hand back built-in
-                    // and host objects (Date, File, Blob, Promise, WeakMap, DOM
-                    // nodes, …) untouched so their native methods keep working.
-                    if (!ReactiveProxy.isReactivable(value)) {
-                        return value;
-                    }
-
-                    // Build the nested path
-                    const nestedPath = ReactiveProxy.joinPath(path, key);
-                    return ReactiveProxy.create(value, undefined, nestedPath, dispatcher);
-                }
-
-                // If the value is a function, we need to wrap it to ensure that any mutations it performs also trigger onChange
-                if (typeof value === 'function') {
-                    // For arrays, we only want to wrap mutation methods, not read methods like 'slice', 'concat', etc.
-                    if (Array.isArray(obj)) {
-                        const arrayMutationMethods = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort', 'reverse'];
-                        if (!arrayMutationMethods.includes(key as string)) {
-                            return value;
-                        }
-
-                        return function (this: any, ...args: any[]) {
-                            const result = (value as Function).apply(this === receiver ? obj : this, args);
-                            ReactiveProxy.dispatch(dispatcher, path || undefined);
-                            return result;
-                        };
-                    }
-
-                    // For Map, we only want to wrap mutation methods, not read methods like 'get' or 'has'
-                    if (obj.constructor.name === 'Map') {
-                        const mapMutationMethods = ['set', 'delete', 'clear'];
-                        return function (this: any, ...args: any[]) {
-                            const result = (value as Function).apply(this === receiver ? obj : this, args);
-                            if (mapMutationMethods.includes(key as string)) {
-                                ReactiveProxy.dispatch(dispatcher, path || undefined);
-                            }
-                            return result;
-                        };
-                    }
-
-                    // For Set, we only want to wrap mutation methods, not read methods like 'has'
-                    if (obj.constructor.name === 'Set') {
-                        const setMutationMethods = ['add', 'delete', 'clear'];
-                        return function (this: any, ...args: any[]) {
-                            const result = (value as Function).apply(this === receiver ? obj : this, args);
-                            if (setMutationMethods.includes(key as string)) {
-                                ReactiveProxy.dispatch(dispatcher, path || undefined);
-                            }
-                            return result;
-                        };
-                    }
-                }
-
-                return value;
-            },
-
-            set(obj, key, value) {
-                const oldValue = Reflect.get(obj, key);
-                const result = Reflect.set(obj, key, value);
-
-                // Only trigger onChange if the value actually changed
-                if (oldValue !== value) {
-                    ReactiveProxy.dispatch(dispatcher, ReactiveProxy.joinPath(path, key));
-                }
-
-                return result;
-            },
-
-            deleteProperty(obj, key) {
-                const result = Reflect.deleteProperty(obj, key);
-                ReactiveProxy.dispatch(dispatcher, ReactiveProxy.joinPath(path, key));
-                return result;
-            }
-        });
-
-        // Cache the proxy for this path
-        pathMap.set(path, proxy);
-
-        // Track that this proxy wraps the target to prevent double-wrapping
+        const proxy = new Proxy(target, this.handler) as T;
+        this.proxies.set(target, proxy);
         this.proxyToTarget.set(proxy, target);
-
-        // Store the path for this proxy (for computed property mapping)
-        if (path) {
-            this.proxyPaths.set(proxy, path);
-        }
-
         return proxy;
     }
 
     /**
-     * Looks up the dispatcher associated with (target, path), or installs a new one.
-     * When called for a nested target during proxy walking, the enclosing dispatcher
-     * is reused so a single subtree fans out changes through one notification path.
+     * Makes a nested object notify the listeners of the object it was reached through.
      */
-    private static resolveDispatcher(
-        target: object,
-        path: string,
-        inheritedDispatcher?: ReactiveDispatcher
-    ): ReactiveDispatcher {
-        let pathMap = this.dispatchers.get(target);
-        if (!pathMap) {
-            pathMap = new Map();
-            this.dispatchers.set(target, pathMap);
-        }
-        const existing = pathMap.get(path);
-        if (existing) {
-            return existing;
-        }
-        const dispatcher = inheritedDispatcher ?? { listeners: new Set<ReactiveListener>() };
-        pathMap.set(path, dispatcher);
-        return dispatcher;
-    }
-
-    /**
-     * Invokes every listener attached to the dispatcher.
-     * Iterates a snapshot of the listener set so unsubscribing during dispatch is safe.
-     */
-    private static dispatch(dispatcher: ReactiveDispatcher, changedPath?: string): void {
-        if (dispatcher.listeners.size === 0) {
+    private static inheritListeners(parent: object, value: object): void {
+        const groups = this.listeners.get(parent);
+        if (!groups) {
             return;
         }
-        const snapshot = Array.from(dispatcher.listeners);
-        for (const listener of snapshot) {
-            listener(changedPath);
+        const nested = this.unwrap(value);
+        let nestedGroups = this.listeners.get(nested);
+        if (!nestedGroups) {
+            nestedGroups = new Set();
+            this.listeners.set(nested, nestedGroups);
+        }
+        for (const group of groups) {
+            nestedGroups.add(group);
         }
     }
 
     /**
-     * Subscribes a listener to changes inside the subtree of an existing reactive proxy.
-     *
-     * The listener is scoped by the proxy's source path: only changes at or below that
-     * path are delivered, which lets a child component receive notifications when the
-     * nested contents of a prop change even though the prop reference itself is unchanged.
-     *
-     * @param proxyOrTarget A proxy returned from create(), or the underlying target object.
-     * @param listener Called with the full source path of every relevant change.
-     * @returns A function that removes the subscription.
+     * Invokes the listeners of a target.
      */
-    static subscribe(proxyOrTarget: object, listener: ReactiveListener): () => void {
-        if (typeof proxyOrTarget !== 'object' || proxyOrTarget === null) {
-            return () => {};
-        }
-        const target = (this.proxyToTarget.get(proxyOrTarget) ?? proxyOrTarget) as object;
-        const scopePath = this.proxyPaths.get(proxyOrTarget) ?? '';
-        const pathMap = this.dispatchers.get(target);
-        const dispatcher = pathMap?.get(scopePath);
-        if (!dispatcher) {
-            return () => {};
-        }
-        const wrapper: ReactiveListener = scopePath
-            ? (changedPath?: string) => {
-                if (
-                    changedPath === scopePath ||
-                    (typeof changedPath === 'string' && (
-                        changedPath.startsWith(scopePath + '.') ||
-                        changedPath.startsWith(scopePath + '[')
-                    ))
-                ) {
-                    listener(changedPath);
+    private static notify(target: object): void {
+        const groups = this.listeners.get(target);
+        if (groups) {
+            for (const group of groups) {
+                for (const listener of group) {
+                    listener();
                 }
             }
-            : listener;
-        dispatcher.listeners.add(wrapper);
-        return () => {
-            dispatcher.listeners.delete(wrapper);
-        };
+        }
     }
 
     /**
@@ -468,7 +295,7 @@ export class ReactiveProxy {
      * @returns True if the object is a reactive proxy, false otherwise.
      */
     static isReactive(obj: any): boolean {
-        return this.proxyCache.has(obj);
+        return this.proxyToTarget.has(obj);
     }
 
     /**
@@ -479,9 +306,7 @@ export class ReactiveProxy {
      * @returns The original object.
      */
     static unwrap<T>(obj: T): T {
-        // This is a simplified implementation
-        // In a full implementation, we'd need to store a reverse mapping
-        return obj;
+        return ((typeof obj === 'object' && obj !== null && this.proxyToTarget.get(obj)) || obj) as T;
     }
 
     /**
@@ -510,133 +335,5 @@ export class ReactiveProxy {
      */
     static isRaw(obj: any): boolean {
         return typeof obj === 'object' && obj !== null && this.rawObjects.has(obj);
-    }
-
-    /**
-     * Gets the source path for a proxy object.
-     * This is used to map computed property values back to their source paths.
-     * For example, if a computed property returns `model.elements[0]`,
-     * this method returns "model.elements[0]" for that object.
-     *
-     * @param obj The proxy object to get the path for.
-     * @returns The source path, or undefined if not found.
-     */
-    static getPath(obj: any): string | undefined {
-        if (typeof obj !== 'object' || obj === null) {
-            return undefined;
-        }
-        return this.proxyPaths.get(obj);
-    }
-
-    /**
-     * Registers a path alias.
-     * This is used when a variable is assigned to reference an existing reactive object.
-     * For example, when `editingNestedStep = routes[0].steps[0]`, this creates an alias
-     * so that changes to "routes[0].steps[0].steps" also match "editingNestedStep.steps".
-     *
-     * @param aliasPath The alias path (e.g., "editingNestedStep")
-     * @param sourcePath The source path (e.g., "routes[0].steps[0]")
-     */
-    static registerPathAlias(aliasPath: string, sourcePath: string): void {
-        if (aliasPath && sourcePath && aliasPath !== sourcePath) {
-            this.pathAliases.set(aliasPath, sourcePath);
-        }
-    }
-
-    /**
-     * Unregisters a path alias.
-     *
-     * @param aliasPath The alias path to remove
-     */
-    static unregisterPathAlias(aliasPath: string): void {
-        // Remove all aliases that start with the given path
-        for (const key of this.pathAliases.keys()) {
-            if (key === aliasPath || key.startsWith(aliasPath + '.') || key.startsWith(aliasPath + '[')) {
-                this.pathAliases.delete(key);
-            }
-        }
-    }
-
-    /**
-     * Resolves an alias path to its source path.
-     * Also handles nested paths (e.g., "editingNestedStep.steps" -> "routes[0].steps[0].steps").
-     *
-     * @param aliasPath The alias path to resolve
-     * @returns The source path, or undefined if no alias exists
-     */
-    static resolvePathAlias(aliasPath: string): string | undefined {
-        // Direct match
-        if (this.pathAliases.has(aliasPath)) {
-            return this.pathAliases.get(aliasPath);
-        }
-
-        // Check if this is a nested path of an aliased variable
-        // e.g., "editingNestedStep.steps" when "editingNestedStep" is aliased
-        for (const [alias, source] of this.pathAliases.entries()) {
-            if (aliasPath.startsWith(alias + '.') || aliasPath.startsWith(alias + '[')) {
-                const suffix = aliasPath.substring(alias.length);
-                return source + suffix;
-            }
-        }
-
-        return undefined;
-    }
-
-    /**
-     * Checks if a change path matches an identifier, considering path aliases.
-     * For example, if "editingNestedStep" is aliased to "routes[0].steps[0]",
-     * then a change to "routes[0].steps[0].steps" should match "editingNestedStep.steps".
-     *
-     * @param changePath The path that was changed (e.g., "routes[0].steps[0].steps")
-     * @param identifier The identifier to check (e.g., "editingNestedStep.steps")
-     * @returns True if the change path matches the identifier
-     */
-    static doesChangeMatchIdentifier(changePath: string, identifier: string): boolean {
-        // Direct match
-        if (this.pathMatches(changePath, identifier)) {
-            return true;
-        }
-
-        // Check if the change path is the resolved identifier or lies below it
-        // (handles cases like array item changes)
-        const resolvedIdentifier = this.resolvePathAlias(identifier);
-        if (resolvedIdentifier && this.pathMatches(changePath, resolvedIdentifier, true)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Checks whether a change path names the location an identifier refers to.
-     * A "[*]" index in the identifier (e.g. "items[*].name" for `items[i].name`)
-     * stands for an index known only when the expression runs and matches any
-     * one index or key.
-     *
-     * @param changePath The path that was changed (e.g., "items[2].name")
-     * @param identifier The identifier to check (e.g., "items[*].name")
-     * @param descendants Whether a change below the identifier also matches
-     * @returns True if the change path matches the identifier
-     */
-    static pathMatches(changePath: string, identifier: string, descendants: boolean = false): boolean {
-        if (changePath === identifier) {
-            return true;
-        }
-
-        if (!identifier.includes('[*]')) {
-            return descendants && (changePath.startsWith(identifier + '.') || changePath.startsWith(identifier + '['));
-        }
-
-        const cacheKey = descendants ? identifier + ' ' : identifier;
-        let pattern = this.pathPatterns.get(cacheKey);
-        if (!pattern) {
-            const source = identifier
-                .split('[*]')
-                .map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-                .join('(?:\\[[^\\]]*\\]|\\.[^.[]+)');
-            pattern = new RegExp(`^${source}${descendants ? '(?:[.[].*)?' : ''}$`);
-            this.pathPatterns.set(cacheKey, pattern);
-        }
-        return pattern.test(changePath);
     }
 }

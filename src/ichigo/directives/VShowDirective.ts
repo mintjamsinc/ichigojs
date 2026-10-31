@@ -91,19 +91,12 @@ export class VShowDirective implements VDirective {
      * @inheritdoc
      */
     get domUpdater(): VDOMUpdater | undefined {
-        const identifiers = this.#evaluator.dependentIdentifiers;
         const evaluator = this.#evaluator;
         const visibleNode = () => this.visibleNode();
         const invisibleNode = () => this.invisibleNode();
 
         // Create an updater that handles the conditional rendering
         const updater: VDOMUpdater = {
-            get dependentIdentifiers(): string[] {
-                return identifiers;
-            },
-            get trackedPaths(): ReadonlySet<string> | undefined {
-                return evaluator.trackedPaths;
-            },
             applyToDOM(): void {
                 const shouldRender = evaluator.evaluateAsBoolean();
                 if (shouldRender) {

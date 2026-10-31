@@ -116,17 +116,10 @@ export class VFocusDirective implements VDirective {
             return undefined;
         }
 
-        const identifiers = this.#evaluator.dependentIdentifiers;
         const evaluator = this.#evaluator;
         const focusElement = () => this.#focus();
 
         const updater: VDOMUpdater = {
-            get dependentIdentifiers(): string[] {
-                return identifiers;
-            },
-            get trackedPaths(): ReadonlySet<string> | undefined {
-                return evaluator.trackedPaths;
-            },
             applyToDOM: () => {
                 const value = evaluator.evaluateAsBoolean();
                 const previous = this.#previousValue;

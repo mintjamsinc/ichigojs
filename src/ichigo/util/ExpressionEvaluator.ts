@@ -1,7 +1,6 @@
 // Copyright (c) 2025 MintJams Inc. Licensed under MIT License.
 
 import { ExpressionUtils } from "./ExpressionUtils";
-import { ReactiveProxy } from "./ReactiveProxy";
 import { VBindings } from "../VBindings";
 import { ExpressionEvaluatorOptions } from "./ExpressionEvaluatorOptions";
 
@@ -84,19 +83,6 @@ export class ExpressionEvaluator {
     private readonly additionalContext?: Record<string, any>;
 
     /**
-     * Whether the paths read during evaluation are recorded: when an identifier has an
-     * index known only at run time ("items[*].name"), or when the expression calls a
-     * method, whose reads (`this[key]` among them) the source analysis may not see.
-     */
-    private readonly tracksReads: boolean;
-
-    /**
-     * The source paths read during the last evaluation, or undefined before the
-     * first evaluation and when nothing is recorded.
-     */
-    private trackedPathSet?: Set<string>;
-
-    /**
      * Private constructor. Use ExpressionEvaluator.create() to create instances.
      */
     private constructor(
@@ -105,7 +91,6 @@ export class ExpressionEvaluator {
         identifiers: string[],
         originalIdentifiers: string[],
         evaluatorFunc: Function,
-        callsMethod: boolean,
         additionalContext?: Record<string, any>
     ) {
         this.expression = expression;
@@ -114,7 +99,6 @@ export class ExpressionEvaluator {
         this.originalIdentifiers = originalIdentifiers;
         this.evaluatorFunc = evaluatorFunc;
         this.additionalContext = additionalContext;
-        this.tracksReads = callsMethod || originalIdentifiers.some(id => id.includes('[*]'));
     }
 
     /**
@@ -175,7 +159,6 @@ export class ExpressionEvaluator {
             baseIdentifiers,
             extractedIdentifiers,
             evaluatorFunc,
-            ExpressionUtils.callsFunction(extractedIdentifiers, functionDependencies),
             options?.additionalContext
         );
     }
@@ -243,34 +226,12 @@ export class ExpressionEvaluator {
                 values.push(...Object.values(this.additionalContext));
             }
 
-            // Call the compiled function with the gathered values. When an index is
-            // known only at run time or a method is called, record which concrete
-            // paths this evaluation read (see trackedPaths). The values above are
-            // gathered outside the tracked call on purpose: a binding passed in by
-            // name is already among the identifiers.
-            if (!this.tracksReads) {
-                return this.evaluatorFunc(...values);
-            }
-            const paths = new Set<string>();
-            this.trackedPathSet = undefined;
-            const result = ReactiveProxy.track(paths, () => this.evaluatorFunc(...values));
-            this.trackedPathSet = paths;
-            return result;
+            // Call the compiled function with the gathered values
+            return this.evaluatorFunc(...values);
         } catch (error) {
             console.error(`[ichigo.js] Error evaluating expression: ${this.expression}`, error);
             throw error;
         }
-    }
-
-    /**
-     * The source paths read during the last evaluation, recorded only for an
-     * expression with a run-time index ("items[i].name") or a method call.
-     * Each evaluation replaces the previous set, so a path read for a former
-     * index value is dropped as soon as the expression runs with the new one.
-     * Undefined before the first evaluation and for other expressions.
-     */
-    get trackedPaths(): ReadonlySet<string> | undefined {
-        return this.trackedPathSet;
     }
 
     /**
